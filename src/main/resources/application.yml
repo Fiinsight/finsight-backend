@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: finsight-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/finsight}
+    username: ${DB_USERNAME:finsight}
+    password: ${DB_PASSWORD:finsight}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+finsight:
+  ai:
+    base-url: ${AI_BASE_URL:http://localhost:8001}
+
