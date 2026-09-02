@@ -141,7 +141,7 @@ AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작
 
 - **한국투자증권(KIS)** — [apiportal.koreainvestment.com](https://apiportal.koreainvestment.com) 에서 무료로 모의투자 앱키를 발급받을 수 있습니다. `KIS_APP_KEY`/`KIS_APP_SECRET`이 비어 있으면 `KisTokenProvider`가 토큰 발급을 아예 시도하지 않고, `KisIndexQuoteClient`/`KisStockQuoteClient`/`KisDailyCandleClient`는 각각 그럴듯한 샘플 지수/시세/캔들 값을 반환합니다. tr_id/엔드포인트 경로는 공개 문서를 참고해 best-effort로 작성했으며(`KisIndexQuoteClient` 등 상단 TODO 참고), 실제 키로 검증되지는 않았습니다.
 - **한국은행 ECOS** — [ecos.bok.or.kr](https://ecos.bok.or.kr) 에서 무료로 오픈API 인증키를 발급받을 수 있습니다. `ECOS_API_KEY`가 없거나 호출이 실패하면 `EcosClient`가 고정된 샘플 기준금리/환율 값을 반환합니다. (실제 발급받은 키로 검증 완료: 기준금리는 월별(`M`), 원/달러 환율은 일별(`D`)로만 조회되며, 조회 구간을 너무 좁게 요청하면 최신값이 아니라 구간 내 가장 오래된 값이 반환되는 점까지 확인해서 반영했습니다.)
-- **금융감독원 OpenDART** — [opendart.fss.or.kr](https://opendart.fss.or.kr) 에서 무료로 오픈API 인증키를 발급받을 수 있습니다. `DART_API_KEY`가 없거나 corp_code를 찾지 못하면 `DartClient`가 빈 공시 목록을 반환합니다.
+- **금융감독원 OpenDART** — [opendart.fss.or.kr](https://opendart.fss.or.kr) 에서 무료로 오픈API 인증키를 발급받을 수 있습니다. `DART_API_KEY`가 없거나 corp_code를 찾지 못하면 `DartClient`가 빈 공시 목록을 반환합니다. (실제 발급받은 키로 `corpCode.xml` 다운로드/파싱과 `list.json` 공시 조회까지 end-to-end로 검증 완료.)
 - **AI 서비스(finsight-ai)** — 실행되어 있지 않거나 타임아웃이 나면 `AiServiceClient`가 빈 결과를 반환하고, 호출한 쪽(`NewsAssembler`, `TermService`, `FeedbackScheduler`)이 각각 원문 그대로/기본 정의/템플릿 문구로 대체합니다.
 
 모든 외부 클라이언트는 예외를 잡아 `warn` 로그만 남기고 폴백 값을 반환하도록 되어 있어, 키가 없거나 외부 API가 응답하지 않아도 앱 기동이나 API 응답이 실패하지 않습니다.
