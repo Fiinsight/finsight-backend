@@ -119,7 +119,20 @@ com.finsight
 
 3. `GET http://localhost:8080/api/briefings/today` 로 정상 응답을 확인합니다. (KIS/ECOS/DART 키가 없어도, AI 서비스가 꺼져 있어도 앱은 폴백 데이터로 정상 동작합니다.)
 
+> **Java 버전 관련 참고**: Gradle 8.14는 아직 JDK 25를 지원하지 않아 `./gradlew`를 JDK 25로 실행하면 `Unsupported class file major version 69` 에러가 납니다. 터미널에 JDK 17(또는 21)이 기본으로 잡혀 있지 않다면 다음처럼 지정해서 실행하세요 (실제 앱 컴파일은 `settings.gradle`의 toolchain 설정으로 JDK 21이 자동 사용됩니다 — 이건 Gradle 실행 자체에 필요한 JVM 얘기입니다):
+> ```bash
+> export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+> ./gradlew bootRun
+> ```
+
 AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작성/용어 설명/피드백 생성이 동작합니다. `finsight-ai`가 꺼져 있으면 해당 필드들은 원문 그대로 또는 기본 문구로 대체됩니다.
+
+### API 문서 (Swagger)
+
+앱을 띄운 상태에서 아래 주소로 모든 엔드포인트를 확인하고 직접 호출(Try it out)해볼 수 있습니다. springdoc-openapi가 컨트롤러의 요청/응답 타입을 그대로 읽어서 문서를 만들기 때문에 코드와 문서가 항상 같이 갑니다.
+
+- Swagger UI: http://localhost:8080/swagger-ui/index.html
+- OpenAPI(JSON) 원본: http://localhost:8080/v3/api-docs
 
 ### 환경변수
 
