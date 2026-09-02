@@ -14,8 +14,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 /**
  * Client for 한국은행 ECOS (Economic Statistics System) open API.
  *
- * Endpoint shape is best-effort from the public ECOS documentation:
- * {base}/StatisticSearch/{apiKey}/json/kr/1/1/{statCode}/{cycle}/{start}/{end}/{itemCode1}
+ * Endpoint shape, verified against the real API with a live key:
+ * {base}/StatisticSearch/{apiKey}/json/kr/1/100/{statCode}/{cycle}/{start}/{end}/{itemCode1}
+ * — 722Y001 (기준금리) is monthly ("M", yyyyMM), 731Y001 (원/달러 환율) is daily
+ * ("D", yyyyMMdd) only; requesting it with "M" silently returns zero rows.
  *
  * Same defensive pattern as the other external clients: any failure (missing
  * key, network error, unexpected shape) falls back to a plausible flat
@@ -34,6 +36,7 @@ public class EcosClient {
 
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
     private static final DateTimeFormatter YYYYMM = DateTimeFormatter.ofPattern("yyyyMM");
+    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
     private final String apiKey;
@@ -46,25 +49,32 @@ public class EcosClient {
     }
 
     public EcosRate getBaseRate() {
-        return fetchLatestValue("기준금리", BASE_RATE_STAT_CODE, BASE_RATE_ITEM_CODE, 3.50);
+        // 722Y001 (기준금리) is only published monthly.
+        return fetchLatestValue("기준금리", BASE_RATE_STAT_CODE, BASE_RATE_ITEM_CODE, "M",
+                LocalDate.now().minusMonths(3).format(YYYYMM), LocalDate.now().format(YYYYMM), 3.50);
     }
 
     public EcosRate getUsdKrwRate() {
-        return fetchLatestValue("원/달러 환율", USD_KRW_STAT_CODE, USD_KRW_ITEM_CODE, 1380.0);
+        // 731Y001 (원/달러 매매기준율) is only published daily — verified against the
+        // real ECOS API: requesting it with cycle "M" / yyyyMM dates returns no rows.
+        return fetchLatestValue("원/달러 환율", USD_KRW_STAT_CODE, USD_KRW_ITEM_CODE, "D",
+                LocalDate.now().minusDays(14).format(YYYYMMDD), LocalDate.now().format(YYYYMMDD), 1380.0);
     }
 
-    private EcosRate fetchLatestValue(String seriesName, String statCode, String itemCode, double fallbackValue) {
+    private EcosRate fetchLatestValue(String seriesName, String statCode, String itemCode, String cycle,
+                                       String start, String end, double fallbackValue) {
         if (!StringUtils.hasText(apiKey)) {
             log.warn("ECOS API key not configured, using fallback value for {}", seriesName);
             return fallback(seriesName, fallbackValue);
         }
         try {
-            LocalDate now = LocalDate.now();
-            String end = now.format(YYYYMM);
-            String start = now.minusMonths(3).format(YYYYMM);
+            // Request a wide-enough row range (not just 1/1) — ECOS returns rows in
+            // ascending chronological order, so asking for only the 1st row in a
+            // multi-row window silently returns the OLDEST value, not the latest.
+            // Verified against the real API with a live key.
             String path = String.format(
-                    "/StatisticSearch/%s/json/kr/1/1/%s/M/%s/%s/%s",
-                    apiKey, statCode, start, end, itemCode
+                    "/StatisticSearch/%s/json/kr/1/100/%s/%s/%s/%s/%s",
+                    apiKey, statCode, cycle, start, end, itemCode
             );
             JsonNode response = webClient.get()
                     .uri(path)
