@@ -25,15 +25,19 @@ public class NewsAssembler {
 
     private final AiServiceClient aiServiceClient;
     private final NewsCategoryClassifier newsCategoryClassifier;
+    private final NewsSymbolMatcher newsSymbolMatcher;
 
-    public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier) {
+    public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier,
+                          NewsSymbolMatcher newsSymbolMatcher) {
         this.aiServiceClient = aiServiceClient;
         this.newsCategoryClassifier = newsCategoryClassifier;
+        this.newsSymbolMatcher = newsSymbolMatcher;
     }
 
     public News assemble(NewsCandidate candidate, String rawContent) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
         news.setCategory(newsCategoryClassifier.classify(candidate.title()));
+        news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title()));
         news.setSentimentHint(SentimentHint.NEUTRAL);
         applyRewrite(news, candidate, rawContent);
         return news;

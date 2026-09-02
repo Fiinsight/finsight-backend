@@ -52,6 +52,15 @@ public class NewsCollectionScheduler {
 
     @Scheduled(cron = "0 0 */3 * * *")
     public void collectNewsCandidates() {
+        runOnce();
+    }
+
+    /**
+     * Runs the pipeline once synchronously and reports how many articles made
+     * it through each stage — used by both the cron trigger and the manual
+     * "collect now" endpoint ({@link NewsCollectionController}).
+     */
+    public NewsCollectionResult runOnce() {
         log.info("News collection started at {}", Instant.now());
 
         List<NewsCandidate> fetched = rssFeedFetcher.fetchAll();
@@ -62,6 +71,8 @@ public class NewsCollectionScheduler {
 
         log.info("News collection finished: fetched={}, unseen={}, topCandidates={}, saved={}",
                 fetched.size(), unseen.size(), topCandidates.size(), saved);
+
+        return new NewsCollectionResult(fetched.size(), unseen.size(), topCandidates.size(), saved);
     }
 
     private int extractAndSave(List<NewsCandidate> candidates) {
