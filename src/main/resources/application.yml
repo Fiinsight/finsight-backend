@@ -20,4 +20,15 @@ spring:
 finsight:
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8001}
+  kis:
+    base-url: ${KIS_BASE_URL:https://openapivts.koreainvestment.com:29443}
+    app-key: ${KIS_APP_KEY:}
+    app-secret: ${KIS_APP_SECRET:}
+    account-no: ${KIS_ACCOUNT_NO:}
+  ecos:
+    base-url: ${ECOS_BASE_URL:https://ecos.bok.or.kr/api}
+    api-key: ${ECOS_API_KEY:}
+  dart:
+    base-url: ${DART_BASE_URL:https://opendart.fss.or.kr/api}
+    api-key: ${DART_API_KEY:}
 

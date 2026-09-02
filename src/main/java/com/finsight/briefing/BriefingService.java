@@ -1,12 +1,44 @@
 package com.finsight.briefing;
 
+import com.finsight.news.News;
+import com.finsight.news.NewsRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
 public class BriefingService {
 
+    private static final int MIN_REQUIRED_ITEMS = 3;
+
+    private final NewsRepository newsRepository;
+
+    public BriefingService(NewsRepository newsRepository) {
+        this.newsRepository = newsRepository;
+    }
+
     public List<NewsBriefResponse> getTodayBriefing() {
+        List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc();
+        if (latest.size() >= MIN_REQUIRED_ITEMS) {
+            return latest.stream().map(this::toBriefResponse).toList();
+        }
+        // Fresh checkout / scheduler hasn't collected anything yet: never return
+        // an empty or partial briefing, fall back to the original sample data.
+        return sampleBriefing();
+    }
+
+    private NewsBriefResponse toBriefResponse(News news) {
+        String summary = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
+        return new NewsBriefResponse(
+                news.getId(),
+                news.getTitle(),
+                summary,
+                news.getImportanceReason(),
+                news.getRelatedSymbol(),
+                news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL
+        );
+    }
+
+    private List<NewsBriefResponse> sampleBriefing() {
         return List.of(
                 new NewsBriefResponse(
                         1L,

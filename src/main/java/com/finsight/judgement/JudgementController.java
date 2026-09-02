@@ -1,6 +1,8 @@
 package com.finsight.judgement;
 
+import java.util.List;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,13 +12,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/judgements")
 public class JudgementController {
 
+    private final JudgementService judgementService;
+
+    public JudgementController(JudgementService judgementService) {
+        this.judgementService = judgementService;
+    }
+
     @PostMapping
     public JudgementFeedbackResponse create(@Valid @RequestBody JudgementRequest request) {
-        return new JudgementFeedbackResponse(
-                request.newsId(),
-                request.choice(),
-                "판단 근거가 뉴스의 실적 영향과 연결되어 있습니다. 다음 단계에서는 실제 주가 흐름과 거래량 변화도 함께 확인해보세요."
-        );
+        return judgementService.recordJudgement(request);
+    }
+
+    @GetMapping("/history")
+    public List<JudgementHistoryResponse> history() {
+        return judgementService.getHistory();
     }
 }
 
