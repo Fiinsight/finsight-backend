@@ -26,7 +26,10 @@ public class AiServiceClient {
     private static final String TERM_EXPLAIN_PATH = "/ai/terms/explain";
     private static final String FEEDBACK_PATH = "/ai/feedback/judgement";
 
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(10);
+    // 10s was fine for the instant mock responses, but real LLM calls (long
+    // article body in, multi-sentence rewrite out) routinely take longer,
+    // especially on a free-tier model with no dedicated capacity.
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
 
     private final WebClient webClient;
 
