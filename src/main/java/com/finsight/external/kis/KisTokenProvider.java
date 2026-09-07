@@ -82,6 +82,16 @@ public class KisTokenProvider {
         }
         String token = response.get("access_token").asText();
         redisTemplate.opsForValue().set(REDIS_TOKEN_KEY, token, TOKEN_TTL);
+        // KIS's per-second rate limit counts the token issuance call itself —
+        // using a just-issued token immediately (e.g. right after a backend
+        // restart, before Redis has it cached) reliably triggers "초당 거래건수
+        // 초과" on the very first real request. A short pause here is cheap
+        // since this only runs once every ~23h when the cache is cold.
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         return Optional.of(token);
     }
 }

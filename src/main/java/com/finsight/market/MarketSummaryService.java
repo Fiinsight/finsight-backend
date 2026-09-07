@@ -24,6 +24,10 @@ public class MarketSummaryService {
 
     public MarketSummaryResponse getSummary() {
         KisIndexQuote kospi = kisIndexQuoteClient.getIndexQuote(KOSPI_INDEX_CODE);
+        // KIS's 모의투자 (paper trading) tier enforces a strict per-second call
+        // limit — firing the KOSDAQ call immediately after KOSPI reliably hit
+        // "EGW00201 초당 거래건수를 초과하였습니다" and silently fell back.
+        sleepBetweenKisCalls();
         KisIndexQuote kosdaq = kisIndexQuoteClient.getIndexQuote(KOSDAQ_INDEX_CODE);
         EcosRate baseRate = ecosClient.getBaseRate();
         EcosRate usdKrwRate = ecosClient.getUsdKrwRate();
@@ -34,5 +38,13 @@ public class MarketSummaryService {
                 new RateView(baseRate.value(), baseRate.asOfPeriod(), baseRate.fallback()),
                 new RateView(usdKrwRate.value(), usdKrwRate.asOfPeriod(), usdKrwRate.fallback())
         );
+    }
+
+    private void sleepBetweenKisCalls() {
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
