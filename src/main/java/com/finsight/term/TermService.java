@@ -25,18 +25,19 @@ public class TermService {
         this.aiServiceClient = aiServiceClient;
     }
 
+    private static final String NO_DEFINITION_FALLBACK = "등록된 기본 설명이 없는 용어입니다.";
+
     public TermExplainResponse explain(TermExplainRequest request) {
-        String definition = termRepository.findByTermIgnoreCase(request.term())
-                .map(Term::getShortDefinition)
-                .orElse("등록된 기본 설명이 없는 용어입니다.");
+        Optional<String> localDefinition = termRepository.findByTermIgnoreCase(request.term())
+                .map(Term::getShortDefinition);
 
         if (request.newsId() == null) {
-            return new TermExplainResponse(request.term(), definition, null, null);
+            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
         }
 
         Optional<News> news = newsRepository.findById(request.newsId());
         if (news.isEmpty()) {
-            return new TermExplainResponse(request.term(), definition, null, null);
+            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
         }
 
         String context = buildContext(news.get());
@@ -46,8 +47,17 @@ public class TermService {
         if (aiResponse.isEmpty()) {
             log.warn("AI term explain unavailable for term={}, newsId={}, returning base definition only",
                     request.term(), request.newsId());
-            return new TermExplainResponse(request.term(), definition, null, null);
+            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
         }
+
+        // Only ~20 terms are seeded locally, but keyTerms now come from real
+        // AI-detected terms per article, which go far beyond that fixed list.
+        // Prefer the curated local definition when we have one (trusted,
+        // reviewed); otherwise use the AI's own definition instead of a
+        // dead-end "no definition" message.
+        String plainDefinition = aiResponse.get().plainDefinition();
+        String definition = localDefinition.orElseGet(() ->
+                (plainDefinition != null && !plainDefinition.isBlank()) ? plainDefinition : NO_DEFINITION_FALLBACK);
 
         return new TermExplainResponse(
                 request.term(),
