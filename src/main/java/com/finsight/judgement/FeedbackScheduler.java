@@ -44,10 +44,23 @@ public class FeedbackScheduler {
     @Scheduled(cron = "0 40 15 * * MON-FRI")
     public void generatePendingFeedback() {
         Instant cutoff = Instant.now().minus(1, ChronoUnit.DAYS);
-        List<Judgement> pending = judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(cutoff);
+        process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(cutoff));
+    }
+
+    /**
+     * Same processing as the scheduled run, but without the "must be a day
+     * old" gate — lets {@code POST /api/judgements/generate-feedback-now}
+     * exercise the real flow on demand instead of waiting for tomorrow's
+     * 15:40 cron to prove it actually works.
+     */
+    public int runNow() {
+        return process(judgementRepository.findByFeedbackGeneratedAtIsNull());
+    }
+
+    private int process(List<Judgement> pending) {
         if (pending.isEmpty()) {
             log.info("Feedback scheduler: no pending judgements to process");
-            return;
+            return 0;
         }
 
         int succeeded = 0;
@@ -60,6 +73,7 @@ public class FeedbackScheduler {
             }
         }
         log.info("Feedback scheduler: processed {}/{} pending judgement(s)", succeeded, pending.size());
+        return succeeded;
     }
 
     private void processOne(Judgement judgement) {

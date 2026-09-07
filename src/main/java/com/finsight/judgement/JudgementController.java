@@ -16,9 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class JudgementController {
 
     private final JudgementService judgementService;
+    private final FeedbackScheduler feedbackScheduler;
 
-    public JudgementController(JudgementService judgementService) {
+    public JudgementController(JudgementService judgementService, FeedbackScheduler feedbackScheduler) {
         this.judgementService = judgementService;
+        this.feedbackScheduler = feedbackScheduler;
     }
 
     @PostMapping
@@ -32,6 +34,15 @@ public class JudgementController {
     @Operation(summary = "판단 이력 조회", description = "과거 판단과 (있다면) 실제 결과/피드백을 최신순으로 반환합니다.")
     public List<JudgementHistoryResponse> history() {
         return judgementService.getHistory();
+    }
+
+    @PostMapping("/generate-feedback-now")
+    @Operation(summary = "피드백 즉시 생성 (수동)",
+            description = "원래는 평일 15:40에 자동 실행되지만(하루 지난 판단만 대상), 데모/테스트용으로 " +
+                    "하루가 안 지났어도 피드백이 아직 없는 모든 판단을 즉시 처리합니다.")
+    public String generateFeedbackNow() {
+        int processed = feedbackScheduler.runNow();
+        return "%d건 처리 완료".formatted(processed);
     }
 }
 
