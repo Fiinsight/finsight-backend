@@ -35,8 +35,8 @@ public class MarketSummaryService {
         return new MarketSummaryResponse(
                 new MarketIndexView(kospi.currentValue(), kospi.changePercent(), kospi.fallback()),
                 new MarketIndexView(kosdaq.currentValue(), kosdaq.changePercent(), kosdaq.fallback()),
-                new RateView(baseRate.value(), baseRate.asOfPeriod(), baseRate.fallback()),
-                new RateView(usdKrwRate.value(), usdKrwRate.asOfPeriod(), usdKrwRate.fallback())
+                new RateView(baseRate.value(), baseRate.asOfPeriod(), baseRate.changePercent(), baseRate.fallback()),
+                new RateView(usdKrwRate.value(), usdKrwRate.asOfPeriod(), usdKrwRate.changePercent(), usdKrwRate.fallback())
         );
     }
 

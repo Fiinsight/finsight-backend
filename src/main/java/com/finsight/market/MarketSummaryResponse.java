@@ -9,6 +9,6 @@ public record MarketSummaryResponse(
     public record MarketIndexView(double currentValue, double changePercent, boolean fallback) {
     }
 
-    public record RateView(double value, String asOfPeriod, boolean fallback) {
+    public record RateView(double value, String asOfPeriod, Double changePercent, boolean fallback) {
     }
 }
