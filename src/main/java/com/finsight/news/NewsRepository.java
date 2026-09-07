@@ -10,5 +10,7 @@ public interface NewsRepository extends JpaRepository<News, Long> {
 
     List<News> findTop3ByOrderByPublishedAtDesc();
 
+    List<News> findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant since);
+
     List<News> findByRelatedSymbolAndPublishedAtBetween(String relatedSymbol, Instant start, Instant end);
 }

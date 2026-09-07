@@ -2,6 +2,9 @@ package com.finsight.briefing;
 
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +12,7 @@ import org.springframework.stereotype.Service;
 public class BriefingService {
 
     private static final int MIN_REQUIRED_ITEMS = 3;
+    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final NewsRepository newsRepository;
 
@@ -17,6 +21,14 @@ public class BriefingService {
     }
 
     public List<NewsBriefResponse> getTodayBriefing() {
+        // "Today" is scoped to KST midnight so the briefing actually reflects
+        // articles collected today, not just whatever 3 rows are newest overall
+        // (which could be several days stale if the scheduler has been failing).
+        Instant startOfToday = LocalDate.now(KOREA_ZONE).atStartOfDay(KOREA_ZONE).toInstant();
+        List<News> today = newsRepository.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(startOfToday);
+        if (today.size() >= MIN_REQUIRED_ITEMS) {
+            return today.stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
+        }
         List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc();
         if (latest.size() >= MIN_REQUIRED_ITEMS) {
             return latest.stream().map(this::toBriefResponse).toList();
