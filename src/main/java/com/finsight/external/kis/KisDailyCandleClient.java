@@ -45,20 +45,35 @@ public class KisDailyCandleClient {
     }
 
     public List<KisDailyCandle> getDailyCandles(String stockCode, int count) {
+        return getCandles(stockCode, count, "D");
+    }
+
+    /**
+     * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
+     */
+    public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
                 return fallback(count);
             }
             LocalDate endDate = LocalDate.now();
-            LocalDate startDate = endDate.minusDays((long) count * 2L); // pad for weekends/holidays
+            // Weekly/monthly bars span much more calendar time per candle than
+            // daily ones, so the lookback window needs to widen accordingly —
+            // padding by calendar days (not bar count) undershoots badly for "W"/"M".
+            long lookbackDays = switch (periodDivCode) {
+                case "W" -> (long) count * 10L;
+                case "M" -> (long) count * 35L;
+                default -> (long) count * 2L;
+            };
+            LocalDate startDate = endDate.minusDays(lookbackDays);
             JsonNode response = webClient.get()
                     .uri(uriBuilder -> uriBuilder.path(DAILY_CANDLE_PATH)
                             .queryParam("FID_COND_MRKT_DIV_CODE", "J")
                             .queryParam("FID_INPUT_ISCD", stockCode)
                             .queryParam("FID_INPUT_DATE_1", startDate.format(YYYYMMDD))
                             .queryParam("FID_INPUT_DATE_2", endDate.format(YYYYMMDD))
-                            .queryParam("FID_PERIOD_DIV_CODE", "D")
+                            .queryParam("FID_PERIOD_DIV_CODE", periodDivCode)
                             .queryParam("FID_ORG_ADJ_PRC", "1")
                             .build())
                     .headers(headers -> KisApiHeaders.apply(headers, token.get(), DAILY_CANDLE_TR_ID, appKey, appSecret))

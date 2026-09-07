@@ -17,7 +17,8 @@ import org.springframework.stereotype.Service;
 public class ChartService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-    private static final int DEFAULT_CANDLE_COUNT = 30;
+    private static final int DAILY_CANDLE_COUNT = 30;
+    private static final int WEEKLY_CANDLE_COUNT = 6; // ~a month and a bit of weekly bars
 
     private final KisDailyCandleClient kisDailyCandleClient;
     private final NewsRepository newsRepository;
@@ -28,7 +29,16 @@ public class ChartService {
     }
 
     public ChartResponse getChart(String symbol) {
-        List<KisDailyCandle> candles = kisDailyCandleClient.getDailyCandles(symbol, DEFAULT_CANDLE_COUNT);
+        return getChart(symbol, "D");
+    }
+
+    /**
+     * @param period "D"(일봉) or "W"(주봉)
+     */
+    public ChartResponse getChart(String symbol, String period) {
+        String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
+        int count = "W".equals(periodDivCode) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT;
+        List<KisDailyCandle> candles = kisDailyCandleClient.getCandles(symbol, count, periodDivCode);
 
         List<CandleView> candleViews = candles.stream()
                 .sorted(Comparator.comparing(KisDailyCandle::date))
@@ -38,21 +48,30 @@ public class ChartService {
         double price = candleViews.isEmpty() ? 0.0 : candleViews.get(candleViews.size() - 1).close();
         double changePercent = computeChangePercent(candleViews);
 
-        List<NewsMarkerView> markers;
+        List<News> matchedNews;
         if (candleViews.isEmpty()) {
-            markers = List.of();
+            matchedNews = List.of();
         } else {
             LocalDate startDate = candleViews.get(0).date();
             LocalDate endDate = candleViews.get(candleViews.size() - 1).date();
             Instant start = startDate.atStartOfDay(KST).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
 
-            markers = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
-                    .map(this::toMarker)
+            matchedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
+                    .sorted(Comparator.comparing(News::getPublishedAt,
+                            Comparator.nullsLast(Comparator.reverseOrder())))
                     .toList();
         }
 
-        return new ChartResponse(symbol, price, changePercent, candleViews, markers);
+        List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
+        ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
+
+        return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent);
+    }
+
+    private ChartResponse.DocentView buildDocent(News news) {
+        String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
+        return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
     }
 
     // % change vs the previous trading day's close — this was previously
@@ -74,6 +93,6 @@ public class ChartService {
         LocalDate date = news.getPublishedAt() == null
                 ? null
                 : news.getPublishedAt().atZone(KST).toLocalDate();
-        return new NewsMarkerView(date, news.getId(), news.getTitle());
+        return new NewsMarkerView(date, news.getId(), news.getTitle(), news.getSource());
     }
 }
