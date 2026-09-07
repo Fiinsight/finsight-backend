@@ -1,6 +1,5 @@
 package com.finsight.news.collect;
 
-import com.finsight.briefing.SentimentHint;
 import com.finsight.external.AiRewriteRequest;
 import com.finsight.external.AiRewriteResponse;
 import com.finsight.external.AiServiceClient;
@@ -29,19 +28,21 @@ public class NewsAssembler {
     private final AiServiceClient aiServiceClient;
     private final NewsCategoryClassifier newsCategoryClassifier;
     private final NewsSymbolMatcher newsSymbolMatcher;
+    private final NewsSentimentClassifier newsSentimentClassifier;
 
     public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier,
-                          NewsSymbolMatcher newsSymbolMatcher) {
+                          NewsSymbolMatcher newsSymbolMatcher, NewsSentimentClassifier newsSentimentClassifier) {
         this.aiServiceClient = aiServiceClient;
         this.newsCategoryClassifier = newsCategoryClassifier;
         this.newsSymbolMatcher = newsSymbolMatcher;
+        this.newsSentimentClassifier = newsSentimentClassifier;
     }
 
     public News assemble(NewsCandidate candidate, String rawContent) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
         news.setCategory(newsCategoryClassifier.classify(candidate.title()));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title()));
-        news.setSentimentHint(SentimentHint.NEUTRAL);
+        news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
         applyRewrite(news, candidate, rawContent);
         return news;
     }
