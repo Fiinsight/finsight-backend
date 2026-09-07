@@ -2,6 +2,7 @@ package com.finsight.market;
 
 import com.finsight.external.EcosClient;
 import com.finsight.external.EcosRate;
+import com.finsight.external.NaverFxClient;
 import com.finsight.external.kis.KisIndexQuote;
 import com.finsight.external.kis.KisIndexQuoteClient;
 import com.finsight.market.MarketSummaryResponse.MarketIndexView;
@@ -16,10 +17,12 @@ public class MarketSummaryService {
 
     private final KisIndexQuoteClient kisIndexQuoteClient;
     private final EcosClient ecosClient;
+    private final NaverFxClient naverFxClient;
 
-    public MarketSummaryService(KisIndexQuoteClient kisIndexQuoteClient, EcosClient ecosClient) {
+    public MarketSummaryService(KisIndexQuoteClient kisIndexQuoteClient, EcosClient ecosClient, NaverFxClient naverFxClient) {
         this.kisIndexQuoteClient = kisIndexQuoteClient;
         this.ecosClient = ecosClient;
+        this.naverFxClient = naverFxClient;
     }
 
     public MarketSummaryResponse getSummary() {
@@ -30,7 +33,9 @@ public class MarketSummaryService {
         sleepBetweenKisCalls();
         KisIndexQuote kosdaq = kisIndexQuoteClient.getIndexQuote(KOSDAQ_INDEX_CODE);
         EcosRate baseRate = ecosClient.getBaseRate();
-        EcosRate usdKrwRate = ecosClient.getUsdKrwRate();
+        // ECOS's daily 매매기준율 is fixed once each morning — 원/달러 now comes from
+        // Naver's live 고시환율 feed instead, which republishes many times a day.
+        EcosRate usdKrwRate = naverFxClient.getUsdKrwRate();
 
         return new MarketSummaryResponse(
                 new MarketIndexView(kospi.currentValue(), kospi.changePercent(), kospi.fallback()),

@@ -16,8 +16,10 @@ import org.springframework.web.reactive.function.client.WebClient;
  *
  * Endpoint shape, verified against the real API with a live key:
  * {base}/StatisticSearch/{apiKey}/json/kr/1/100/{statCode}/{cycle}/{start}/{end}/{itemCode1}
- * — 722Y001 (기준금리) is monthly ("M", yyyyMM), 731Y001 (원/달러 환율) is daily
- * ("D", yyyyMMdd) only; requesting it with "M" silently returns zero rows.
+ * — 722Y001 (기준금리) is published monthly ("M", yyyyMM).
+ *
+ * (원/달러 환율 used to come from here too, via 731Y001, but that series is a
+ * fixed once-daily 매매기준율 — real-time FX now comes from {@link NaverFxClient}.)
  *
  * Same defensive pattern as the other external clients: any failure (missing
  * key, network error, unexpected shape) falls back to a plausible flat
@@ -31,12 +33,8 @@ public class EcosClient {
     private static final String BASE_RATE_STAT_CODE = "722Y001"; // 한국은행 기준금리
     private static final String BASE_RATE_ITEM_CODE = "0101000";
 
-    private static final String USD_KRW_STAT_CODE = "731Y001"; // 원/달러 환율(매매기준율)
-    private static final String USD_KRW_ITEM_CODE = "0000001";
-
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
     private static final DateTimeFormatter YYYYMM = DateTimeFormatter.ofPattern("yyyyMM");
-    private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
     private final String apiKey;
@@ -54,18 +52,11 @@ public class EcosClient {
         // relative % change — 2.75 -> 3.00 is only +0.25%p but would read as
         // a wildly misleading "+9.1%" if treated as a relative change like FX.
         return fetchLatestValue("기준금리", BASE_RATE_STAT_CODE, BASE_RATE_ITEM_CODE, "M",
-                LocalDate.now().minusMonths(3).format(YYYYMM), LocalDate.now().format(YYYYMM), 3.50, true);
-    }
-
-    public EcosRate getUsdKrwRate() {
-        // 731Y001 (원/달러 매매기준율) is only published daily — verified against the
-        // real ECOS API: requesting it with cycle "M" / yyyyMM dates returns no rows.
-        return fetchLatestValue("원/달러 환율", USD_KRW_STAT_CODE, USD_KRW_ITEM_CODE, "D",
-                LocalDate.now().minusDays(14).format(YYYYMMDD), LocalDate.now().format(YYYYMMDD), 1380.0, false);
+                LocalDate.now().minusMonths(3).format(YYYYMM), LocalDate.now().format(YYYYMM), 3.50);
     }
 
     private EcosRate fetchLatestValue(String seriesName, String statCode, String itemCode, String cycle,
-                                       String start, String end, double fallbackValue, boolean pointDiff) {
+                                       String start, String end, double fallbackValue) {
         if (!StringUtils.hasText(apiKey)) {
             log.warn("ECOS API key not configured, using fallback value for {}", seriesName);
             return fallback(seriesName, fallbackValue);
@@ -96,7 +87,7 @@ public class EcosClient {
             JsonNode latest = rows.get(rows.size() - 1);
             double value = Double.parseDouble(latest.path("DATA_VALUE").asText(String.valueOf(fallbackValue)).trim());
             String period = latest.path("TIME").asText(end);
-            Double changePercent = computeChange(rows, value, pointDiff);
+            Double changePercent = computeChange(rows, value);
             return new EcosRate(seriesName, value, period, changePercent, false);
         } catch (Exception e) {
             log.warn("ECOS API call failed for {}, using fallback: {}", seriesName, e.getMessage());
@@ -104,24 +95,16 @@ public class EcosClient {
         }
     }
 
-    // Change vs. the row immediately before the latest one — was previously
-    // missing entirely, so the frontend always showed a hardcoded sample
-    // change value (e.g. "-0.18%") next to the real fetched rate/price.
-    // pointDiff=true returns a raw point difference (base rate); false
-    // returns a relative % change (FX rate).
-    private Double computeChange(JsonNode rows, double latestValue, boolean pointDiff) {
+    // Change vs. the row immediately before the latest one, as a raw point
+    // difference — 기준금리 is conventionally read in %p (e.g. "+0.25%p"), not a
+    // relative % change (2.75 -> 3.00 would misleadingly read as "+9.1%").
+    private Double computeChange(JsonNode rows, double latestValue) {
         if (rows.size() < 2) {
             return null;
         }
         try {
             double previousValue = Double.parseDouble(rows.get(rows.size() - 2).path("DATA_VALUE").asText().trim());
-            if (pointDiff) {
-                return Math.round((latestValue - previousValue) * 100.0) / 100.0;
-            }
-            if (previousValue == 0.0) {
-                return null;
-            }
-            return Math.round((latestValue - previousValue) / previousValue * 1000.0) / 10.0;
+            return Math.round((latestValue - previousValue) * 100.0) / 100.0;
         } catch (Exception e) {
             return null;
         }

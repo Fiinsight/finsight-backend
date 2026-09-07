@@ -28,6 +28,8 @@ finsight:
   ecos:
     base-url: ${ECOS_BASE_URL:https://ecos.bok.or.kr/api}
     api-key: ${ECOS_API_KEY:}
+  naver-fx:
+    base-url: ${NAVER_FX_BASE_URL:https://api.stock.naver.com}
   dart:
     base-url: ${DART_BASE_URL:https://opendart.fss.or.kr/api}
     api-key: ${DART_API_KEY:}
