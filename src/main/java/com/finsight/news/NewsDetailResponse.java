@@ -1,6 +1,7 @@
 package com.finsight.news;
 
 import com.finsight.briefing.SentimentHint;
+import java.util.List;
 
 public record NewsDetailResponse(
         Long id,
@@ -14,7 +15,8 @@ public record NewsDetailResponse(
         String importanceReason,
         String relatedSymbol,
         SentimentHint sentimentHint,
-        String category
+        String category,
+        List<String> keyTerms
 ) {
     public static NewsDetailResponse from(News news) {
         return new NewsDetailResponse(
@@ -29,7 +31,8 @@ public record NewsDetailResponse(
                 news.getImportanceReason(),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
-                news.getCategory()
+                news.getCategory(),
+                news.getKeyTerms()
         );
     }
 }

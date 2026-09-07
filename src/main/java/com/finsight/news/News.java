@@ -10,6 +10,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "news")
@@ -50,6 +52,11 @@ public class News {
     private SentimentHint sentimentHint;
 
     private String category;
+
+    // Stored as a comma-separated list rather than a separate @ElementCollection
+    // table — a handful of short terms per article doesn't warrant a join table.
+    @Column(columnDefinition = "TEXT")
+    private String keyTerms;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -165,6 +172,19 @@ public class News {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public List<String> getKeyTerms() {
+        if (keyTerms == null || keyTerms.isBlank()) {
+            return List.of();
+        }
+        return List.of(keyTerms.split(","));
+    }
+
+    public void setKeyTerms(List<String> keyTerms) {
+        this.keyTerms = keyTerms == null || keyTerms.isEmpty()
+                ? null
+                : keyTerms.stream().distinct().collect(Collectors.joining(","));
     }
 
     public Instant getCreatedAt() {

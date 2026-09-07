@@ -5,7 +5,10 @@ import com.finsight.external.AiRewriteRequest;
 import com.finsight.external.AiRewriteResponse;
 import com.finsight.external.AiServiceClient;
 import com.finsight.news.News;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -56,17 +59,20 @@ public class NewsAssembler {
         news.setRewrittenAnalyst(analyst.summary());
         news.setImportanceReason(firstNonBlank(normal.importanceReason(), beginner.importanceReason(), analyst.importanceReason())
                 .orElse(FALLBACK_IMPORTANCE_REASON));
+        news.setKeyTerms(mergeTerms(beginner.detectedTerms(), normal.detectedTerms(), analyst.detectedTerms()));
     }
 
     private RewriteLevelResult rewriteLevel(NewsCandidate candidate, String rawContent, String level) {
         Optional<AiRewriteResponse> response =
                 aiServiceClient.rewrite(new AiRewriteRequest(candidate.title(), rawContent, level));
         if (response.isPresent()) {
-            return new RewriteLevelResult(response.get().summary(), response.get().importanceReason());
+            AiRewriteResponse body = response.get();
+            List<String> terms = body.detectedTerms() != null ? body.detectedTerms() : List.of();
+            return new RewriteLevelResult(body.summary(), body.importanceReason(), terms);
         }
         log.warn("AI rewrite unavailable for level={} url={}, falling back to raw article text for this level",
                 level, candidate.url());
-        return new RewriteLevelResult(rawContent, null);
+        return new RewriteLevelResult(rawContent, null, List.of());
     }
 
     private Optional<String> firstNonBlank(String... values) {
@@ -78,6 +84,18 @@ public class NewsAssembler {
         return Optional.empty();
     }
 
-    private record RewriteLevelResult(String summary, String importanceReason) {
+    // The 3 level calls each return their own detected-terms guess; union them
+    // (in first-seen order) rather than picking just one level's list, so a
+    // term only the analyst-level prompt caught isn't lost.
+    @SafeVarargs
+    private List<String> mergeTerms(List<String>... termLists) {
+        Set<String> merged = new LinkedHashSet<>();
+        for (List<String> terms : termLists) {
+            merged.addAll(terms);
+        }
+        return List.copyOf(merged);
+    }
+
+    private record RewriteLevelResult(String summary, String importanceReason, List<String> detectedTerms) {
     }
 }
