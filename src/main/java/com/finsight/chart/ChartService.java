@@ -35,6 +35,9 @@ public class ChartService {
                 .map(c -> new CandleView(c.date(), c.open(), c.high(), c.low(), c.close()))
                 .toList();
 
+        double price = candleViews.isEmpty() ? 0.0 : candleViews.get(candleViews.size() - 1).close();
+        double changePercent = computeChangePercent(candleViews);
+
         List<NewsMarkerView> markers;
         if (candleViews.isEmpty()) {
             markers = List.of();
@@ -49,7 +52,22 @@ public class ChartService {
                     .toList();
         }
 
-        return new ChartResponse(symbol, candleViews, markers);
+        return new ChartResponse(symbol, price, changePercent, candleViews, markers);
+    }
+
+    // % change vs the previous trading day's close — this was previously
+    // missing from the response entirely, so the frontend always defaulted
+    // it to a hardcoded 0.00%.
+    private double computeChangePercent(List<CandleView> candleViews) {
+        if (candleViews.size() < 2) {
+            return 0.0;
+        }
+        double latestClose = candleViews.get(candleViews.size() - 1).close();
+        double previousClose = candleViews.get(candleViews.size() - 2).close();
+        if (previousClose == 0.0) {
+            return 0.0;
+        }
+        return Math.round((latestClose - previousClose) / previousClose * 1000.0) / 10.0;
     }
 
     private NewsMarkerView toMarker(News news) {

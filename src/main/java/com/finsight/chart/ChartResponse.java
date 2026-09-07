@@ -5,6 +5,8 @@ import java.util.List;
 
 public record ChartResponse(
         String symbol,
+        double price,
+        double changePercent,
         List<CandleView> candles,
         List<NewsMarkerView> newsMarkers
 ) {
