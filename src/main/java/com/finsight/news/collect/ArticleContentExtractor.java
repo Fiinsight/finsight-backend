@@ -42,16 +42,37 @@ public class ArticleContentExtractor {
         }
     }
 
+    // A paragraph shorter than this is almost certainly page chrome (share
+    // buttons, font-size controls, "번역" widgets) rather than actual article
+    // text, so it's dropped instead of getting mixed into the body.
+    private static final int MIN_PARAGRAPH_LENGTH = 20;
+
     private String extractFromArticleTag(Document doc) {
         Elements articleTags = doc.select("article");
-        return articleTags.isEmpty() ? null : articleTags.text();
+        if (articleTags.isEmpty()) {
+            return null;
+        }
+        // Elements#text() flattens all descendants into one space-joined line
+        // with no paragraph breaks at all — join the <p> children explicitly
+        // instead so the frontend's blank-line paragraph splitter has
+        // something to split on. Falls back to the flattened text only if
+        // the <article> tag has no <p> children to work with.
+        String joined = joinParagraphs(articleTags.select("p"));
+        return joined.isBlank() ? articleTags.text() : joined;
     }
 
     private String extractFromParagraphs(Document doc) {
-        Elements paragraphs = doc.select("p");
+        return joinParagraphs(doc.select("p"));
+    }
+
+    private String joinParagraphs(Elements paragraphs) {
         StringBuilder sb = new StringBuilder();
         for (Element p : paragraphs) {
-            sb.append(p.text()).append("\n");
+            String text = p.text().trim();
+            if (text.length() < MIN_PARAGRAPH_LENGTH) {
+                continue;
+            }
+            sb.append(text).append("\n\n");
         }
         return sb.toString().trim();
     }
