@@ -1,0 +1,9 @@
+.env
+.env.*
+.git
+.gradle
+.idea
+build
+out
+target
+*.log

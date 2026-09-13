@@ -147,6 +147,7 @@ AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작
 | `KIS_APP_KEY` / `KIS_APP_SECRET` / `KIS_ACCOUNT_NO` | (빈 값) | 한국투자증권 Open API 모의투자 앱키/시크릿/계좌번호 |
 | `ECOS_API_KEY` | (빈 값) | 한국은행 ECOS Open API 인증키 |
 | `DART_API_KEY` | (빈 값) | 금융감독원 OpenDART 인증키 |
+| `FRONTEND_ORIGIN` | 로컬 주소 | 배포된 프론트엔드의 CORS 허용 origin |
 
 ## 무료 외부 API 연동과 폴백 동작
 
@@ -161,5 +162,5 @@ AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작
 
 ## 참고
 
-- `ddl-auto: update`를 사용하며 별도 마이그레이션 도구(Flyway 등)는 도입하지 않았습니다.
+- 로컬 환경은 `ddl-auto: update`, 운영 환경은 Flyway 마이그레이션과 `ddl-auto: validate`를 사용합니다.
 - 실제 비밀 값은 이 저장소 어디에도 커밋하지 않습니다. `.env.example`에는 변수 이름과 설명만 있습니다.

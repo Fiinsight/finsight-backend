@@ -12,12 +12,16 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  flyway:
+    enabled: false
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
 finsight:
+  cors:
+    allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8001}
   kis:
@@ -33,4 +37,3 @@ finsight:
   dart:
     base-url: ${DART_BASE_URL:https://opendart.fss.or.kr/api}
     api-key: ${DART_API_KEY:}
-
