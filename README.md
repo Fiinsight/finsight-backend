@@ -164,3 +164,4 @@ AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작
 
 - 로컬 환경은 `ddl-auto: update`, 운영 환경은 Flyway 마이그레이션과 `ddl-auto: validate`를 사용합니다.
 - 실제 비밀 값은 이 저장소 어디에도 커밋하지 않습니다. `.env.example`에는 변수 이름과 설명만 있습니다.
+- AWS EC2/RDS 배포와 보안 설정은 [`deploy/aws/README.md`](deploy/aws/README.md)를 참고합니다.
