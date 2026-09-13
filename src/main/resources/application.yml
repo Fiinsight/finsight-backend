@@ -12,6 +12,8 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  flyway:
+    enabled: false
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -33,4 +35,3 @@ finsight:
   dart:
     base-url: ${DART_BASE_URL:https://opendart.fss.or.kr/api}
     api-key: ${DART_API_KEY:}
-
