@@ -5,13 +5,17 @@ import com.finsight.chart.ChartResponse.NewsMarkerView;
 import com.finsight.external.kis.KisDailyCandle;
 import com.finsight.external.kis.KisDailyCandleClient;
 import com.finsight.external.kis.KisMinuteCandleClient;
+import com.finsight.external.kis.KisMinuteCandleResult;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
+import java.util.ArrayList;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -47,13 +51,15 @@ public class ChartService {
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {
             int interval = intervalMinutes == 1 || intervalMinutes == 5 || intervalMinutes == 15 ? intervalMinutes : 5;
-            List<ChartResponse.MinuteCandleView> minuteCandles = kisMinuteCandleClient.getCandles(symbol, interval, 120).stream()
+            KisMinuteCandleResult result = kisMinuteCandleClient.getCandlesWithStatus(symbol, interval, 120);
+            List<ChartResponse.MinuteCandleView> minuteCandles = result.candles().stream()
                     .map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close()))
                     .toList();
             double price = minuteCandles.isEmpty() ? 0.0 : minuteCandles.get(minuteCandles.size() - 1).close();
             double changePercent = computeMinuteChangePercent(minuteCandles);
             return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), null,
-                    "MINUTE", interval, minuteCandles);
+                    "MINUTE", interval, minuteCandles, result.fallback(),
+                    result.fallback() ? List.of() : findMoveInsights(symbol, result.candles()));
         }
 
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
@@ -87,7 +93,43 @@ public class ChartService {
         ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
-                periodDivCode, null, List.of());
+                periodDivCode, null, List.of(), false, List.of());
+    }
+
+    private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<com.finsight.external.kis.KisMinuteCandle> candles) {
+        if (candles.size() < 2) {
+            return List.of();
+        }
+        List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
+        for (int i = 1; i < candles.size(); i++) {
+            var previous = candles.get(i - 1);
+            var current = candles.get(i);
+            if (previous.close() == 0.0) {
+                continue;
+            }
+            double change = (current.close() - previous.close()) / previous.close() * 100.0;
+            if (Math.abs(change) < 0.5) {
+                continue;
+            }
+            var news = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
+                            symbol,
+                            current.timestamp().toLocalDate().atStartOfDay(ZoneOffset.ofHours(9)).toInstant(),
+                            current.timestamp().toLocalDate().plusDays(1).atStartOfDay(ZoneOffset.ofHours(9)).toInstant())
+                    .stream()
+                    .findFirst();
+            insights.add(new ChartResponse.MoveInsightView(
+                    current.timestamp(),
+                    Math.round(change * 100.0) / 100.0,
+                    news.map(News::getId).orElse(null),
+                    news.map(News::getTitle).orElse(null),
+                    news.map(News::getSource).orElse(null),
+                    news.map(item -> "관련 뉴스: " + item.getImportanceReason()).orElse(null)
+            ));
+        }
+        return insights.stream()
+                .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
+                .limit(3)
+                .toList();
     }
 
     private ChartResponse.DocentView buildDocent(News news) {

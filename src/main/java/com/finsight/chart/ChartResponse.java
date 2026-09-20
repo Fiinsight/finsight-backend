@@ -13,12 +13,24 @@ public record ChartResponse(
         DocentView docent,
         String period,
         Integer intervalMinutes,
-        List<MinuteCandleView> minuteCandles
+        List<MinuteCandleView> minuteCandles,
+        boolean fallback,
+        List<MoveInsightView> moveInsights
 ) {
     public record CandleView(LocalDate date, double open, double high, double low, double close) {
     }
 
     public record MinuteCandleView(LocalDateTime timestamp, double open, double high, double low, double close) {
+    }
+
+    public record MoveInsightView(
+            LocalDateTime timestamp,
+            double changePercent,
+            Long newsId,
+            String newsTitle,
+            String newsSource,
+            String explanation
+    ) {
     }
 
     public record NewsMarkerView(LocalDate date, Long newsId, String title, String source) {

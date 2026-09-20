@@ -47,12 +47,16 @@ public class KisMinuteCandleClient {
 
     /** @param intervalMinutes one of 1, 5, or 15 */
     public List<KisMinuteCandle> getCandles(String stockCode, int intervalMinutes, int count) {
+        return getCandlesWithStatus(stockCode, intervalMinutes, count).candles();
+    }
+
+    public KisMinuteCandleResult getCandlesWithStatus(String stockCode, int intervalMinutes, int count) {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
-                return fallback(interval, safeCount);
+                return new KisMinuteCandleResult(fallback(interval, safeCount), true);
             }
             JsonNode response = webClient.get()
                     .uri(uriBuilder -> uriBuilder.path(PATH)
@@ -68,10 +72,12 @@ public class KisMinuteCandleClient {
                     .timeout(CALL_TIMEOUT)
                     .block();
             List<KisMinuteCandle> candles = parseCandles(response, interval, safeCount);
-            return candles.isEmpty() ? fallback(interval, safeCount) : candles;
+            return candles.isEmpty()
+                    ? new KisMinuteCandleResult(fallback(interval, safeCount), true)
+                    : new KisMinuteCandleResult(candles, false);
         } catch (Exception e) {
             log.warn("KIS minute candle call failed for {} ({}m), using fallback: {}", stockCode, interval, e.getMessage());
-            return fallback(interval, safeCount);
+            return new KisMinuteCandleResult(fallback(interval, safeCount), true);
         }
     }
 
