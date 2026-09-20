@@ -1,6 +1,7 @@
 package com.finsight.chart;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public record ChartResponse(
@@ -9,9 +10,15 @@ public record ChartResponse(
         double changePercent,
         List<CandleView> candles,
         List<NewsMarkerView> newsMarkers,
-        DocentView docent
+        DocentView docent,
+        String period,
+        Integer intervalMinutes,
+        List<MinuteCandleView> minuteCandles
 ) {
     public record CandleView(LocalDate date, double open, double high, double low, double close) {
+    }
+
+    public record MinuteCandleView(LocalDateTime timestamp, double open, double high, double low, double close) {
     }
 
     public record NewsMarkerView(LocalDate date, Long newsId, String title, String source) {

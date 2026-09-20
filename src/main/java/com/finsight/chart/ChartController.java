@@ -25,7 +25,8 @@ public class ChartController {
             description = "해당 종목의 캔들(KIS)과, 같은 기간 relatedSymbol이 일치하는 뉴스 마커/도슨트를 함께 반환합니다.")
     public ChartResponse chart(
             @Parameter(description = "종목코드, 예: 005930") @PathVariable String symbol,
-            @Parameter(description = "D(일봉, 기본값) 또는 W(주봉)") @RequestParam(defaultValue = "D") String period) {
-        return chartService.getChart(symbol, period);
+            @Parameter(description = "D(일봉, 기본값), W(주봉), MINUTE(분봉)") @RequestParam(defaultValue = "D") String period,
+            @Parameter(description = "분봉 간격: 1, 5, 15분") @RequestParam(defaultValue = "5") int interval) {
+        return chartService.getChart(symbol, period, interval);
     }
 }

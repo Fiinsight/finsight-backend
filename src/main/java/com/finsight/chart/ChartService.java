@@ -4,6 +4,7 @@ import com.finsight.chart.ChartResponse.CandleView;
 import com.finsight.chart.ChartResponse.NewsMarkerView;
 import com.finsight.external.kis.KisDailyCandle;
 import com.finsight.external.kis.KisDailyCandleClient;
+import com.finsight.external.kis.KisMinuteCandleClient;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import java.time.Instant;
@@ -21,21 +22,40 @@ public class ChartService {
     private static final int WEEKLY_CANDLE_COUNT = 6; // ~a month and a bit of weekly bars
 
     private final KisDailyCandleClient kisDailyCandleClient;
+    private final KisMinuteCandleClient kisMinuteCandleClient;
     private final NewsRepository newsRepository;
 
-    public ChartService(KisDailyCandleClient kisDailyCandleClient, NewsRepository newsRepository) {
+    public ChartService(KisDailyCandleClient kisDailyCandleClient,
+                        KisMinuteCandleClient kisMinuteCandleClient,
+                        NewsRepository newsRepository) {
         this.kisDailyCandleClient = kisDailyCandleClient;
+        this.kisMinuteCandleClient = kisMinuteCandleClient;
         this.newsRepository = newsRepository;
     }
 
     public ChartResponse getChart(String symbol) {
-        return getChart(symbol, "D");
+        return getChart(symbol, "D", 5);
     }
 
     /**
      * @param period "D"(일봉) or "W"(주봉)
      */
     public ChartResponse getChart(String symbol, String period) {
+        return getChart(symbol, period, 5);
+    }
+
+    public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
+        if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {
+            int interval = intervalMinutes == 1 || intervalMinutes == 5 || intervalMinutes == 15 ? intervalMinutes : 5;
+            List<ChartResponse.MinuteCandleView> minuteCandles = kisMinuteCandleClient.getCandles(symbol, interval, 120).stream()
+                    .map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close()))
+                    .toList();
+            double price = minuteCandles.isEmpty() ? 0.0 : minuteCandles.get(minuteCandles.size() - 1).close();
+            double changePercent = computeMinuteChangePercent(minuteCandles);
+            return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), null,
+                    "MINUTE", interval, minuteCandles);
+        }
+
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
         int count = "W".equals(periodDivCode) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT;
         List<KisDailyCandle> candles = kisDailyCandleClient.getCandles(symbol, count, periodDivCode);
@@ -66,7 +86,8 @@ public class ChartService {
         List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
         ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
 
-        return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent);
+        return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
+                periodDivCode, null, List.of());
     }
 
     private ChartResponse.DocentView buildDocent(News news) {
@@ -87,6 +108,18 @@ public class ChartService {
             return 0.0;
         }
         return Math.round((latestClose - previousClose) / previousClose * 1000.0) / 10.0;
+    }
+
+    private double computeMinuteChangePercent(List<ChartResponse.MinuteCandleView> candles) {
+        if (candles.size() < 2) {
+            return 0.0;
+        }
+        double previous = candles.get(candles.size() - 2).close();
+        if (previous == 0.0) {
+            return 0.0;
+        }
+        double latest = candles.get(candles.size() - 1).close();
+        return Math.round((latest - previous) / previous * 1000.0) / 10.0;
     }
 
     private NewsMarkerView toMarker(News news) {
