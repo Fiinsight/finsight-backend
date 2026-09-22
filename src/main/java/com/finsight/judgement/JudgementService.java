@@ -2,6 +2,7 @@ package com.finsight.judgement;
 
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
+import com.finsight.auth.User;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,19 +25,19 @@ public class JudgementService {
         this.newsRepository = newsRepository;
     }
 
-    public JudgementFeedbackResponse recordJudgement(JudgementRequest request) {
+    public JudgementFeedbackResponse recordJudgement(User user, JudgementRequest request) {
         News news = newsRepository.findById(request.newsId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "존재하지 않는 뉴스 id 입니다: " + request.newsId()));
 
-        Judgement judgement = new Judgement(news, request.choice(), request.reason());
+        Judgement judgement = new Judgement(user, news, request.choice(), request.reason());
         judgementRepository.save(judgement);
 
         return new JudgementFeedbackResponse(request.newsId(), request.choice(), ACK_FEEDBACK_TEXT);
     }
 
-    public List<JudgementHistoryResponse> getHistory() {
-        return judgementRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<JudgementHistoryResponse> getHistory(User user) {
+        return judgementRepository.findAllByUserOrderByCreatedAtDesc(user).stream()
                 .map(j -> new JudgementHistoryResponse(
                         j.getId(),
                         j.getNews().getId(),
@@ -52,10 +53,10 @@ public class JudgementService {
                 .toList();
     }
 
-    public Page<JudgementHistoryResponse> getHistoryPage(int page, int size) {
+    public Page<JudgementHistoryResponse> getHistoryPage(User user, int page, int size) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 50);
-        return judgementRepository.findAllByOrderByCreatedAtDesc(
+        return judgementRepository.findAllByUserOrderByCreatedAtDesc(user,
                         PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt")))
                 .map(j -> new JudgementHistoryResponse(
                         j.getId(),
