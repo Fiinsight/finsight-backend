@@ -9,8 +9,11 @@ import com.finsight.news.collect.RssFeedFetcher;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +56,20 @@ public class NewsCollectionScheduler {
     @Scheduled(cron = "0 0 */3 * * *")
     public void collectNewsCandidates() {
         runOnce();
+    }
+
+    /**
+     * Populate a fresh local/demo database shortly after startup instead of
+     * making the first app session fall back to hard-coded sample headlines.
+     * The work is asynchronous so the API becomes healthy immediately.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void collectNewsOnStartup() {
+        CompletableFuture.runAsync(this::runOnce)
+                .exceptionally(error -> {
+                    log.warn("Startup news collection failed: {}", error.getMessage());
+                    return null;
+                });
     }
 
     /**
