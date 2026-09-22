@@ -11,7 +11,6 @@ import com.finsight.news.NewsRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
@@ -100,6 +99,13 @@ public class ChartService {
         if (candles.size() < 2) {
             return List.of();
         }
+        LocalDate startDate = candles.get(0).timestamp().toLocalDate();
+        LocalDate endDate = candles.get(candles.size() - 1).timestamp().toLocalDate();
+        List<News> relatedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
+                symbol,
+                startDate.atStartOfDay(KST).toInstant(),
+                endDate.plusDays(1).atStartOfDay(KST).toInstant());
+
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
         for (int i = 1; i < candles.size(); i++) {
             var previous = candles.get(i - 1);
@@ -111,11 +117,10 @@ public class ChartService {
             if (Math.abs(change) < 0.5) {
                 continue;
             }
-            var news = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
-                            symbol,
-                            current.timestamp().toLocalDate().atStartOfDay(ZoneOffset.ofHours(9)).toInstant(),
-                            current.timestamp().toLocalDate().plusDays(1).atStartOfDay(ZoneOffset.ofHours(9)).toInstant())
-                    .stream()
+            LocalDate currentDate = current.timestamp().toLocalDate();
+            var news = relatedNews.stream()
+                    .filter(item -> item.getPublishedAt() != null
+                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate))
                     .findFirst();
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),

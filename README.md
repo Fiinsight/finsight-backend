@@ -1,4 +1,12 @@
-# FinSight Backend
+# FinSight Backend | FinSight 졸업작품 API 서버
+
+> **2026 졸업작품 FinSight의 Spring Boot 백엔드** — 경제 뉴스, 시장 데이터, 투자 판단 기록을 하나의 API로 연결하는 서버
+
+FinSight는 초보 투자자가 경제 뉴스를 읽고 스스로 투자 판단을 연습하도록 돕는 모바일 서비스입니다. 이 저장소는 React Native 앱과 AI 서비스를 연결하고, 뉴스 수집·시장 데이터·판단 기록·결과 피드백을 책임지는 핵심 API 서버입니다.
+
+### 백엔드가 담당하는 핵심 흐름
+
+`경제 뉴스 수집 → 중요도/관련 종목 분석 → 앱 제공 → 사용자 판단 기록 → 실제 주가와 비교 → 피드백`
 
 FinSight는 경제 뉴스를 이해하고 스스로 투자 판단을 내리도록 돕는 초보 투자자용 AI 기반 투자 인사이트 플랫폼입니다. React Native 앱 + Spring Boot 백엔드 + FastAPI AI 서비스로 구성되어 있으며, 이 저장소는 그중 백엔드(Spring Boot)입니다. 앱은 이 백엔드하고만 통신하고, AI 관련 요청(뉴스 재작성, 용어 설명, 판단 피드백 생성)은 백엔드가 내부적으로 별도의 FastAPI 서비스(`finsight-ai`)를 호출해 처리합니다.
 
@@ -92,7 +100,8 @@ com.finsight
 | POST | `/api/judgements` | 판단 기록 (뉴스ID, UP/NEUTRAL/DOWN, 사유) → 접수 확인 응답 |
 | GET | `/api/judgements/history` | 판단 이력 (뉴스 제목, 선택, 실제 결과/피드백 포함, 최신순) |
 | GET | `/api/market/summary` | 코스피/코스닥 현재가 + 기준금리 + 원/달러 환율 |
-| GET | `/api/charts/{symbol}` | 해당 종목 일봉 캔들 + 관련 뉴스 마커 |
+| GET | `/api/charts/{symbol}` | 해당 종목 일봉/주봉 캔들 + 관련 뉴스 마커 |
+| GET | `/api/charts/{symbol}?period=MINUTE&interval=5` | 해당 종목 5분봉 (1·5·15분 지원) |
 
 백엔드 → AI 서비스(`finsight-ai`) 호출:
 
@@ -160,7 +169,17 @@ AI 서비스(`finsight-ai`, FastAPI)까지 같이 띄우면 실제 뉴스 재작
 
 모든 외부 클라이언트는 예외를 잡아 `warn` 로그만 남기고 폴백 값을 반환하도록 되어 있어, 키가 없거나 외부 API가 응답하지 않아도 앱 기동이나 API 응답이 실패하지 않습니다.
 
-## 참고
+### KIS 분봉 차트
+
+`GET /api/charts/{symbol}`에 `period=MINUTE`를 주면 분봉 응답이 `minuteCandles` 필드로 반환됩니다.
+`interval`은 `1`, `5`, `15`만 허용하며 그 외 값은 5분으로 보정합니다. KIS 원시 분봉을 서버에서
+5분·15분 단위로 집계하므로 앱에서 세 간격을 선택할 수 있습니다.
+
+```text
+GET /api/charts/005930?period=MINUTE&interval=5
+```
+
+### 참고
 
 - 로컬 환경은 `ddl-auto: update`, 운영 환경은 Flyway 마이그레이션과 `ddl-auto: validate`를 사용합니다.
 - 실제 비밀 값은 이 저장소 어디에도 커밋하지 않습니다. `.env.example`에는 변수 이름과 설명만 있습니다.

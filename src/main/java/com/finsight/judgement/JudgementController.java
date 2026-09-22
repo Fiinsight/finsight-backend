@@ -4,10 +4,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -36,6 +38,14 @@ public class JudgementController {
         return judgementService.getHistory();
     }
 
+    @GetMapping("/history/page")
+    @Operation(summary = "판단 이력 페이지 조회", description = "대량의 판단 이력을 페이지 단위로 최신순 조회합니다.")
+    public Page<JudgementHistoryResponse> historyPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return judgementService.getHistoryPage(page, size);
+    }
+
     @PostMapping("/generate-feedback-now")
     @Operation(summary = "피드백 즉시 생성 (수동)",
             description = "원래는 평일 15:40에 자동 실행되지만(하루 지난 판단만 대상), 데모/테스트용으로 " +
@@ -45,4 +55,3 @@ public class JudgementController {
         return "%d건 처리 완료".formatted(processed);
     }
 }
-

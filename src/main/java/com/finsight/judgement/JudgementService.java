@@ -3,6 +3,9 @@ package com.finsight.judgement;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -47,5 +50,24 @@ public class JudgementService {
                         j.getFeedbackGeneratedAt()
                 ))
                 .toList();
+    }
+
+    public Page<JudgementHistoryResponse> getHistoryPage(int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        return judgementRepository.findAllByOrderByCreatedAtDesc(
+                        PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt")))
+                .map(j -> new JudgementHistoryResponse(
+                        j.getId(),
+                        j.getNews().getId(),
+                        j.getNews().getTitle(),
+                        j.getChoice(),
+                        j.getReasonText(),
+                        j.getCreatedAt(),
+                        j.getActualDirection(),
+                        j.getActualChangePercent(),
+                        j.getFeedbackText(),
+                        j.getFeedbackGeneratedAt()
+                ));
     }
 }
