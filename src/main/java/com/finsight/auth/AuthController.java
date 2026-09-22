@@ -20,6 +20,10 @@ public class AuthController {
     public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String state) {
         return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(state));
     }
+    @GetMapping("/kakao/status")
+    public AuthDtos.KakaoConfigStatus kakaoStatus() {
+        return auth.kakaoConfigStatus();
+    }
     @GetMapping("/kakao/callback")
     public ResponseEntity<Void> kakaoCallback(@RequestParam String code, @RequestParam(required = false) String state) {
         HttpHeaders headers = new HttpHeaders();

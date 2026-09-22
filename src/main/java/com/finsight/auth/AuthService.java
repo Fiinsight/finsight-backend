@@ -78,6 +78,9 @@ public class AuthService {
         return url;
     }
     public String kakaoAppRedirectUri() { return kakaoAppRedirectUri; }
+    public AuthDtos.KakaoConfigStatus kakaoConfigStatus() {
+        return new AuthDtos.KakaoConfigStatus(!kakaoClientId.isBlank() && !kakaoRedirectUri.isBlank(), kakaoRedirectUri, kakaoAppRedirectUri);
+    }
     public String kakaoCallbackUri(String code, String state) {
         String destination = isAllowedAppRedirect(state) ? state : kakaoAppRedirectUri;
         return destination + (destination.contains("?") ? "&" : "?") + "code=" + encode(code);
