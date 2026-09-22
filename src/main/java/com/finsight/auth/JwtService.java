@@ -27,6 +27,7 @@ public class JwtService {
                 .signWith(key).compact();
     }
     public String subject(String token) { return claims(token).getSubject(); }
+    public Long userId(String token) { return claims(token).get("uid", Long.class); }
     public boolean isValid(String token) {
         try { return claims(token).getExpiration().after(new Date()); }
         catch (RuntimeException e) { return false; }

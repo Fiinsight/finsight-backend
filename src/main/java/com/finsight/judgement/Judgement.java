@@ -1,6 +1,7 @@
 package com.finsight.judgement;
 
 import com.finsight.news.News;
+import com.finsight.auth.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -26,6 +27,10 @@ public class Judgement {
     @JoinColumn(name = "news_id", nullable = false)
     private News news;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private JudgementChoice choice;
@@ -49,12 +54,14 @@ public class Judgement {
         // JPA
     }
 
-    public Judgement(News news, JudgementChoice choice, String reasonText) {
+    public Judgement(User user, News news, JudgementChoice choice, String reasonText) {
+        this.user = user;
         this.news = news;
         this.choice = choice;
         this.reasonText = reasonText;
         this.createdAt = Instant.now();
     }
+    public User getUser() { return user; }
 
     public Long getId() {
         return id;

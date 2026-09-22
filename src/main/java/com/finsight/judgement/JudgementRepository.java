@@ -2,6 +2,7 @@ package com.finsight.judgement;
 
 import java.time.Instant;
 import java.util.List;
+import com.finsight.auth.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -27,6 +28,12 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     @Query("SELECT j FROM Judgement j JOIN FETCH j.news ORDER BY j.createdAt DESC")
     List<Judgement> findAllByOrderByCreatedAtDesc();
 
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.user = :user ORDER BY j.createdAt DESC")
+    List<Judgement> findAllByUserOrderByCreatedAtDesc(User user);
+
     @EntityGraph(attributePaths = "news")
     Page<Judgement> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    @EntityGraph(attributePaths = "news")
+    Page<Judgement> findAllByUserOrderByCreatedAtDesc(User user, Pageable pageable);
 }
