@@ -17,11 +17,13 @@ public class AuthController {
     @PostMapping("/login")
     public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request) { return auth.login(request); }
     @GetMapping("/kakao/url")
-    public AuthDtos.KakaoUrlResponse kakaoUrl() { return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl()); }
+    public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String state) {
+        return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(state));
+    }
     @GetMapping("/kakao/callback")
-    public ResponseEntity<Void> kakaoCallback(@RequestParam String code) {
+    public ResponseEntity<Void> kakaoCallback(@RequestParam String code, @RequestParam(required = false) String state) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create(auth.kakaoAppRedirectUri() + "?code=" + code));
+        headers.setLocation(URI.create(auth.kakaoCallbackUri(code, state)));
         return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
     }
     @PostMapping("/kakao")

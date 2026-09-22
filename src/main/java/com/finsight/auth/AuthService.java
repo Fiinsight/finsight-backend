@@ -3,6 +3,8 @@ package com.finsight.auth;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -61,12 +63,23 @@ public class AuthService {
         User user = users.findByEmail(email).orElseGet(() -> users.save(new User(email, null, nickname, AuthProvider.KAKAO)));
         return response(user);
     }
-    public String kakaoUrl() {
+    public String kakaoUrl(String state) {
         requireKakaoConfig();
-        return "https://kauth.kakao.com/oauth/authorize?client_id=" + kakaoClientId + "&redirect_uri=" + kakaoRedirectUri + "&response_type=code";
+        String url = "https://kauth.kakao.com/oauth/authorize?client_id=" + encode(kakaoClientId)
+                + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code";
+        if (state != null && !state.isBlank()) url += "&state=" + encode(state);
+        return url;
     }
     public String kakaoAppRedirectUri() { return kakaoAppRedirectUri; }
+    public String kakaoCallbackUri(String code, String state) {
+        String destination = isAllowedAppRedirect(state) ? state : kakaoAppRedirectUri;
+        return destination + (destination.contains("?") ? "&" : "?") + "code=" + encode(code);
+    }
     private AuthDtos.AuthResponse response(User user) { return new AuthDtos.AuthResponse(jwt.issue(user), user.getId(), user.getEmail(), user.getNickname()); }
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
+    private boolean isAllowedAppRedirect(String state) {
+        return state != null && (state.startsWith("finsight://auth/kakao") || state.startsWith("exp://"));
+    }
+    private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 }
