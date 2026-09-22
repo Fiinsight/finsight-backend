@@ -60,7 +60,14 @@ public class AuthService {
         JsonNode account = profile.path("kakao_account");
         String email = account.path("email").asText("kakao-" + kakaoId + "@kakao.local");
         String nickname = account.path("profile").path("nickname").asText("카카오 사용자");
-        User user = users.findByEmail(email).orElseGet(() -> users.save(new User(email, null, nickname, AuthProvider.KAKAO)));
+        User user = users.findByProviderAndProviderId(AuthProvider.KAKAO, kakaoId).orElseGet(() -> {
+            // The Kakao member id is the stable identity. Email consent is
+            // optional and a granted Kakao email may collide with a local one.
+            String uniqueEmail = users.findByEmail(email)
+                    .filter(existing -> existing.getProvider() != AuthProvider.KAKAO)
+                    .isPresent() ? "kakao-" + kakaoId + "@kakao.local" : email;
+            return users.save(new User(uniqueEmail, null, nickname, AuthProvider.KAKAO, kakaoId));
+        });
         return response(user);
     }
     public String kakaoUrl(String state) {
