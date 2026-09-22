@@ -1,7 +1,10 @@
 package com.finsight.auth;
 
 import jakarta.validation.Valid;
+import java.net.URI;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -15,6 +18,12 @@ public class AuthController {
     public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request) { return auth.login(request); }
     @GetMapping("/kakao/url")
     public AuthDtos.KakaoUrlResponse kakaoUrl() { return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl()); }
+    @GetMapping("/kakao/callback")
+    public ResponseEntity<Void> kakaoCallback(@RequestParam String code) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(URI.create(auth.kakaoAppRedirectUri() + "?code=" + code));
+        return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
+    }
     @PostMapping("/kakao")
     public AuthDtos.AuthResponse kakao(@Valid @RequestBody AuthDtos.KakaoRequest request) { return auth.kakao(request.code()); }
 }
