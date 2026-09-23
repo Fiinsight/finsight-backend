@@ -25,6 +25,17 @@ public class User {
     private AuthProvider provider;
     @Column(nullable = false)
     private Instant createdAt;
+    @Column(columnDefinition = "TEXT")
+    private String onboardingAnswersJson;
+    @Column(length = 30)
+    private String learningLevel;
+    @Column(length = 30)
+    private String learningPace;
+    @Column(length = 30)
+    private String learningFocus;
+    @Column(length = 100)
+    private String dailyGoal;
+    private Instant onboardingCompletedAt;
 
     protected User() {}
 
@@ -46,4 +57,18 @@ public class User {
     public String getNickname() { return nickname; }
     public AuthProvider getProvider() { return provider; }
     public String getProviderId() { return providerId; }
+    public String getOnboardingAnswersJson() { return onboardingAnswersJson; }
+    public String getLearningLevel() { return learningLevel; }
+    public String getLearningPace() { return learningPace; }
+    public String getLearningFocus() { return learningFocus; }
+    public String getDailyGoal() { return dailyGoal; }
+    public Instant getOnboardingCompletedAt() { return onboardingCompletedAt; }
+    public void saveOnboardingProfile(String answersJson, String level, String pace, String focus, String goal, Instant completedAt) {
+        this.onboardingAnswersJson = answersJson;
+        this.learningLevel = level;
+        this.learningPace = pace;
+        this.learningFocus = focus;
+        this.dailyGoal = goal;
+        this.onboardingCompletedAt = completedAt;
+    }
 }
