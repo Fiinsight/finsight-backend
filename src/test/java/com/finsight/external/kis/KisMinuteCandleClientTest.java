@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.SocketPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,16 @@ class KisMinuteCandleClientTest {
     void marksKisBusinessErrorsAsFallbackInsteadOfTreatingThemAsLive() {
         server.enqueue(new MockResponse().setHeader("Content-Type", "application/json")
                 .setBody("{\"rt_cd\":\"1\",\"msg_cd\":\"OPSQ0003\",\"msg1\":\"Service routing error\"}"));
+
+        KisMinuteCandleResult result = client.getCandlesWithStatus("005930", 1, 5);
+
+        assertTrue(result.fallback());
+        assertEquals(5, result.candles().size());
+    }
+
+    @Test
+    void marksKisTimeoutAsFallback() {
+        server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE));
 
         KisMinuteCandleResult result = client.getCandlesWithStatus("005930", 1, 5);
 

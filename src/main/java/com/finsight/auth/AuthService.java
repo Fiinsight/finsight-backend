@@ -35,19 +35,25 @@ public class AuthService {
     private final String kakaoRedirectUri;
     private final String kakaoAppRedirectUri;
     private final Set<String> kakaoWebRedirectUris;
+    private final String kakaoTokenUri;
+    private final String kakaoProfileUri;
 
     public AuthService(UserRepository users, JwtService jwt, WebClient.Builder webClientBuilder,
                        @Value("${finsight.auth.kakao-client-id:}") String kakaoClientId,
                        @Value("${finsight.auth.kakao-client-secret:}") String kakaoClientSecret,
                        @Value("${finsight.auth.kakao-redirect-uri:}") String kakaoRedirectUri,
                        @Value("${finsight.auth.kakao-app-redirect-uri:finsight://auth/kakao}") String kakaoAppRedirectUri,
-                       @Value("${finsight.auth.kakao-web-redirect-uris:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}") String kakaoWebRedirectUris) {
+                       @Value("${finsight.auth.kakao-web-redirect-uris:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}") String kakaoWebRedirectUris,
+                       @Value("${finsight.auth.kakao-token-uri:https://kauth.kakao.com/oauth/token}") String kakaoTokenUri,
+                       @Value("${finsight.auth.kakao-profile-uri:https://kapi.kakao.com/v2/user/me}") String kakaoProfileUri) {
         this.users = users; this.jwt = jwt; this.webClient = webClientBuilder.build();
         this.kakaoClientId = kakaoClientId; this.kakaoClientSecret = kakaoClientSecret; this.kakaoRedirectUri = kakaoRedirectUri; this.kakaoAppRedirectUri = kakaoAppRedirectUri;
         this.kakaoWebRedirectUris = Arrays.stream(kakaoWebRedirectUris.split(","))
                 .map(String::trim)
                 .filter(uri -> !uri.isBlank())
                 .collect(Collectors.toUnmodifiableSet());
+        this.kakaoTokenUri = kakaoTokenUri;
+        this.kakaoProfileUri = kakaoProfileUri;
     }
     public AuthDtos.AuthResponse signup(AuthDtos.SignupRequest request) {
         if (users.findByEmail(request.email()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 가입된 이메일입니다.");
@@ -68,7 +74,7 @@ public class AuthService {
         if (!kakaoClientSecret.isBlank()) form.add("client_secret", kakaoClientSecret);
         JsonNode token;
         try {
-            token = webClient.post().uri("https://kauth.kakao.com/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            token = webClient.post().uri(kakaoTokenUri).contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .bodyValue(form).retrieve().bodyToMono(JsonNode.class).timeout(KAKAO_CALL_TIMEOUT).block();
         } catch (WebClientResponseException e) {
             log.warn("Kakao token exchange failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
@@ -80,7 +86,7 @@ public class AuthService {
         if (token == null || token.get("access_token") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
         JsonNode profile;
         try {
-            profile = webClient.get().uri("https://kapi.kakao.com/v2/user/me").headers(h -> h.setBearerAuth(token.get("access_token").asText()))
+            profile = webClient.get().uri(kakaoProfileUri).headers(h -> h.setBearerAuth(token.get("access_token").asText()))
                     .retrieve().bodyToMono(JsonNode.class).timeout(KAKAO_CALL_TIMEOUT).block();
         } catch (WebClientResponseException e) {
             log.warn("Kakao profile request failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
