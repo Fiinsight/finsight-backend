@@ -98,23 +98,36 @@ public class AuthService {
         if (profile == null || profile.get("id") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
         String kakaoId = profile.get("id").asText();
         JsonNode account = profile.path("kakao_account");
-        String email = account.path("email").asText("kakao-" + kakaoId + "@kakao.local");
-        String nickname = account.path("profile").path("nickname").asText("카카오 사용자");
+        String kakaoFallbackEmail = "kakao-" + kakaoId + "@kakao.local";
+        String email = account.path("email").asText("");
+        String nickname = account.path("profile").path("nickname").asText("");
+        if (email.isBlank()) email = kakaoFallbackEmail;
+        if (nickname.isBlank()) nickname = "카카오 사용자";
+        final String resolvedEmail = email;
+        final String resolvedNickname = nickname;
         User user = users.findByProviderAndProviderId(AuthProvider.KAKAO, kakaoId).orElseGet(() -> {
             // The Kakao member id is the stable identity. Email consent is
             // optional and a granted Kakao email may collide with a local one.
-            String uniqueEmail = users.findByEmail(email)
+            String uniqueEmail = users.findByEmail(resolvedEmail)
                     .filter(existing -> existing.getProvider() != AuthProvider.KAKAO)
-                    .isPresent() ? "kakao-" + kakaoId + "@kakao.local" : email;
-            return users.save(new User(uniqueEmail, null, nickname, AuthProvider.KAKAO, kakaoId));
+                    .isPresent() ? kakaoFallbackEmail : resolvedEmail;
+            return users.save(new User(uniqueEmail, null, resolvedNickname, AuthProvider.KAKAO, kakaoId));
         });
+        user.setNickname(resolvedNickname);
+        if (!resolvedEmail.equals(kakaoFallbackEmail) && !users.findByEmail(resolvedEmail)
+                .filter(existing -> existing != user && (existing.getId() == null || user.getId() == null
+                        || !existing.getId().equals(user.getId()))).isPresent()) {
+            user.setEmail(resolvedEmail);
+        }
+        users.save(user);
         log.info("Kakao login completed: providerId={}, elapsedMs={}", kakaoId, elapsedMs(startedAt));
         return response(user);
     }
     public String kakaoUrl(String state) {
         requireKakaoConfig();
         String url = "https://kauth.kakao.com/oauth/authorize?client_id=" + encode(kakaoClientId)
-                + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code";
+                + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code"
+                + "&scope=profile_nickname,account_email";
         if (state != null && !state.isBlank()) url += "&state=" + encode(state);
         return url;
     }

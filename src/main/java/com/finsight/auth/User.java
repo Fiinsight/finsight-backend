@@ -53,8 +53,10 @@ public class User {
     }
     public Long getId() { return id; }
     public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
     public String getPasswordHash() { return passwordHash; }
     public String getNickname() { return nickname; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
     public AuthProvider getProvider() { return provider; }
     public String getProviderId() { return providerId; }
     public String getOnboardingAnswersJson() { return onboardingAnswersJson; }

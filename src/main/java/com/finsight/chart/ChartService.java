@@ -92,7 +92,42 @@ public class ChartService {
         ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
-                periodDivCode, null, List.of(), false, List.of());
+                periodDivCode, null, List.of(), false, findDailyMoveInsights(candleViews, matchedNews, periodDivCode));
+    }
+
+    private List<ChartResponse.MoveInsightView> findDailyMoveInsights(
+            List<CandleView> candles, List<News> relatedNews, String period) {
+        double threshold = "W".equals(period) ? 3.0 : 1.0;
+        List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
+        for (int i = 1; i < candles.size(); i++) {
+            CandleView previous = candles.get(i - 1);
+            CandleView current = candles.get(i);
+            if (previous.close() == 0.0) {
+                continue;
+            }
+            double change = (current.close() - previous.close()) / previous.close() * 100.0;
+            if (Math.abs(change) < threshold) {
+                continue;
+            }
+            LocalDate windowEnd = "W".equals(period) ? current.date().plusDays(7) : current.date().plusDays(1);
+            var news = relatedNews.stream()
+                    .filter(item -> item.getPublishedAt() != null
+                            && !item.getPublishedAt().atZone(KST).toLocalDate().isBefore(current.date())
+                            && item.getPublishedAt().atZone(KST).toLocalDate().isBefore(windowEnd))
+                    .findFirst();
+            insights.add(new ChartResponse.MoveInsightView(
+                    current.date().atStartOfDay(),
+                    Math.round(change * 100.0) / 100.0,
+                    news.map(News::getId).orElse(null),
+                    news.map(News::getTitle).orElse(null),
+                    news.map(News::getSource).orElse(null),
+                    news.map(item -> "관련 뉴스: " + item.getImportanceReason()).orElse(null)
+            ));
+        }
+        return insights.stream()
+                .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
+                .limit(3)
+                .toList();
     }
 
     private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<com.finsight.external.kis.KisMinuteCandle> candles) {
