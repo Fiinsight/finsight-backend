@@ -2,6 +2,7 @@ package com.finsight.briefing;
 
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
+import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -17,9 +18,11 @@ public class BriefingService {
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final NewsRepository newsRepository;
+    private final ArticleContentExtractor articleContentExtractor;
 
-    public BriefingService(NewsRepository newsRepository) {
+    public BriefingService(NewsRepository newsRepository, ArticleContentExtractor articleContentExtractor) {
         this.newsRepository = newsRepository;
+        this.articleContentExtractor = articleContentExtractor;
     }
 
     public List<NewsBriefResponse> getTodayBriefing() {
@@ -27,11 +30,12 @@ public class BriefingService {
         // articles collected today, not just whatever 3 rows are newest overall
         // (which could be several days stale if the scheduler has been failing).
         Instant startOfToday = LocalDate.now(KOREA_ZONE).atStartOfDay(KOREA_ZONE).toInstant();
-        List<News> today = newsRepository.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(startOfToday);
+        List<News> today = newsRepository.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(startOfToday)
+                .stream().filter(this::isUsable).toList();
         if (today.size() >= MIN_REQUIRED_ITEMS) {
             return today.stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
         }
-        List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc();
+        List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc().stream().filter(this::isUsable).toList();
         // Never label hard-coded demo copy as today's live market news. During
         // the first collection run this may be empty or partial; the client
         // can show a truthful loading/empty state instead.
@@ -54,9 +58,17 @@ public class BriefingService {
         if (offset >= rows.size()) {
             return List.of();
         }
-        return rows.subList(offset, Math.min(offset + size, rows.size())).stream()
+        List<News> usableRows = rows.stream().filter(this::isUsable).toList();
+        if (offset >= usableRows.size()) {
+            return List.of();
+        }
+        return usableRows.subList(offset, Math.min(offset + size, usableRows.size())).stream()
                 .map(this::toBriefResponse)
                 .toList();
+    }
+
+    private boolean isUsable(News news) {
+        return articleContentExtractor.isUsable(news.getTitle(), news.getRawContent());
     }
 
     private NewsBriefResponse toBriefResponse(News news) {
