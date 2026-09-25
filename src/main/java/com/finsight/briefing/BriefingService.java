@@ -63,11 +63,8 @@ public class BriefingService {
         // everything up to the end of the requested window in one page-0
         // query, then slice out just the target range in Java.
         int offset = MIN_REQUIRED_ITEMS + page * size;
-        var request = PageRequest.of(0, offset + size, Sort.by(Sort.Direction.DESC, "publishedAt"));
+        var request = PageRequest.of(0, 1000, Sort.by(Sort.Direction.DESC, "publishedAt"));
         List<News> rows = newsRepository.findAllByOrderByPublishedAtDesc(request);
-        if (offset >= rows.size()) {
-            return List.of();
-        }
         List<News> usableRows = rows.stream().filter(this::isUsable).toList();
         if (offset >= usableRows.size()) {
             return List.of();
