@@ -37,6 +37,8 @@ public class AuthService {
     private final Set<String> kakaoWebRedirectUris;
     private final String kakaoTokenUri;
     private final String kakaoProfileUri;
+    @Value("${finsight.auth.kakao-scopes:profile_nickname}")
+    private String kakaoScopes = "profile_nickname";
 
     public AuthService(UserRepository users, JwtService jwt, WebClient.Builder webClientBuilder,
                        @Value("${finsight.auth.kakao-client-id:}") String kakaoClientId,
@@ -104,10 +106,10 @@ public class AuthService {
         String kakaoFallbackEmail = "kakao-" + kakaoId + "@kakao.local";
         String email = account.path("email").asText("");
         String nickname = account.path("profile").path("nickname").asText("");
-        if (email.isBlank()) email = kakaoFallbackEmail;
-        if (nickname.isBlank()) nickname = "카카오 사용자";
-        final String resolvedEmail = email;
-        final String resolvedNickname = nickname;
+        if (nickname.isBlank()) nickname = profile.path("properties").path("nickname").asText("");
+        final boolean hasKakaoNickname = !nickname.isBlank();
+        final String resolvedEmail = email.isBlank() ? kakaoFallbackEmail : email;
+        final String resolvedNickname = hasKakaoNickname ? nickname : "카카오 사용자";
         User user = users.findByProviderAndProviderId(AuthProvider.KAKAO, kakaoId).orElseGet(() -> {
             // The Kakao member id is the stable identity. Email consent is
             // optional and a granted Kakao email may collide with a local one.
@@ -116,7 +118,11 @@ public class AuthService {
                     .isPresent() ? kakaoFallbackEmail : resolvedEmail;
             return users.save(new User(uniqueEmail, null, resolvedNickname, AuthProvider.KAKAO, kakaoId));
         });
-        user.setNickname(resolvedNickname);
+        // Keep the last known nickname if the user declines the optional
+        // profile scope; update it whenever Kakao provides the current value.
+        if (hasKakaoNickname || user.getNickname() == null || user.getNickname().isBlank()) {
+            user.setNickname(resolvedNickname);
+        }
         if (!resolvedEmail.equals(kakaoFallbackEmail) && !users.findByEmail(resolvedEmail)
                 .filter(existing -> existing != user && (existing.getId() == null || user.getId() == null
                         || !existing.getId().equals(user.getId()))).isPresent()) {
@@ -130,7 +136,7 @@ public class AuthService {
         requireKakaoConfig();
         String url = "https://kauth.kakao.com/oauth/authorize?client_id=" + encode(kakaoClientId)
                 + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code"
-                + "&scope=profile_nickname,account_email";
+                + (kakaoScopes.isBlank() ? "" : "&scope=" + encode(kakaoScopes));
         if (state != null && !state.isBlank()) url += "&state=" + encode(state);
         return url;
     }
@@ -150,7 +156,11 @@ public class AuthService {
         }
         return destination + separator + "code=" + encode(code);
     }
-    private AuthDtos.AuthResponse response(User user) { return new AuthDtos.AuthResponse(jwt.issue(user), user.getId(), user.getEmail(), user.getNickname()); }
+    private AuthDtos.AuthResponse response(User user) {
+        String email = user.getProvider() == AuthProvider.KAKAO && user.getEmail().endsWith("@kakao.local")
+                ? "" : user.getEmail();
+        return new AuthDtos.AuthResponse(jwt.issue(user), user.getId(), email, user.getNickname());
+    }
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
     private boolean isAllowedAppRedirect(String state) {
