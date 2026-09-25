@@ -28,9 +28,9 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
-    private static final int TOP_CANDIDATE_COUNT = 10;
-    private static final int TARGET_SAVED_COUNT = 3;
-    private static final int MAX_EXTRACTION_ATTEMPTS = 10;
+    private static final int TOP_CANDIDATE_COUNT = 220;
+    private static final int TARGET_SAVED_COUNT = 220;
+    private static final int MAX_EXTRACTION_ATTEMPTS = 220;
 
     private final RssFeedFetcher rssFeedFetcher;
     private final NewsDeduplicator newsDeduplicator;
