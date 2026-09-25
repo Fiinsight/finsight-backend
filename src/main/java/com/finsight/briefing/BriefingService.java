@@ -6,6 +6,7 @@ import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -35,11 +36,20 @@ public class BriefingService {
         if (today.size() >= MIN_REQUIRED_ITEMS) {
             return today.stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
         }
-        List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc().stream().filter(this::isUsable).toList();
+        List<News> latest = newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 100));
+        var usable = new LinkedHashMap<Long, News>();
+        for (News news : today) {
+            usable.putIfAbsent(news.getId(), news);
+        }
+        for (News news : latest) {
+            if (isUsable(news)) {
+                usable.putIfAbsent(news.getId(), news);
+            }
+        }
         // Never label hard-coded demo copy as today's live market news. During
         // the first collection run this may be empty or partial; the client
         // can show a truthful loading/empty state instead.
-        return latest.stream().map(this::toBriefResponse).toList();
+        return usable.values().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
     }
 
     /**
