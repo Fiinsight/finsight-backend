@@ -65,6 +65,9 @@ public class AuthService {
         if (user.getProvider() != AuthProvider.LOCAL || !passwordEncoder.matches(request.password(), user.getPasswordHash())) throw unauthorized();
         return response(user);
     }
+    public AuthDtos.AuthResponse me(Long userId) {
+        return users.findById(userId).map(this::response).orElseThrow(() -> unauthorized());
+    }
     public AuthDtos.AuthResponse kakao(String code) {
         requireKakaoConfig();
         long startedAt = System.nanoTime();
