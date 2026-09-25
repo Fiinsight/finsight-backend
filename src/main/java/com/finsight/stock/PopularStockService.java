@@ -5,6 +5,7 @@ import com.finsight.external.kis.KisStockQuoteClient;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -32,6 +33,7 @@ public class PopularStockService {
         this.kisStockQuoteClient = kisStockQuoteClient;
     }
 
+    @Cacheable(cacheNames = "popularStockQuotes", key = "'all'")
     public List<PopularStockView> getPopularStocks() {
         return SYMBOLS.entrySet().stream()
                 .map(entry -> {
