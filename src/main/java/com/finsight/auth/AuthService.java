@@ -3,6 +3,9 @@ package com.finsight.auth;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.Arrays;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,14 +34,20 @@ public class AuthService {
     private final String kakaoClientSecret;
     private final String kakaoRedirectUri;
     private final String kakaoAppRedirectUri;
+    private final Set<String> kakaoWebRedirectUris;
 
     public AuthService(UserRepository users, JwtService jwt, WebClient.Builder webClientBuilder,
                        @Value("${finsight.auth.kakao-client-id:}") String kakaoClientId,
                        @Value("${finsight.auth.kakao-client-secret:}") String kakaoClientSecret,
                        @Value("${finsight.auth.kakao-redirect-uri:}") String kakaoRedirectUri,
-                       @Value("${finsight.auth.kakao-app-redirect-uri:finsight://auth/kakao}") String kakaoAppRedirectUri) {
+                       @Value("${finsight.auth.kakao-app-redirect-uri:finsight://auth/kakao}") String kakaoAppRedirectUri,
+                       @Value("${finsight.auth.kakao-web-redirect-uris:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}") String kakaoWebRedirectUris) {
         this.users = users; this.jwt = jwt; this.webClient = webClientBuilder.build();
         this.kakaoClientId = kakaoClientId; this.kakaoClientSecret = kakaoClientSecret; this.kakaoRedirectUri = kakaoRedirectUri; this.kakaoAppRedirectUri = kakaoAppRedirectUri;
+        this.kakaoWebRedirectUris = Arrays.stream(kakaoWebRedirectUris.split(","))
+                .map(String::trim)
+                .filter(uri -> !uri.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
     }
     public AuthDtos.AuthResponse signup(AuthDtos.SignupRequest request) {
         if (users.findByEmail(request.email()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 가입된 이메일입니다.");
@@ -123,7 +132,9 @@ public class AuthService {
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
     private boolean isAllowedAppRedirect(String state) {
-        return state != null && (state.startsWith("finsight://auth/kakao") || state.startsWith("exp://"));
+        return state != null && (state.startsWith("finsight://auth/kakao")
+                || state.startsWith("exp://")
+                || kakaoWebRedirectUris.contains(state));
     }
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private long elapsedMs(long startedAt) { return (System.nanoTime() - startedAt) / 1_000_000; }
