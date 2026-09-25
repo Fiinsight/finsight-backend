@@ -104,8 +104,11 @@ public class AuthService {
         String kakaoFallbackEmail = "kakao-" + kakaoId + "@kakao.local";
         String email = account.path("email").asText("");
         String nickname = account.path("profile").path("nickname").asText("");
-        if (email.isBlank()) email = kakaoFallbackEmail;
-        if (nickname.isBlank()) nickname = "카카오 사용자";
+        if (nickname.isBlank()) nickname = profile.path("properties").path("nickname").asText("");
+        if (email.isBlank() || nickname.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "카카오 로그인 동의항목에서 닉네임과 카카오계정 이메일을 허용해 주세요.");
+        }
         final String resolvedEmail = email;
         final String resolvedNickname = nickname;
         User user = users.findByProviderAndProviderId(AuthProvider.KAKAO, kakaoId).orElseGet(() -> {
