@@ -6,6 +6,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -39,6 +40,7 @@ public class KisStockQuoteClient {
         this.appSecret = appSecret;
     }
 
+    @Cacheable(cacheNames = "kisStockQuotes", key = "#stockCode", unless = "#result == null || #result.fallback()")
     public KisStockQuote getStockQuote(String stockCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
