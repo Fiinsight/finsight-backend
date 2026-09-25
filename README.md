@@ -29,6 +29,11 @@ FinSight는 경제 뉴스를 읽고, 핵심 내용을 이해하고, 자신의 �
 | --- | --- | --- |
 | GET | `/api/briefings/today` | 오늘의 핵심 뉴스 브리핑 |
 | GET | `/api/news/{id}` | 뉴스 상세와 수준별 콘텐츠 |
+| GET | `/api/article-notes` | 로그인 사용자의 최근 기사 메모 50건 |
+| GET | `/api/article-notes/news/{newsId}` | 로그인 사용자가 해당 기사에 남긴 메모 |
+| POST | `/api/article-notes` | 기사 메모 작성 (`newsId`, `content`) |
+| PUT | `/api/article-notes/{noteId}` | 본인 메모 수정 |
+| DELETE | `/api/article-notes/{noteId}` | 본인 메모 삭제 |
 | POST | `/api/terms/explain` | 금융 용어 설명 |
 | POST | `/api/judgements` | 사용자의 투자 판단 저장 |
 | GET | `/api/judgements/history` | 판단 이력과 결과 피드백 |
