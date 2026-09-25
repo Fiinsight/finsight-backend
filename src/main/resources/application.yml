@@ -31,7 +31,7 @@ finsight:
     # OAuth state는 허용된 앱 스킴 또는 명시된 로컬 웹 콜백만 통과시킨다.
     kakao-web-redirect-uris: ${KAKAO_WEB_REDIRECT_URIS:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}
   cors:
-    allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
+    allowed-origin-patterns: ${FINSIGHT_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8001}
   kis:

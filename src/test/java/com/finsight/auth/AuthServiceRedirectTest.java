@@ -12,7 +12,7 @@ class AuthServiceRedirectTest {
             WebClient.builder(),
             "client-id",
             "",
-            "http://192.168.0.171:8080/api/auth/kakao/callback",
+            "http://172.30.1.47:8080/api/auth/kakao/callback",
             "finsight://auth/kakao",
             "http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao",
             "https://kauth.kakao.com/oauth/token",
@@ -23,6 +23,25 @@ class AuthServiceRedirectTest {
         assertEquals(
                 "http://localhost:8082/auth/kakao?code=abc",
                 auth.kakaoCallbackUri("abc", "http://localhost:8082/auth/kakao", null, null));
+    }
+
+    @Test
+    void allowsConfiguredLanWebRedirect() {
+        AuthService lanAuth = new AuthService(
+                null,
+                null,
+                WebClient.builder(),
+                "client-id",
+                "",
+                "http://172.30.1.47:8080/api/auth/kakao/callback",
+                "finsight://auth/kakao",
+                "http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao,http://172.30.1.47:8082/auth/kakao",
+                "https://kauth.kakao.com/oauth/token",
+                "https://kapi.kakao.com/v2/user/me");
+
+        assertEquals(
+                "http://172.30.1.47:8082/auth/kakao?code=abc",
+                lanAuth.kakaoCallbackUri("abc", "http://172.30.1.47:8082/auth/kakao", null, null));
     }
 
     @Test
