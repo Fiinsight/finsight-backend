@@ -20,6 +20,7 @@ public class NewsRelevanceScorer {
     public List<NewsCandidate> rank(List<NewsCandidate> candidates, int topN) {
         return candidates.stream()
                 .map(this::score)
+                .filter(candidate -> candidate.score() > 0)
                 .sorted(Comparator.comparingInt(NewsCandidate::score).reversed())
                 .limit(topN)
                 .toList();

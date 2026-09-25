@@ -101,7 +101,8 @@ public class NewsCollectionScheduler {
             }
             attempts++;
             Optional<String> body = articleContentExtractor.extract(candidate.url());
-            if (body.isEmpty() || body.get().isBlank()) {
+            if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
+                log.info("Skipping unsuitable article body for {}", candidate.url());
                 continue;
             }
             try {
@@ -112,5 +113,18 @@ public class NewsCollectionScheduler {
             }
         }
         return savedCount;
+    }
+
+    public int reprocessExisting(int limit) {
+        int updated = 0;
+        for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
+            if (updated >= limit || news.getRawContent() == null || news.getRawContent().isBlank()) break;
+            String rewritten = news.getRewrittenNormal();
+            if (rewritten != null && !rewritten.equals(news.getRawContent()) && !rewritten.contains("Google 검색")) continue;
+            newsAssembler.reprocess(news);
+            newsRepository.save(news);
+            updated++;
+        }
+        return updated;
     }
 }

@@ -2,6 +2,7 @@ package com.finsight.news.collect;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.List;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -46,6 +47,18 @@ public class ArticleContentExtractor {
     // buttons, font-size controls, "번역" widgets) rather than actual article
     // text, so it's dropped instead of getting mixed into the body.
     private static final int MIN_PARAGRAPH_LENGTH = 20;
+
+    private static final List<String> ECONOMIC_TERMS = List.of(
+            "금리", "환율", "증시", "주가", "수출", "무역", "반도체", "기업", "투자", "물가", "채권", "고용", "실적");
+    private static final List<String> PAGE_CHROME = List.of(
+            "Google 검색", "검색어를 입력", "개인정보처리방침", "로그인 후", "쿠키 설정");
+
+    public boolean isUsable(String title, String body) {
+        if (!StringUtils.hasText(body) || body.length() < 120) return false;
+        String combined = (title + " " + body).toLowerCase();
+        if (PAGE_CHROME.stream().anyMatch(combined::contains)) return false;
+        return ECONOMIC_TERMS.stream().anyMatch(combined::contains);
+    }
 
     private String extractFromArticleTag(Document doc) {
         Elements articleTags = doc.select("article");
