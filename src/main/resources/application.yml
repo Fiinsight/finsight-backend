@@ -31,7 +31,9 @@ finsight:
     # OAuth state는 허용된 앱 스킴 또는 명시된 로컬 웹 콜백만 통과시킨다.
     kakao-web-redirect-uris: ${KAKAO_WEB_REDIRECT_URIS:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}
   cors:
-    allowed-origin-patterns: ${FINSIGHT_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+    # Development web builds run on localhost on desktop and private LAN IPs on phones.
+    # Production overrides this with FRONTEND_ORIGIN in application-prod.yml.
+    allowed-origin-patterns: ${FINSIGHT_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://192.168.*:*,http://172.16.*:*,http://172.17.*:*,http://172.18.*:*,http://172.19.*:*,http://172.20.*:*,http://172.21.*:*,http://172.22.*:*,http://172.23.*:*,http://172.24.*:*,http://172.25.*:*,http://172.26.*:*,http://172.27.*:*,http://172.28.*:*,http://172.29.*:*,http://172.30.*:*,http://172.31.*:*}
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8001}
   kis:
