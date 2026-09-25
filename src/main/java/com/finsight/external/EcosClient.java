@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -46,6 +47,7 @@ public class EcosClient {
         this.apiKey = apiKey;
     }
 
+    @Cacheable(cacheNames = "ecosBaseRate", unless = "#result == null || #result.fallback()")
     public EcosRate getBaseRate() {
         // 722Y001 (기준금리) is only published monthly. A policy rate is
         // conventionally read in percentage POINTS (e.g. "+0.25%p"), not a
