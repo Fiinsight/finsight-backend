@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +29,9 @@ public class KisMinuteCandleClient {
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HHmmss");
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final LocalTime MARKET_OPEN = LocalTime.of(9, 0);
+    private static final LocalTime MARKET_CLOSE = LocalTime.of(15, 30);
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
@@ -58,19 +62,28 @@ public class KisMinuteCandleClient {
             if (token.isEmpty()) {
                 return new KisMinuteCandleResult(fallback(interval, safeCount), true);
             }
+            String requestTime = requestTime();
             JsonNode response = webClient.get()
                     .uri(uriBuilder -> uriBuilder.path(PATH)
                             .queryParam("FID_ETC_CLS_CODE", "")
                             .queryParam("FID_COND_MRKT_DIV_CODE", "J")
                             .queryParam("FID_INPUT_ISCD", stockCode)
-                            .queryParam("FID_INPUT_HOUR_1", "")
-                            .queryParam("FID_PW_DATA_INCU_YN", "N")
+                            .queryParam("FID_INPUT_HOUR_1", requestTime)
+                            .queryParam("FID_PW_DATA_INCU_YN", "Y")
                             .build())
                     .headers(headers -> KisApiHeaders.apply(headers, token.get(), TR_ID, appKey, appSecret))
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .timeout(CALL_TIMEOUT)
                     .block();
+            if (response == null || !"0".equals(response.path("rt_cd").asText())) {
+                log.warn("KIS minute candle API rejected request for {} ({}m): {} {}",
+                        stockCode,
+                        interval,
+                        response == null ? "no response" : response.path("msg_cd").asText(""),
+                        response == null ? "" : response.path("msg1").asText(""));
+                return new KisMinuteCandleResult(fallback(interval, safeCount), true);
+            }
             List<KisMinuteCandle> candles = parseCandles(response, interval, safeCount);
             return candles.isEmpty()
                     ? new KisMinuteCandleResult(fallback(interval, safeCount), true)
@@ -79,6 +92,14 @@ public class KisMinuteCandleClient {
             log.warn("KIS minute candle call failed for {} ({}m), using fallback: {}", stockCode, interval, e.getMessage());
             return new KisMinuteCandleResult(fallback(interval, safeCount), true);
         }
+    }
+
+    private String requestTime() {
+        LocalTime now = LocalTime.now(KST);
+        // KIS requires a valid HHmmss cursor even outside regular trading hours.
+        // 15:30 is also the useful cursor for its previous-session data mode.
+        LocalTime cursor = now.isBefore(MARKET_OPEN) || now.isAfter(MARKET_CLOSE) ? MARKET_CLOSE : now;
+        return cursor.format(TIME);
     }
 
     private List<KisMinuteCandle> parseCandles(JsonNode response, int interval, int count) {
