@@ -47,6 +47,11 @@ public class NewsAssembler {
         return news;
     }
 
+    public void reprocess(News news) {
+        NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
+        applyRewrite(news, candidate, news.getRawContent());
+    }
+
     // finsight-ai rewrites one reading level per call, so we call it 3 times
     // (once per level) and assemble the results rather than expecting one
     // combined response.

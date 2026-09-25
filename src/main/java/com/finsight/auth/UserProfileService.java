@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Arrays;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,6 +37,20 @@ public class UserProfileService {
             return new UserProfileDtos.OnboardingResponse(answers, level, pace, focus, goal, completedAt);
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩 저장에 실패했습니다.", e);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public UserProfileDtos.OnboardingResponse getOnboarding(Long userId) {
+        User user = users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+        try {
+            List<UserProfileDtos.OnboardingAnswer> answers = user.getOnboardingAnswersJson() == null
+                    ? List.of()
+                    : Arrays.asList(mapper.readValue(user.getOnboardingAnswersJson(), UserProfileDtos.OnboardingAnswer[].class));
+            return new UserProfileDtos.OnboardingResponse(answers, user.getLearningLevel(), user.getLearningPace(),
+                    user.getLearningFocus(), user.getDailyGoal(), user.getOnboardingCompletedAt());
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩을 읽지 못했습니다.", e);
         }
     }
 }

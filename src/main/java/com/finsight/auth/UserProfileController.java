@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -21,5 +22,10 @@ public class UserProfileController {
     public UserProfileDtos.OnboardingResponse saveOnboarding(@AuthenticationPrincipal Long userId,
                                                                @Valid @RequestBody UserProfileDtos.OnboardingRequest request) {
         return profileService.saveOnboarding(userId, request);
+    }
+
+    @GetMapping("/onboarding")
+    public UserProfileDtos.OnboardingResponse getOnboarding(@AuthenticationPrincipal Long userId) {
+        return profileService.getOnboarding(userId);
     }
 }

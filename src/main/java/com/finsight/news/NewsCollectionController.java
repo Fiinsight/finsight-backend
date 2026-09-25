@@ -29,4 +29,10 @@ public class NewsCollectionController {
     public NewsCollectionResult collectNow() {
         return newsCollectionScheduler.runOnce();
     }
+
+    @PostMapping("/reprocess")
+    @Operation(summary = "기존 뉴스 AI 재처리", description = "기존 뉴스 중 원문 fallback 상태인 항목만 다시 AI 재작성합니다.")
+    public NewsReprocessResult reprocess() {
+        return new NewsReprocessResult(newsCollectionScheduler.reprocessExisting(20));
+    }
 }
