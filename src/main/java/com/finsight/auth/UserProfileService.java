@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale;
 import java.util.Arrays;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,17 +26,32 @@ public class UserProfileService {
         List<UserProfileDtos.OnboardingAnswer> answers = request.answers();
         try {
             String answersJson = mapper.writeValueAsString(answers);
-            String all = answers.stream().map(UserProfileDtos.OnboardingAnswer::answer).reduce("", (left, right) -> left + " " + right).toLowerCase(Locale.ROOT);
-            String level = all.contains("직접") || all.contains("깊") || all.contains("분석") ? "analyst" : all.contains("기본") || all.contains("핵심") ? "normal" : "beginner";
-            String pace = all.contains("짧") || all.contains("5분") ? "short" : all.contains("깊") ? "deep" : "flexible";
-            String focus = all.contains("판단") ? "judgement" : all.contains("시장") ? "market" : all.contains("뉴스") ? "news" : "routine";
-            String goal = answers.get(answers.size() - 1).answer();
+            String experience = answer(answers, "experience", "투자 여정");
+            String interest = answer(answers, "interest", "알고 싶은");
+            String paceAnswer = answer(answers, "pace", "공부 방식");
+            String goal = answer(answers, "goal", "습관");
+
+            String level = experience.contains("직접 투자") ? "analyst"
+                    : experience.contains("조금씩") ? "normal" : "beginner";
+            String pace = paceAnswer.contains("깊이") ? "deep"
+                    : paceAnswer.contains("짧게") || paceAnswer.contains("매일 조금씩") ? "short" : "flexible";
+            String focus = interest.contains("판단") || goal.contains("판단") ? "judgement"
+                    : interest.contains("시장") ? "market"
+                    : interest.contains("기록") || goal.contains("메모") ? "routine" : "news";
             Instant completedAt = Instant.now();
             user.saveOnboardingProfile(answersJson, level, pace, focus, goal, completedAt);
             return new UserProfileDtos.OnboardingResponse(answers, level, pace, focus, goal, completedAt);
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩 저장에 실패했습니다.", e);
         }
+    }
+
+    private String answer(List<UserProfileDtos.OnboardingAnswer> answers, String id, String questionFragment) {
+        return answers.stream()
+                .filter(item -> id.equals(item.questionId()) || item.question().contains(questionFragment))
+                .map(UserProfileDtos.OnboardingAnswer::answer)
+                .findFirst()
+                .orElse("");
     }
 
     @Transactional(readOnly = true)
