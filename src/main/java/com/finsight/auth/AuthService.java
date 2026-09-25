@@ -11,11 +11,17 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.time.Duration;
 
 @Service
 public class AuthService {
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(8);
     private final UserRepository users;
     private final JwtService jwt;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -46,15 +52,34 @@ public class AuthService {
     }
     public AuthDtos.AuthResponse kakao(String code) {
         requireKakaoConfig();
+        long startedAt = System.nanoTime();
         LinkedMultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "authorization_code"); form.add("client_id", kakaoClientId);
         form.add("redirect_uri", kakaoRedirectUri); form.add("code", code);
         if (!kakaoClientSecret.isBlank()) form.add("client_secret", kakaoClientSecret);
-        JsonNode token = webClient.post().uri("https://kauth.kakao.com/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue(form).retrieve().bodyToMono(JsonNode.class).block();
+        JsonNode token;
+        try {
+            token = webClient.post().uri("https://kauth.kakao.com/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(form).retrieve().bodyToMono(JsonNode.class).timeout(KAKAO_CALL_TIMEOUT).block();
+        } catch (WebClientResponseException e) {
+            log.warn("Kakao token exchange failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
+        } catch (RuntimeException e) {
+            log.warn("Kakao token exchange timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 인증 서버 응답이 지연되고 있습니다.");
+        }
         if (token == null || token.get("access_token") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
-        JsonNode profile = webClient.get().uri("https://kapi.kakao.com/v2/user/me").headers(h -> h.setBearerAuth(token.get("access_token").asText()))
-                .retrieve().bodyToMono(JsonNode.class).block();
+        JsonNode profile;
+        try {
+            profile = webClient.get().uri("https://kapi.kakao.com/v2/user/me").headers(h -> h.setBearerAuth(token.get("access_token").asText()))
+                    .retrieve().bodyToMono(JsonNode.class).timeout(KAKAO_CALL_TIMEOUT).block();
+        } catch (WebClientResponseException e) {
+            log.warn("Kakao profile request failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
+        } catch (RuntimeException e) {
+            log.warn("Kakao profile request timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 사용자 정보 응답이 지연되고 있습니다.");
+        }
         if (profile == null || profile.get("id") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
         String kakaoId = profile.get("id").asText();
         JsonNode account = profile.path("kakao_account");
@@ -68,6 +93,7 @@ public class AuthService {
                     .isPresent() ? "kakao-" + kakaoId + "@kakao.local" : email;
             return users.save(new User(uniqueEmail, null, nickname, AuthProvider.KAKAO, kakaoId));
         });
+        log.info("Kakao login completed: providerId={}, elapsedMs={}", kakaoId, elapsedMs(startedAt));
         return response(user);
     }
     public String kakaoUrl(String state) {
@@ -81,9 +107,17 @@ public class AuthService {
     public AuthDtos.KakaoConfigStatus kakaoConfigStatus() {
         return new AuthDtos.KakaoConfigStatus(!kakaoClientId.isBlank() && !kakaoRedirectUri.isBlank(), kakaoRedirectUri, kakaoAppRedirectUri);
     }
-    public String kakaoCallbackUri(String code, String state) {
+    public String kakaoCallbackUri(String code, String state, String error, String errorDescription) {
         String destination = isAllowedAppRedirect(state) ? state : kakaoAppRedirectUri;
-        return destination + (destination.contains("?") ? "&" : "?") + "code=" + encode(code);
+        String separator = destination.contains("?") ? "&" : "?";
+        if (error != null && !error.isBlank()) {
+            String result = destination + separator + "error=" + encode(error);
+            if (errorDescription != null && !errorDescription.isBlank()) {
+                result += "&error_description=" + encode(errorDescription);
+            }
+            return result;
+        }
+        return destination + separator + "code=" + encode(code);
     }
     private AuthDtos.AuthResponse response(User user) { return new AuthDtos.AuthResponse(jwt.issue(user), user.getId(), user.getEmail(), user.getNickname()); }
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
@@ -92,4 +126,5 @@ public class AuthService {
         return state != null && (state.startsWith("finsight://auth/kakao") || state.startsWith("exp://"));
     }
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
+    private long elapsedMs(long startedAt) { return (System.nanoTime() - startedAt) / 1_000_000; }
 }

@@ -25,9 +25,16 @@ public class AuthController {
         return auth.kakaoConfigStatus();
     }
     @GetMapping("/kakao/callback")
-    public ResponseEntity<Void> kakaoCallback(@RequestParam String code, @RequestParam(required = false) String state) {
+    public ResponseEntity<Void> kakaoCallback(@RequestParam(required = false) String code,
+                                              @RequestParam(required = false) String state,
+                                              @RequestParam(required = false) String error,
+                                              @RequestParam(name = "error_description", required = false) String errorDescription) {
+        if ((code == null || code.isBlank()) && (error == null || error.isBlank())) {
+            error = "invalid_callback";
+            errorDescription = "카카오 인증 결과가 비어 있습니다.";
+        }
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create(auth.kakaoCallbackUri(code, state)));
+        headers.setLocation(URI.create(auth.kakaoCallbackUri(code, state, error, errorDescription)));
         return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
     }
     @PostMapping("/kakao")
