@@ -48,6 +48,18 @@ docker compose up -d postgres redis
 
 Java 17 또는 21을 사용하세요. 외부 API 키가 없어도 로컬 개발과 화면 시연이 가능하도록 안전한 폴백을 제공합니다. 실제 비밀 값은 `.env`에만 두고 커밋하지 않습니다.
 
+## 테스트와 외부 연동 실패 응답
+
+```bash
+./gradlew test --no-daemon
+```
+
+GitHub Actions runs this command for pull requests and pushes to `main`. The tests use local mocks and do not require Kakao, KIS, ECOS, Redis, database, or paid AI credentials.
+
+- Kakao is not configured: `/api/auth/kakao` returns `503 Service Unavailable`.
+- Kakao rejects the authorization code or profile request: the API returns `502 Bad Gateway`; a stalled Kakao request returns `504 Gateway Timeout`.
+- KIS minute data is unavailable, times out, or returns a non-zero `rt_cd`: the chart endpoint returns fallback candles and sets `fallback: true`.
+
 ## 앞으로의 계획
 
 1. 인증·온보딩 선택값을 사용자 프로필과 연결하고 개인화 조회에 반영
@@ -55,4 +67,3 @@ Java 17 또는 21을 사용하세요. 외부 API 키가 없어도 로컬 개발�
 3. 실제 데이터가 없는 경우를 명확한 빈 상태로 표시하고 목업 데이터와 분리
 4. 테스트 데이터베이스 기반 통합 테스트와 API 성능 측정 추가
 5. AI 서비스의 뉴스 분석 결과와 사용자 피드백을 저장해 학습 데이터로 축적
-
