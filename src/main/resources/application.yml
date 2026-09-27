@@ -28,6 +28,9 @@ finsight:
     # Kakao Developers에 동일한 LAN/운영 URI를 등록하고, 운영 환경에서는 KAKAO_REDIRECT_URI로 덮어쓴다.
     kakao-redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:8080/api/auth/kakao/callback}
     kakao-app-redirect-uri: ${KAKAO_APP_REDIRECT_URI:finsight://auth/kakao}
+    # Ask only for consent items enabled in Kakao Developers. Add account_email
+    # after Kakao grants this app the account_email consent-item permission.
+    kakao-scopes: ${KAKAO_SCOPES:profile_nickname}
     # OAuth state는 허용된 앱 스킴 또는 명시된 로컬 웹 콜백만 통과시킨다.
     kakao-web-redirect-uris: ${KAKAO_WEB_REDIRECT_URIS:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}
   cors:

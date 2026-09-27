@@ -1,6 +1,7 @@
 package com.finsight.news;
 
 import com.finsight.briefing.SentimentHint;
+import java.time.Instant;
 import java.util.List;
 
 public record NewsDetailResponse(
@@ -8,6 +9,7 @@ public record NewsDetailResponse(
         String title,
         String url,
         String source,
+        Instant publishedAt,
         String rawContent,
         String rewrittenBeginner,
         String rewrittenNormal,
@@ -24,6 +26,7 @@ public record NewsDetailResponse(
                 news.getTitle(),
                 news.getUrl(),
                 news.getSource(),
+                news.getPublishedAt(),
                 news.getRawContent(),
                 news.getRewrittenBeginner(),
                 news.getRewrittenNormal(),

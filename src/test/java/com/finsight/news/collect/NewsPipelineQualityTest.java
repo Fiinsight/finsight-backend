@@ -25,4 +25,11 @@ class NewsPipelineQualityTest {
         assertThat(extractor.isUsable("경제 뉴스", "금리와 환율이 올랐습니다.")).isFalse();
         assertThat(extractor.isUsable("반도체 수출", "반도체 수출이 증가했습니다. ".repeat(12))).isTrue();
     }
+
+    @Test
+    void mapsCommonCompanyAliasesToChartSymbols() {
+        NewsSymbolMatcher matcher = new NewsSymbolMatcher();
+        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("005930");
+        assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
+    }
 }

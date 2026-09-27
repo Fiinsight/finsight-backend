@@ -4,10 +4,12 @@ import com.finsight.chart.ChartResponse.CandleView;
 import com.finsight.chart.ChartResponse.NewsMarkerView;
 import com.finsight.external.kis.KisDailyCandle;
 import com.finsight.external.kis.KisDailyCandleClient;
+import com.finsight.external.kis.KisDailyCandleResult;
 import com.finsight.external.kis.KisMinuteCandleClient;
 import com.finsight.external.kis.KisMinuteCandleResult;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
+import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,13 +29,16 @@ public class ChartService {
     private final KisDailyCandleClient kisDailyCandleClient;
     private final KisMinuteCandleClient kisMinuteCandleClient;
     private final NewsRepository newsRepository;
+    private final ArticleContentExtractor articleContentExtractor;
 
     public ChartService(KisDailyCandleClient kisDailyCandleClient,
                         KisMinuteCandleClient kisMinuteCandleClient,
-                        NewsRepository newsRepository) {
+                        NewsRepository newsRepository,
+                        ArticleContentExtractor articleContentExtractor) {
         this.kisDailyCandleClient = kisDailyCandleClient;
         this.kisMinuteCandleClient = kisMinuteCandleClient;
         this.newsRepository = newsRepository;
+        this.articleContentExtractor = articleContentExtractor;
     }
 
     public ChartResponse getChart(String symbol) {
@@ -56,14 +61,15 @@ public class ChartService {
                     .toList();
             double price = minuteCandles.isEmpty() ? 0.0 : minuteCandles.get(minuteCandles.size() - 1).close();
             double changePercent = computeMinuteChangePercent(minuteCandles);
-            return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), null,
+            return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), List.of(), null,
                     "MINUTE", interval, minuteCandles, result.fallback(),
                     result.fallback() ? List.of() : findMoveInsights(symbol, result.candles()));
         }
 
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
         int count = "W".equals(periodDivCode) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT;
-        List<KisDailyCandle> candles = kisDailyCandleClient.getCandles(symbol, count, periodDivCode);
+        KisDailyCandleResult candleResult = kisDailyCandleClient.getCandlesWithStatus(symbol, count, periodDivCode);
+        List<KisDailyCandle> candles = candleResult.candles();
 
         List<CandleView> candleViews = candles.stream()
                 .sorted(Comparator.comparing(KisDailyCandle::date))
@@ -83,6 +89,7 @@ public class ChartService {
             Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
 
             matchedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
+                    .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
                     .sorted(Comparator.comparing(News::getPublishedAt,
                             Comparator.nullsLast(Comparator.reverseOrder())))
                     .toList();
@@ -91,8 +98,9 @@ public class ChartService {
         List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
         ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
 
-        return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
-                periodDivCode, null, List.of(), false, findDailyMoveInsights(candleViews, matchedNews, periodDivCode));
+        return new ChartResponse(symbol, price, changePercent, candleViews, markers, markers, docent,
+                periodDivCode, null, List.of(), candleResult.fallback(),
+                candleResult.fallback() ? List.of() : findDailyMoveInsights(candleViews, matchedNews, periodDivCode));
     }
 
     private List<ChartResponse.MoveInsightView> findDailyMoveInsights(
@@ -139,7 +147,9 @@ public class ChartService {
         List<News> relatedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
                 symbol,
                 startDate.atStartOfDay(KST).toInstant(),
-                endDate.plusDays(1).atStartOfDay(KST).toInstant());
+                endDate.plusDays(1).atStartOfDay(KST).toInstant()).stream()
+                .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
+                .toList();
 
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
         for (int i = 1; i < candles.size(); i++) {
@@ -208,6 +218,6 @@ public class ChartService {
         LocalDate date = news.getPublishedAt() == null
                 ? null
                 : news.getPublishedAt().atZone(KST).toLocalDate();
-        return new NewsMarkerView(date, news.getId(), news.getTitle(), news.getSource());
+        return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource());
     }
 }

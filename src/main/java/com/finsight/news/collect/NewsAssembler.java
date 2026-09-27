@@ -49,6 +49,7 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle()));
         applyRewrite(news, candidate, news.getRawContent());
     }
 

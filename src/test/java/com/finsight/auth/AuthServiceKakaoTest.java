@@ -40,7 +40,7 @@ class AuthServiceKakaoTest {
             AuthDtos.AuthResponse response = auth.kakao("one-time-code");
 
             assertEquals("app-jwt", response.accessToken());
-            assertEquals("kakao-98765@kakao.local", response.email());
+            assertEquals("", response.email());
             assertEquals("Kakao user", response.nickname());
             var tokenRequest = kakao.takeRequest();
             assertEquals("POST", tokenRequest.getMethod());
@@ -50,6 +50,78 @@ class AuthServiceKakaoTest {
             var profileRequest = kakao.takeRequest();
             assertEquals("Bearer mock-kakao-token", profileRequest.getHeader("Authorization"));
         }
+    }
+
+    @Test
+    void persistsConsentedKakaoEmailAndNickname() throws Exception {
+        try (MockWebServer kakao = new MockWebServer()) {
+            kakao.start();
+            kakao.enqueue(json("{\"access_token\":\"mock-kakao-token\"}"));
+            kakao.enqueue(json("""
+                    {"id":12345,"kakao_account":{"email":"person@example.com","profile":{"nickname":"수빈"}}}
+                    """));
+
+            UserRepository users = mock(UserRepository.class);
+            JwtService jwt = mock(JwtService.class);
+            when(jwt.issue(any(User.class))).thenReturn("app-jwt");
+            when(users.findByProviderAndProviderId(AuthProvider.KAKAO, "12345")).thenReturn(Optional.empty());
+            when(users.findByEmail("person@example.com")).thenReturn(Optional.empty());
+            when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            AuthService auth = new AuthService(users, jwt, WebClient.builder(), "client-id", "", "https://app.test/callback",
+                    "finsight://auth/kakao", "http://localhost:8082/auth/kakao",
+                    kakao.url("/oauth/token").toString(), kakao.url("/v2/user/me").toString());
+
+            AuthDtos.AuthResponse response = auth.kakao("one-time-code");
+
+            assertEquals("person@example.com", response.email());
+            assertEquals("수빈", response.nickname());
+            org.mockito.ArgumentCaptor<User> saved = org.mockito.ArgumentCaptor.forClass(User.class);
+            org.mockito.Mockito.verify(users, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+            User persisted = saved.getValue();
+            assertEquals("person@example.com", persisted.getEmail());
+            assertEquals("수빈", persisted.getNickname());
+            assertEquals(AuthProvider.KAKAO, persisted.getProvider());
+            assertEquals("12345", persisted.getProviderId());
+        }
+    }
+
+    @Test
+    void completesLoginWhenOptionalKakaoContactFieldsAreUnavailable() throws Exception {
+        try (MockWebServer kakao = new MockWebServer()) {
+            kakao.start();
+            kakao.enqueue(json("{\"access_token\":\"mock-kakao-token\"}"));
+            kakao.enqueue(json("{\"id\":54321,\"kakao_account\":{}}"));
+
+            UserRepository users = mock(UserRepository.class);
+            JwtService jwt = mock(JwtService.class);
+            when(jwt.issue(any(User.class))).thenReturn("app-jwt");
+            when(users.findByProviderAndProviderId(AuthProvider.KAKAO, "54321")).thenReturn(Optional.empty());
+            when(users.findByEmail("kakao-54321@kakao.local")).thenReturn(Optional.empty());
+            when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            AuthService auth = new AuthService(users, jwt, WebClient.builder(), "client-id", "", "https://app.test/callback",
+                    "finsight://auth/kakao", "http://localhost:8082/auth/kakao",
+                    kakao.url("/oauth/token").toString(), kakao.url("/v2/user/me").toString());
+
+            AuthDtos.AuthResponse response = auth.kakao("one-time-code");
+
+            assertEquals("app-jwt", response.accessToken());
+            assertEquals("", response.email());
+            assertEquals("카카오 사용자", response.nickname());
+        }
+    }
+
+    @Test
+    void requestsOnlyNicknameUntilEmailConsentPermissionIsGranted() {
+        AuthService auth = new AuthService(mock(UserRepository.class), mock(JwtService.class), WebClient.builder(),
+                "client-id", "", "https://app.test/callback", "finsight://auth/kakao", "",
+                "https://kauth.kakao.com/oauth/token", "https://kapi.kakao.com/v2/user/me");
+
+        String authorizationUrl = auth.kakaoUrl(null);
+
+        assertTrue(authorizationUrl.contains("scope=profile_nickname"));
+        assertTrue(!authorizationUrl.contains("account_email"));
     }
 
     @Test

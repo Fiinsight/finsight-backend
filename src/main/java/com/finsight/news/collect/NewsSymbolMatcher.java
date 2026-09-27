@@ -19,7 +19,10 @@ public class NewsSymbolMatcher {
 
     static {
         COMPANY_SYMBOLS.put("삼성전자", "005930");
+        COMPANY_SYMBOLS.put("삼성", "005930");
+        COMPANY_SYMBOLS.put("삼전", "005930");
         COMPANY_SYMBOLS.put("SK하이닉스", "000660");
+        COMPANY_SYMBOLS.put("SK하닉", "000660");
         COMPANY_SYMBOLS.put("네이버", "035420");
         COMPANY_SYMBOLS.put("NAVER", "035420");
         COMPANY_SYMBOLS.put("카카오", "035720");
