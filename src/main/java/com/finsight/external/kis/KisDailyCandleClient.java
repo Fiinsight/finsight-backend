@@ -52,6 +52,7 @@ public class KisDailyCandleClient {
     /**
      * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
      */
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode")
     public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
         return getCandlesWithStatus(stockCode, count, periodDivCode).candles();
     }
