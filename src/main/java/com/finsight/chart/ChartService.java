@@ -9,6 +9,7 @@ import com.finsight.external.kis.KisMinuteCandleClient;
 import com.finsight.external.kis.KisMinuteCandleResult;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
+import com.finsight.briefing.SentimentHint;
 import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -129,7 +130,7 @@ public class ChartService {
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> "관련 뉴스: " + item.getImportanceReason()).orElse(null)
+                    news.map(item -> buildCauseExplanation(item, change)).orElse(null)
             ));
         }
         return insights.stream()
@@ -173,7 +174,7 @@ public class ChartService {
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> "관련 뉴스: " + item.getImportanceReason()).orElse(null)
+                    news.map(item -> buildCauseExplanation(item, change)).orElse(null)
             ));
         }
         return insights.stream()
@@ -185,6 +186,25 @@ public class ChartService {
     private ChartResponse.DocentView buildDocent(News news) {
         String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
         return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
+    }
+
+    private String buildCauseExplanation(News news, double changePercent) {
+        SentimentHint sentiment = news.getSentimentHint();
+        boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
+                || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
+        if (directionMatches) {
+            return "가능성 높은 원인(규칙 기반): " + news.getTitle()
+                    + ". 근거: " + firstNonBlank(news.getImportanceReason(), "뉴스 방향과 주가 방향이 일치합니다.")
+                    + " 신뢰도: 중간";
+        }
+        if (sentiment == SentimentHint.NEUTRAL) {
+            return "관련 뉴스는 확인됐지만 방향성 근거가 부족해 원인으로 단정하지 않습니다.";
+        }
+        return "관련 뉴스는 확인됐지만 뉴스 방향과 주가 방향이 달라 직접 원인으로 보기 어렵습니다.";
+    }
+
+    private String firstNonBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     // % change vs the previous trading day's close — this was previously
