@@ -31,17 +31,16 @@ class ExternalClientCacheTest {
     }
 
     @Test
-    void doesNotCacheFallbackResponses() throws Exception {
+    void cachesFallbackResponsesToAvoidRepeatedProviderCalls() throws Exception {
         try (MockWebServer server = new MockWebServer()) {
             server.start();
-            server.enqueue(json("{}"));
             server.enqueue(json("{}"));
             try (var context = context(server)) {
                 NaverFxClient client = context.getBean(NaverFxClient.class);
 
                 assertEquals(true, client.getUsdKrwRate().fallback());
                 assertEquals(true, client.getUsdKrwRate().fallback());
-                assertEquals(2, server.getRequestCount());
+                assertEquals(1, server.getRequestCount());
             }
         }
     }

@@ -53,12 +53,12 @@ public class KisDailyCandleClient {
     /**
      * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
      */
-    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode")
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
     public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
         return getCandlesWithStatus(stockCode, count, periodDivCode).candles();
     }
 
-    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode")
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
     public KisDailyCandleResult getCandlesWithStatus(String stockCode, int count, String periodDivCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
