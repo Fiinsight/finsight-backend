@@ -22,7 +22,7 @@ public class KisStockQuoteClient {
 
     private static final String STOCK_QUOTE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String STOCK_QUOTE_TR_ID = "FHKST01010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;

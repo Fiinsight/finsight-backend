@@ -41,8 +41,10 @@ class NewsPipelineQualityTest {
     @Test
     void mapsCommonCompanyAliasesToChartSymbols() {
         NewsSymbolMatcher matcher = new NewsSymbolMatcher();
-        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("005930");
+        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isNull();
+        assertThat(matcher.match("삼성전기 AI 기판 투자 확대")).isEqualTo("009150");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
+        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isEqualTo("009150");
     }
 
     @Test

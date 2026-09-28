@@ -11,6 +11,7 @@ import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import com.finsight.briefing.SentimentHint;
 import com.finsight.news.collect.ArticleContentExtractor;
+import com.finsight.news.collect.NewsSymbolMatcher;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -18,6 +19,8 @@ import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Optional;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,15 +38,18 @@ public class ChartService {
     private final KisMinuteCandleClient kisMinuteCandleClient;
     private final NewsRepository newsRepository;
     private final ArticleContentExtractor articleContentExtractor;
+    private final NewsSymbolMatcher newsSymbolMatcher;
 
     public ChartService(KisDailyCandleClient kisDailyCandleClient,
                         KisMinuteCandleClient kisMinuteCandleClient,
                         NewsRepository newsRepository,
-                        ArticleContentExtractor articleContentExtractor) {
+                        ArticleContentExtractor articleContentExtractor,
+                        NewsSymbolMatcher newsSymbolMatcher) {
         this.kisDailyCandleClient = kisDailyCandleClient;
         this.kisMinuteCandleClient = kisMinuteCandleClient;
         this.newsRepository = newsRepository;
         this.articleContentExtractor = articleContentExtractor;
+        this.newsSymbolMatcher = newsSymbolMatcher;
     }
 
     public ChartResponse getChart(String symbol) {
@@ -93,7 +99,7 @@ public class ChartService {
             Instant start = startDate.atStartOfDay(KST).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
 
-            matchedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
+            matchedNews = findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
                     .sorted(Comparator.comparing(News::getPublishedAt,
                             Comparator.nullsLast(Comparator.reverseOrder())))
@@ -122,20 +128,27 @@ public class ChartService {
             if (Math.abs(change) < threshold) {
                 continue;
             }
-            LocalDate windowEnd = "W".equals(period) ? current.date().plusDays(7) : current.date().plusDays(1);
-            var news = relatedNews.stream()
+            LocalDate windowStart = "W".equals(period) ? previous.date() : current.date();
+            Instant windowStartInstant = windowStart.atStartOfDay(KST).toInstant();
+            Instant windowEndInstant = "W".equals(period)
+                    ? current.date().atTime(15, 30).atZone(KST).toInstant()
+                    : current.date().plusDays(1).atStartOfDay(KST).toInstant();
+            List<News> windowNews = relatedNews.stream()
                     .filter(item -> item.getPublishedAt() != null
-                            && !item.getPublishedAt().atZone(KST).toLocalDate().isBefore(current.date())
-                            && item.getPublishedAt().atZone(KST).toLocalDate().isBefore(windowEnd))
-                    .findFirst();
+                            && !item.getPublishedAt().isBefore(windowStartInstant)
+                            && !item.getPublishedAt().isAfter(windowEndInstant))
+                    .toList();
+            Optional<News> news = windowNews.stream()
+                    .max(Comparator.comparingDouble(item -> causeScore(item, change)));
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
+            String explanation = news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null);
             insights.add(new ChartResponse.MoveInsightView(
                     current.date().atStartOfDay(),
                     Math.round(change * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null),
+                    explanation,
                     causeScore
             ));
             log.info("Move cause assessment: date={}, change={}%, newsId={}, score={}",
@@ -153,7 +166,7 @@ public class ChartService {
         }
         LocalDate startDate = candles.get(0).timestamp().toLocalDate();
         LocalDate endDate = candles.get(candles.size() - 1).timestamp().toLocalDate();
-        List<News> relatedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
+        List<News> relatedNews = findRelatedNews(
                 symbol,
                 startDate.atStartOfDay(KST).toInstant(),
                 endDate.plusDays(1).atStartOfDay(KST).toInstant()).stream()
@@ -172,18 +185,22 @@ public class ChartService {
                 continue;
             }
             LocalDate currentDate = current.timestamp().toLocalDate();
-            var news = relatedNews.stream()
+            List<News> windowNews = relatedNews.stream()
                     .filter(item -> item.getPublishedAt() != null
-                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate))
-                    .findFirst();
+                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate)
+                            && !item.getPublishedAt().isAfter(current.timestamp().atZone(KST).toInstant()))
+                    .toList();
+            Optional<News> news = windowNews.stream()
+                    .max(Comparator.comparingDouble(item -> causeScore(item, change)));
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
+            String explanation = news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null);
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),
                     Math.round(change * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null),
+                    explanation,
                     causeScore
             ));
             log.info("Move cause assessment: timestamp={}, change={}%, newsId={}, score={}",
@@ -205,6 +222,9 @@ public class ChartService {
         boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
                 || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
         if (directionMatches) {
+            if (news.getRelatedSymbol() != null && news.getRelatedSymbol().startsWith("KOS")) {
+                return "시장 방향과 변동 시점이 겹치는 관련 뉴스입니다. 개별 종목의 직접 원인으로 단정하지 않습니다.";
+            }
             return "가능성 높은 원인(규칙 기반): " + news.getTitle()
                     + ". 근거: " + firstNonBlank(news.getImportanceReason(), "뉴스 방향과 주가 방향이 일치합니다.")
                     + " 신뢰도: " + Math.round(causeScore * 100.0) + "%";
@@ -219,12 +239,15 @@ public class ChartService {
         if (news.getSentimentHint() == null) {
             return 0.0;
         }
+        boolean marketNews = news.getRelatedSymbol() != null && news.getRelatedSymbol().startsWith("KOS");
         boolean directionMatches = (changePercent > 0 && news.getSentimentHint() == SentimentHint.POSITIVE)
                 || (changePercent < 0 && news.getSentimentHint() == SentimentHint.NEGATIVE);
         if (directionMatches) {
-            return 0.8; // date + symbol match are already guaranteed by the query
+            return marketNews ? 0.6 : 0.8;
         }
-        return news.getSentimentHint() == SentimentHint.NEUTRAL ? 0.4 : 0.1;
+        return news.getSentimentHint() == SentimentHint.NEUTRAL
+                ? (marketNews ? 0.3 : 0.4)
+                : 0.1;
     }
 
     private String firstNonBlank(String value, String fallback) {
@@ -263,5 +286,16 @@ public class ChartService {
                 ? null
                 : news.getPublishedAt().atZone(KST).toLocalDate();
         return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource());
+    }
+
+    private List<News> findRelatedNews(String symbol, Instant start, Instant end) {
+        Stream<News> exact = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream();
+        if (symbol.startsWith("KOS")) {
+            return exact.toList();
+        }
+        Stream<News> market = newsRepository.findByRelatedSymbolAndPublishedAtBetween("KOSPI", start, end).stream();
+        Stream<News> textMatched = newsRepository.findByPublishedAtBetween(start, end).stream()
+                .filter(news -> symbol.equals(newsSymbolMatcher.match(news.getTitle(), news.getRawContent())));
+        return Stream.concat(Stream.concat(exact, market), textMatched).distinct().toList();
     }
 }

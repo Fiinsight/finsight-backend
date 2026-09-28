@@ -118,9 +118,8 @@ public class NewsCollectionScheduler {
     public int reprocessExisting(int limit) {
         int updated = 0;
         for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
-            if (updated >= limit || news.getRawContent() == null || news.getRawContent().isBlank()) break;
-            String rewritten = news.getRewrittenNormal();
-            if (rewritten != null && !rewritten.equals(news.getRawContent()) && !rewritten.contains("Google 검색")) continue;
+            if (updated >= limit) break;
+            if (news.getRawContent() == null || news.getRawContent().isBlank()) continue;
             newsAssembler.reprocess(news);
             newsRepository.save(news);
             updated++;

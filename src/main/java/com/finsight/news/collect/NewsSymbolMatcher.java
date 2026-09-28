@@ -19,8 +19,7 @@ public class NewsSymbolMatcher {
 
     static {
         COMPANY_SYMBOLS.put("삼성전자", "005930");
-        COMPANY_SYMBOLS.put("삼성", "005930");
-        COMPANY_SYMBOLS.put("삼전", "005930");
+        COMPANY_SYMBOLS.put("삼성전기", "009150");
         COMPANY_SYMBOLS.put("SK하이닉스", "000660");
         COMPANY_SYMBOLS.put("SK하닉", "000660");
         COMPANY_SYMBOLS.put("네이버", "035420");
@@ -37,15 +36,23 @@ public class NewsSymbolMatcher {
     }
 
     public String match(String title) {
+        return match(title, "");
+    }
+
+    public String match(String title, String content) {
+        String text = (title == null ? "" : title) + " " + (content == null ? "" : content);
+        if (text.contains("삼전닉스") || text.contains("삼성·SK하닉")) {
+            return text.contains("코스피") ? "KOSPI" : null;
+        }
         for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
-            if (title.contains(entry.getKey())) {
+            if (text.contains(entry.getKey())) {
                 return entry.getValue();
             }
         }
-        if (title.contains("코스닥")) {
+        if (text.contains("코스닥")) {
             return "KOSDAQ";
         }
-        if (title.contains("코스피") || title.contains("증시") || title.contains("주가")) {
+        if (text.contains("코스피") || text.contains("증시") || text.contains("주가")) {
             return "KOSPI";
         }
         // No identifiable single symbol/index — leave null rather than guessing.

@@ -27,7 +27,7 @@ public class KisDailyCandleClient {
 
     private static final String DAILY_CANDLE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_CANDLE_TR_ID = "FHKST03010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;

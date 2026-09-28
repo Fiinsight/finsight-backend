@@ -6,7 +6,6 @@ import com.finsight.external.kis.KisStockQuote;
 import com.finsight.external.kis.KisStockQuoteClient;
 import com.finsight.news.News;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -16,8 +15,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * Once a day, after the Korean market closes, looks back at judgements made
- * more than a day ago that don't have feedback yet, figures out what
+ * Once a day, after the Korean market closes, looks back at judgements that
+ * don't have feedback yet, figures out what
  * actually happened to the related symbol, and stores an explanatory
  * feedback message on the judgement.
  */
@@ -43,8 +42,7 @@ public class FeedbackScheduler {
     // Weekdays, shortly after the KRX market close (~15:30 KST).
     @Scheduled(cron = "0 40 15 * * MON-FRI")
     public void generatePendingFeedback() {
-        Instant cutoff = Instant.now().minus(1, ChronoUnit.DAYS);
-        process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(cutoff));
+        process(judgementRepository.findByFeedbackGeneratedAtIsNull());
     }
 
     /**
@@ -84,6 +82,9 @@ public class FeedbackScheduler {
         Double actualChangePercent;
         if (StringUtils.hasText(symbol)) {
             KisStockQuote quote = kisStockQuoteClient.getStockQuote(symbol);
+            if (quote.fallback()) {
+                throw new IllegalStateException("실제 시세를 확인하지 못했습니다: " + symbol);
+            }
             actualChangePercent = quote.changePercent();
             actualDirection = classifyDirection(quote.changePercent());
         } else {

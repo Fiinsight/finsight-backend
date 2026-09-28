@@ -19,4 +19,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
 
     List<News> findByRelatedSymbolAndPublishedAtBetween(String relatedSymbol, Instant start, Instant end);
 
+    List<News> findByPublishedAtBetween(Instant start, Instant end);
+
 }
