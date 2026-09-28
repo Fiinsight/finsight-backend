@@ -39,5 +39,7 @@ class NewsPipelineQualityTest {
         assertThat(classifier.classify("원달러 환율 변동성 확대")).isEqualTo("환율·원자재");
         assertThat(classifier.classify("반도체 수출 회복세")).isEqualTo("산업·기술");
         assertThat(classifier.classify("코스피 장 마감 상승")).isEqualTo("국내증시");
+        assertThat(classifier.importanceReason("원달러 환율 변동성 확대", "경제 지표 및 시장 동향과 관련된 뉴스입니다."))
+                .contains("환율과 원자재");
     }
 }

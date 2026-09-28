@@ -88,7 +88,7 @@ public class BriefingService {
                 news.getId(),
                 news.getTitle(),
                 summary,
-                news.getImportanceReason(),
+                newsCategoryClassifier.importanceReason(news.getTitle(), news.getImportanceReason()),
                 news.getRelatedSymbol(),
                 newsCategoryClassifier.classify(news.getTitle()),
                 news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL

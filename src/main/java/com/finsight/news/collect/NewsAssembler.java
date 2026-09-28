@@ -23,8 +23,6 @@ public class NewsAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsAssembler.class);
 
-    private static final String FALLBACK_IMPORTANCE_REASON = "경제 지표 및 시장 동향과 관련된 뉴스입니다.";
-
     private final AiServiceClient aiServiceClient;
     private final NewsCategoryClassifier newsCategoryClassifier;
     private final NewsSymbolMatcher newsSymbolMatcher;
@@ -65,7 +63,7 @@ public class NewsAssembler {
         news.setRewrittenNormal(normal.summary());
         news.setRewrittenAnalyst(analyst.summary());
         news.setImportanceReason(firstNonBlank(normal.importanceReason(), beginner.importanceReason(), analyst.importanceReason())
-                .orElse(FALLBACK_IMPORTANCE_REASON));
+                .orElse(newsCategoryClassifier.importanceReason(candidate.title(), null)));
         news.setKeyTerms(mergeTerms(beginner.detectedTerms(), normal.detectedTerms(), analyst.detectedTerms()));
     }
 
