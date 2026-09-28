@@ -62,7 +62,16 @@ public class KisTokenProvider {
         }
     }
 
-    private Optional<String> issueAndCacheToken() {
+    private synchronized Optional<String> issueAndCacheToken() {
+        try {
+            String cached = redisTemplate.opsForValue().get(REDIS_TOKEN_KEY);
+            if (StringUtils.hasText(cached)) {
+                return Optional.of(cached);
+            }
+        } catch (Exception e) {
+            log.warn("KIS token cache recheck failed, continuing with token issuance: {}", e.getMessage());
+        }
+
         Map<String, String> body = Map.of(
                 "grant_type", "client_credentials",
                 "appkey", appKey,

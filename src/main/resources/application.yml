@@ -33,6 +33,8 @@ finsight:
     kakao-scopes: ${KAKAO_SCOPES:profile_nickname}
     # OAuth state는 허용된 앱 스킴 또는 명시된 로컬 웹 콜백만 통과시킨다.
     kakao-web-redirect-uris: ${KAKAO_WEB_REDIRECT_URIS:http://localhost:8081/auth/kakao,http://localhost:8082/auth/kakao,http://127.0.0.1:8081/auth/kakao,http://127.0.0.1:8082/auth/kakao}
+  security:
+    public-api-docs: ${FINSIGHT_PUBLIC_API_DOCS:true}
   cors:
     # Development web builds run on localhost on desktop and private LAN IPs on phones.
     # Production overrides this with FRONTEND_ORIGIN in application-prod.yml.

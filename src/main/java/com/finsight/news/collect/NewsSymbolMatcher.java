@@ -1,7 +1,9 @@
 package com.finsight.news.collect;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,7 +21,8 @@ public class NewsSymbolMatcher {
 
     static {
         COMPANY_SYMBOLS.put("삼성전자", "005930");
-        COMPANY_SYMBOLS.put("삼성", "005930");
+        COMPANY_SYMBOLS.put("삼성전기", "009150");
+        COMPANY_SYMBOLS.put("삼성바이오로직스", "207940");
         COMPANY_SYMBOLS.put("삼전", "005930");
         COMPANY_SYMBOLS.put("SK하이닉스", "000660");
         COMPANY_SYMBOLS.put("SK하닉", "000660");
@@ -29,7 +32,6 @@ public class NewsSymbolMatcher {
         COMPANY_SYMBOLS.put("LG에너지솔루션", "373220");
         COMPANY_SYMBOLS.put("현대차", "005380");
         COMPANY_SYMBOLS.put("기아", "000270");
-        COMPANY_SYMBOLS.put("삼성바이오로직스", "207940");
         COMPANY_SYMBOLS.put("LG화학", "051910");
         COMPANY_SYMBOLS.put("셀트리온", "068270");
         COMPANY_SYMBOLS.put("POSCO홀딩스", "005490");
@@ -37,10 +39,20 @@ public class NewsSymbolMatcher {
     }
 
     public String match(String title) {
+        if (title == null || title.isBlank()) {
+            return null;
+        }
+        Set<String> matchedSymbols = new LinkedHashSet<>();
         for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
             if (title.contains(entry.getKey())) {
-                return entry.getValue();
+                matchedSymbols.add(entry.getValue());
             }
+        }
+        // A single-symbol field cannot truthfully represent headlines that
+        // mention multiple companies; leaving it empty is safer than linking
+        // both companies' news to whichever alias happened to be first.
+        if (matchedSymbols.size() == 1) {
+            return matchedSymbols.iterator().next();
         }
         if (title.contains("코스닥")) {
             return "KOSDAQ";

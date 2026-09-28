@@ -16,5 +16,9 @@ server:
   forward-headers-strategy: framework
 
 finsight:
+  auth:
+    jwt-secret: ${JWT_SECRET}
+  security:
+    public-api-docs: false
   cors:
-    allowed-origin-patterns: ${FRONTEND_ORIGIN:http://localhost:*,http://127.0.0.1:*}
+    allowed-origin-patterns: ${FRONTEND_ORIGIN}

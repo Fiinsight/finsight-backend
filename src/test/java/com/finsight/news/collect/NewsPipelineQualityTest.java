@@ -2,6 +2,9 @@ package com.finsight.news.collect;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.finsight.briefing.SentimentHint;
+import com.finsight.news.News;
+import com.finsight.news.NewsDetailResponse;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -27,10 +30,45 @@ class NewsPipelineQualityTest {
     }
 
     @Test
+    void cleansPublisherChromeAndDuplicatedHeadline() {
+        ArticleContentExtractor extractor = new ArticleContentExtractor();
+        String cleaned = extractor.clean(
+                "원화값 강세에도 순항",
+                "원화값 강세에도 순항. Google 검색에서 매일경제 기사를 더 자주 볼 수 있습니다. 반도체 수요가 늘었습니다.");
+
+        assertThat(cleaned).doesNotContain("Google 검색", "더 자주 볼 수 있습니다");
+        assertThat(cleaned).doesNotContain("원화값 강세에도 순항");
+        assertThat(cleaned).contains("반도체 수요가 늘었습니다");
+    }
+
+    @Test
+    void detailDoesNotExposeStalePublisherChromeFromExistingRows() {
+        News news = new News("반도체 수출 증가", "https://example.com/news", "테스트", Instant.now(),
+                "반도체 수출 증가. Google 검색에서 매일경제 기사를 더 자주 볼 수 있습니다. 반도체 수요가 늘었습니다. ".repeat(8));
+        news.setRewrittenBeginner("Google 검색에서 매일경제 기사를 더 자주 볼 수 있습니다.");
+
+        NewsDetailResponse response = NewsDetailResponse.from(news, new NewsCategoryClassifier(), new ArticleContentExtractor());
+
+        assertThat(response.rawContent()).doesNotContain("Google 검색", "더 자주 볼 수 있습니다");
+        assertThat(response.rewrittenBeginner()).isEqualTo(response.rawContent());
+    }
+
+    @Test
     void mapsCommonCompanyAliasesToChartSymbols() {
         NewsSymbolMatcher matcher = new NewsSymbolMatcher();
-        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("005930");
+        assertThat(matcher.match("삼성전자 실적 전망 상향")).isEqualTo("005930");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
+        assertThat(matcher.match("삼성전자·SK하닉 실적 전망")).isNull();
+        assertThat(matcher.match("삼성전기 AI 부품 수요 확대")).isEqualTo("009150");
+        assertThat(matcher.match("삼성바이오로직스 실적 개선")).isEqualTo("207940");
+    }
+
+    @Test
+    void doesNotTreatRateRisesAsMarketPositive() {
+        NewsSentimentClassifier classifier = new NewsSentimentClassifier();
+        assertThat(classifier.classify("美 금리 급등에 국고채 금리 상승")).isEqualTo(SentimentHint.NEGATIVE);
+        assertThat(classifier.classify("금리 인하 기대에 성장주 강세")).isEqualTo(SentimentHint.POSITIVE);
+        assertThat(classifier.classify("원달러 환율 변동성 확대")).isEqualTo(SentimentHint.NEUTRAL);
     }
 
     @Test

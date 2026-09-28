@@ -2,6 +2,7 @@ package com.finsight.news;
 
 import com.finsight.briefing.SentimentHint;
 import com.finsight.news.collect.NewsCategoryClassifier;
+import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.util.List;
 
@@ -21,23 +22,36 @@ public record NewsDetailResponse(
         String category,
         List<String> keyTerms
 ) {
-    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier) {
+    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
+                                          ArticleContentExtractor contentExtractor) {
+        String rawContent = contentExtractor.clean(news.getTitle(), news.getRawContent());
+        String beginner = replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
+        String normal = replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
+        String analyst = replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
                 news.getUrl(),
                 news.getSource(),
                 news.getPublishedAt(),
-                news.getRawContent(),
-                news.getRewrittenBeginner(),
-                news.getRewrittenNormal(),
-                news.getRewrittenAnalyst(),
-                categoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
+                rawContent,
+                beginner,
+                normal,
+                analyst,
+                categoryClassifier.importanceReason(news.getTitle(), rawContent, news.getImportanceReason(),
                         news.getRelatedSymbol()),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle()),
                 news.getKeyTerms()
         );
+    }
+
+    private static String replaceStaleRewrite(String rewrite, String cleanedContent) {
+        if (rewrite == null) {
+            return null;
+        }
+        return rewrite.contains("Google 검색") || rewrite.contains("더 자주 볼 수 있습니다")
+                ? cleanedContent : rewrite;
     }
 }

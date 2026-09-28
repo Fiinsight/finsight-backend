@@ -25,6 +25,19 @@ public class NewsSentimentClassifier {
     );
 
     public SentimentHint classify(String title) {
+        if (title == null || title.isBlank()) {
+            return SentimentHint.NEUTRAL;
+        }
+        SentimentHint rateDirection = classifyRateDirection(title);
+        if (rateDirection != null) {
+            return rateDirection;
+        }
+        // Exchange-rate moves have opposite effects on exporters and importers.
+        // Without an explicit beneficiary, avoid presenting a market-wide
+        // direction that the title cannot support.
+        if (title.contains("환율") && !(title.contains("수출") || title.contains("수입"))) {
+            return SentimentHint.NEUTRAL;
+        }
         int score = countHits(title, POSITIVE_KEYWORDS) - countHits(title, NEGATIVE_KEYWORDS);
         if (score > 0) {
             return SentimentHint.POSITIVE;
@@ -33,6 +46,29 @@ public class NewsSentimentClassifier {
             return SentimentHint.NEGATIVE;
         }
         return SentimentHint.NEUTRAL;
+    }
+
+    private SentimentHint classifyRateDirection(String title) {
+        boolean rateTopic = title.contains("금리") || title.contains("국채")
+                || title.contains("채권") || title.contains("수익률");
+        if (!rateTopic) {
+            return null;
+        }
+        boolean rises = title.contains("금리 상승") || title.contains("금리 급등")
+                || title.contains("금리 인상") || title.contains("국채금리 상승")
+                || title.contains("국채 금리 상승") || title.contains("수익률 상승")
+                || title.contains("수익률 급등");
+        boolean falls = title.contains("금리 하락") || title.contains("금리 급락")
+                || title.contains("금리 인하") || title.contains("국채금리 하락")
+                || title.contains("국채 금리 하락") || title.contains("수익률 하락")
+                || title.contains("수익률 급락");
+        if (rises && !falls) {
+            return SentimentHint.NEGATIVE;
+        }
+        if (falls && !rises) {
+            return SentimentHint.POSITIVE;
+        }
+        return null;
     }
 
     private int countHits(String title, List<String> keywords) {

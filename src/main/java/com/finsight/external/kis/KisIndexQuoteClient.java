@@ -40,7 +40,7 @@ public class KisIndexQuoteClient {
         this.appSecret = appSecret;
     }
 
-    @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", unless = "#result == null || #result.fallback()")
+    @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", sync = true)
     public KisIndexQuote getIndexQuote(String indexCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();

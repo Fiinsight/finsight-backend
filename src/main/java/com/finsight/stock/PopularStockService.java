@@ -49,7 +49,7 @@ public class PopularStockService {
         this.kisStockQuoteClient = kisStockQuoteClient;
     }
 
-    @Cacheable(cacheNames = "popularStockQuotes", key = "'all'")
+    @Cacheable(cacheNames = "popularStockQuotes", key = "'all'", sync = true)
     public List<PopularStockView> getPopularStocks() {
         return POPULAR_SYMBOLS.entrySet().stream()
                 .map(entry -> {
