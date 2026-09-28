@@ -118,10 +118,17 @@ public class NewsCollectionScheduler {
     public int reprocessExisting(int limit) {
         int updated = 0;
         for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
-            if (updated >= limit || news.getRawContent() == null || news.getRawContent().isBlank()) break;
+            if (updated >= limit) break;
+            newsAssembler.refreshMetadata(news);
+            if (news.getRawContent() == null || news.getRawContent().isBlank()) {
+                newsRepository.save(news);
+                updated++;
+                continue;
+            }
             String rewritten = news.getRewrittenNormal();
-            if (rewritten != null && !rewritten.equals(news.getRawContent()) && !rewritten.contains("Google 검색")) continue;
-            newsAssembler.reprocess(news);
+            if (rewritten == null || rewritten.equals(news.getRawContent()) || rewritten.contains("Google 검색")) {
+                newsAssembler.reprocess(news);
+            }
             newsRepository.save(news);
             updated++;
         }
