@@ -4,6 +4,7 @@ import com.finsight.external.kis.KisStockQuote;
 import com.finsight.external.kis.KisStockQuoteClient;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -16,8 +17,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class PopularStockService {
 
-    // Same 5 symbols the frontend previously hardcoded as sample data.
+    // Keep this local catalog separate from quote fetching so search never calls KIS.
     private static final Map<String, String> SYMBOLS = new LinkedHashMap<>();
+    private static final Map<String, String> POPULAR_SYMBOLS = new LinkedHashMap<>();
+    private static final Map<String, String> ALIASES = Map.of(
+            "삼전", "005930",
+            "삼성", "005930",
+            "SK하닉", "000660",
+            "네이버", "035420",
+            "포스코홀딩스", "005490"
+    );
 
     static {
         SYMBOLS.put("005930", "삼성전자");
@@ -25,6 +34,13 @@ public class PopularStockService {
         SYMBOLS.put("035420", "NAVER");
         SYMBOLS.put("035720", "카카오");
         SYMBOLS.put("373220", "LG에너지솔루션");
+        POPULAR_SYMBOLS.putAll(SYMBOLS);
+        SYMBOLS.put("005380", "현대차");
+        SYMBOLS.put("000270", "기아");
+        SYMBOLS.put("207940", "삼성바이오로직스");
+        SYMBOLS.put("051910", "LG화학");
+        SYMBOLS.put("068270", "셀트리온");
+        SYMBOLS.put("005490", "POSCO홀딩스");
     }
 
     private final KisStockQuoteClient kisStockQuoteClient;
@@ -35,7 +51,7 @@ public class PopularStockService {
 
     @Cacheable(cacheNames = "popularStockQuotes", key = "'all'")
     public List<PopularStockView> getPopularStocks() {
-        return SYMBOLS.entrySet().stream()
+        return POPULAR_SYMBOLS.entrySet().stream()
                 .map(entry -> {
                     KisStockQuote quote = kisStockQuoteClient.getStockQuote(entry.getKey());
                     // KIS's 모의투자 tier throttles hard on back-to-back calls (see
@@ -44,6 +60,21 @@ public class PopularStockService {
                     sleepBetweenKisCalls();
                     return new PopularStockView(entry.getKey(), entry.getValue(), quote.currentPrice(), quote.changePercent(), quote.fallback());
                 })
+                .toList();
+    }
+
+    public List<StockSearchView> search(String query) {
+        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        return SYMBOLS.entrySet().stream()
+                .filter(entry -> entry.getKey().contains(normalized)
+                        || entry.getValue().toLowerCase(Locale.ROOT).contains(normalized)
+                        || ALIASES.entrySet().stream().anyMatch(alias -> alias.getValue().equals(entry.getKey())
+                                && alias.getKey().toLowerCase(Locale.ROOT).contains(normalized)))
+                .map(entry -> new StockSearchView(entry.getKey(), entry.getValue()))
+                .limit(10)
                 .toList();
     }
 
