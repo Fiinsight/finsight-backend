@@ -40,7 +40,7 @@ public class KisStockQuoteClient {
         this.appSecret = appSecret;
     }
 
-    @Cacheable(cacheNames = "kisStockQuotes", key = "#stockCode", unless = "#result == null || #result.fallback()")
+    @Cacheable(cacheNames = "kisStockQuotes", key = "#stockCode", sync = true)
     public KisStockQuote getStockQuote(String stockCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();

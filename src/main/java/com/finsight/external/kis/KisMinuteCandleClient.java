@@ -56,8 +56,7 @@ public class KisMinuteCandleClient {
         return getCandlesWithStatus(stockCode, intervalMinutes, count).candles();
     }
 
-    @Cacheable(cacheNames = "kisMinuteCandles", key = "#stockCode + ':' + #intervalMinutes + ':' + #count",
-            unless = "#result == null || #result.fallback()")
+    @Cacheable(cacheNames = "kisMinuteCandles", key = "#stockCode + ':' + #intervalMinutes + ':' + #count", sync = true)
     public KisMinuteCandleResult getCandlesWithStatus(String stockCode, int intervalMinutes, int count) {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
