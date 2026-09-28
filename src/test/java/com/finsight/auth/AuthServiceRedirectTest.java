@@ -50,4 +50,14 @@ class AuthServiceRedirectTest {
                 "finsight://auth/kakao?code=abc",
                 auth.kakaoCallbackUri("abc", "https://attacker.example/auth/kakao", null, null));
     }
+
+    @Test
+    void acceptsExpoGoCallbackPathButRejectsArbitraryExpoRedirect() {
+        assertEquals(
+                "exp://172.30.1.47:8081/--/auth/kakao?code=abc",
+                auth.kakaoCallbackUri("abc", "exp://172.30.1.47:8081/--/auth/kakao", null, null));
+        assertEquals(
+                "finsight://auth/kakao?code=abc",
+                auth.kakaoCallbackUri("abc", "exp://attacker.example/--/other", null, null));
+    }
 }

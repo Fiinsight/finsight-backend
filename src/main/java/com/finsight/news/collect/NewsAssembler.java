@@ -50,7 +50,9 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
+        news.setCategory(newsCategoryClassifier.classify(news.getTitle()));
         news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle()));
+        news.setSentimentHint(newsSentimentClassifier.classify(news.getTitle()));
         String cleanedContent = articleContentExtractor.clean(news.getTitle(), news.getRawContent());
         news.setRawContent(cleanedContent);
         applyRewrite(news, candidate, cleanedContent);
