@@ -1,6 +1,7 @@
 package com.finsight.news.collect;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.List;
 import org.jsoup.Jsoup;
@@ -36,7 +37,8 @@ public class ArticleContentExtractor {
             if (!StringUtils.hasText(text)) {
                 text = extractFromParagraphs(doc);
             }
-            return StringUtils.hasText(text) ? Optional.of(text) : Optional.empty();
+            String cleaned = clean("", text);
+            return StringUtils.hasText(cleaned) ? Optional.of(cleaned) : Optional.empty();
         } catch (Exception e) {
             log.warn("Failed to extract article body from {}: {}", url, e.getMessage());
             return Optional.empty();
@@ -54,10 +56,35 @@ public class ArticleContentExtractor {
             "Google 검색", "검색어를 입력", "개인정보처리방침", "로그인 후", "쿠키 설정");
 
     public boolean isUsable(String title, String body) {
-        if (!StringUtils.hasText(body) || body.length() < 120) return false;
-        String combined = (title + " " + body).toLowerCase();
-        if (PAGE_CHROME.stream().anyMatch(combined::contains)) return false;
+        String cleaned = clean(title, body);
+        if (!StringUtils.hasText(cleaned) || cleaned.length() < 120) return false;
+        String combined = (title + " " + cleaned).toLowerCase();
         return ECONOMIC_TERMS.stream().anyMatch(combined::contains);
+    }
+
+    /** Remove publisher search/SEO chrome and a duplicated headline before rewriting. */
+    public String clean(String title, String body) {
+        if (!StringUtils.hasText(body)) {
+            return "";
+        }
+        String titleKey = compact(title);
+        String[] parts = body.replace('\r', '\n').split("(?<=[.!?。！？])\\s+|\\n+");
+        List<String> cleaned = new ArrayList<>();
+        for (String part : parts) {
+            String item = part.trim().replaceAll("\\s+", " ");
+            if (item.isBlank() || PAGE_CHROME.stream().anyMatch(item::contains)) {
+                continue;
+            }
+            if (!titleKey.isBlank() && compact(item).equals(titleKey)) {
+                continue;
+            }
+            cleaned.add(item);
+        }
+        return String.join(" ", cleaned).trim();
+    }
+
+    private String compact(String value) {
+        return value == null ? "" : value.replaceAll("[^0-9A-Za-z가-힣]", "").toLowerCase();
     }
 
     private String extractFromArticleTag(Document doc) {

@@ -27,6 +27,18 @@ class NewsPipelineQualityTest {
     }
 
     @Test
+    void cleansPublisherChromeAndDuplicatedHeadline() {
+        ArticleContentExtractor extractor = new ArticleContentExtractor();
+        String cleaned = extractor.clean(
+                "원화값 강세에도 순항",
+                "원화값 강세에도 순항. Google 검색에서 매일경제 기사를 더 자주 볼 수 있습니다. 반도체 수요가 늘었습니다.");
+
+        assertThat(cleaned).doesNotContain("Google 검색", "더 자주 볼 수 있습니다");
+        assertThat(cleaned).doesNotContain("원화값 강세에도 순항");
+        assertThat(cleaned).contains("반도체 수요가 늘었습니다");
+    }
+
+    @Test
     void mapsCommonCompanyAliasesToChartSymbols() {
         NewsSymbolMatcher matcher = new NewsSymbolMatcher();
         assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("005930");
