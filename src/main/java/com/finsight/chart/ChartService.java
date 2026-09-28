@@ -19,9 +19,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.ArrayList;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class ChartService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChartService.class);
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int DAILY_CANDLE_COUNT = 30;
@@ -124,14 +128,18 @@ public class ChartService {
                             && !item.getPublishedAt().atZone(KST).toLocalDate().isBefore(current.date())
                             && item.getPublishedAt().atZone(KST).toLocalDate().isBefore(windowEnd))
                     .findFirst();
+            double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             insights.add(new ChartResponse.MoveInsightView(
                     current.date().atStartOfDay(),
                     Math.round(change * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> buildCauseExplanation(item, change)).orElse(null)
+                    news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null),
+                    causeScore
             ));
+            log.info("Move cause assessment: date={}, change={}%, newsId={}, score={}",
+                    current.date(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
         }
         return insights.stream()
                 .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
@@ -168,14 +176,18 @@ public class ChartService {
                     .filter(item -> item.getPublishedAt() != null
                             && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate))
                     .findFirst();
+            double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),
                     Math.round(change * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
-                    news.map(item -> buildCauseExplanation(item, change)).orElse(null)
+                    news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null),
+                    causeScore
             ));
+            log.info("Move cause assessment: timestamp={}, change={}%, newsId={}, score={}",
+                    current.timestamp(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
         }
         return insights.stream()
                 .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
@@ -188,19 +200,31 @@ public class ChartService {
         return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
     }
 
-    private String buildCauseExplanation(News news, double changePercent) {
+    private String buildCauseExplanation(News news, double changePercent, double causeScore) {
         SentimentHint sentiment = news.getSentimentHint();
         boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
                 || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
         if (directionMatches) {
             return "가능성 높은 원인(규칙 기반): " + news.getTitle()
                     + ". 근거: " + firstNonBlank(news.getImportanceReason(), "뉴스 방향과 주가 방향이 일치합니다.")
-                    + " 신뢰도: 중간";
+                    + " 신뢰도: " + Math.round(causeScore * 100.0) + "%";
         }
         if (sentiment == SentimentHint.NEUTRAL) {
             return "관련 뉴스는 확인됐지만 방향성 근거가 부족해 원인으로 단정하지 않습니다.";
         }
         return "관련 뉴스는 확인됐지만 뉴스 방향과 주가 방향이 달라 직접 원인으로 보기 어렵습니다.";
+    }
+
+    private double causeScore(News news, double changePercent) {
+        if (news.getSentimentHint() == null) {
+            return 0.0;
+        }
+        boolean directionMatches = (changePercent > 0 && news.getSentimentHint() == SentimentHint.POSITIVE)
+                || (changePercent < 0 && news.getSentimentHint() == SentimentHint.NEGATIVE);
+        if (directionMatches) {
+            return 0.8; // date + symbol match are already guaranteed by the query
+        }
+        return news.getSentimentHint() == SentimentHint.NEUTRAL ? 0.4 : 0.1;
     }
 
     private String firstNonBlank(String value, String fallback) {

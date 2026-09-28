@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
  * Fetches recent daily OHLC candles for a stock symbol from KIS.
@@ -92,6 +93,13 @@ public class KisDailyCandleClient {
             return candles.isEmpty()
                     ? new KisDailyCandleResult(fallback(count), true)
                     : new KisDailyCandleResult(candles, false);
+        } catch (WebClientResponseException e) {
+            if (e.getResponseBodyAsString().contains("EGW00201")) {
+                log.warn("KIS daily candle rate limit reached for {} ({}), using fallback", stockCode, periodDivCode);
+            } else {
+                log.warn("KIS daily candle HTTP {} for {}, using fallback: {}", e.getStatusCode().value(), stockCode, e.getMessage());
+            }
+            return new KisDailyCandleResult(fallback(count), true);
         } catch (Exception e) {
             log.warn("KIS daily candle call failed for {}, using fallback: {}", stockCode, e.getMessage());
             return new KisDailyCandleResult(fallback(count), true);
