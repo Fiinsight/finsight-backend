@@ -42,7 +42,7 @@ public class NewsAssembler {
     public News assemble(NewsCandidate candidate, String rawContent) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
         news.setCategory(newsCategoryClassifier.classify(candidate.title()));
-        news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title()));
+        news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
         applyRewrite(news, candidate, rawContent);
         return news;
@@ -50,7 +50,7 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
-        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle()));
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         Optional<String> extracted = articleContentExtractor.extract(news.getUrl());
         if (extracted.isEmpty()) {
             // Never present an RSS teaser, old summary, or AI rewrite as the
@@ -66,6 +66,13 @@ public class NewsAssembler {
         String cleanedContent = extracted.get();
         news.setRawContent(cleanedContent);
         applyRewrite(news, candidate, cleanedContent);
+    }
+
+    /** Refresh cheap, deterministic metadata without making any AI calls. */
+    public void refreshMetadata(News news) {
+        news.setCategory(newsCategoryClassifier.classify(news.getTitle()));
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
+        news.setSentimentHint(newsSentimentClassifier.classify(news.getTitle()));
     }
 
     // finsight-ai rewrites one reading level per call, so we call it 3 times

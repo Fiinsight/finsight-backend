@@ -119,6 +119,7 @@ public class NewsCollectionScheduler {
         int updated = 0;
         for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
             if (updated >= limit) break;
+            newsAssembler.refreshMetadata(news);
             if (news.getRawContent() == null || news.getRawContent().isBlank()) continue;
             newsAssembler.reprocess(news);
             newsRepository.save(news);
