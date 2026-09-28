@@ -2,7 +2,6 @@ package com.finsight.news.collect;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.finsight.briefing.SentimentHint;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -41,14 +40,14 @@ class NewsPipelineQualityTest {
         assertThat(classifier.classify("반도체 수출 회복세")).isEqualTo("산업·기술");
         assertThat(classifier.classify("코스피 장 마감 상승")).isEqualTo("국내증시");
         String fxReason = classifier.importanceReason("원달러 환율 변동성 확대", "달러 강세로 수입 원가가 상승했습니다.",
-                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", "005930", SentimentHint.NEGATIVE);
+                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", "005930");
         String rateReason = classifier.importanceReason("기준금리 동결 전망", "물가 안정으로 동결 가능성이 커졌습니다.",
-                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", null, SentimentHint.NEUTRAL);
-        assertThat(fxReason).contains("환율·원자재 가격", "부담");
+                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", null);
+        assertThat(fxReason).contains("환율", "원달러 환율과 원자재 가격");
         assertThat(rateReason).contains("금리·물가 환경");
         assertThat(fxReason).isNotEqualTo(rateReason);
         assertThat(classifier.importanceReason("관련 내용", "본문에도 근거가 없습니다.",
-                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", null, SentimentHint.NEUTRAL))
+                "경제 지표 및 시장 동향과 관련된 뉴스입니다.", null))
                 .contains("구체적 근거가 부족");
     }
 }

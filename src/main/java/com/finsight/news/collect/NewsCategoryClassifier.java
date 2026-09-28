@@ -1,6 +1,7 @@
 package com.finsight.news.collect;
 
-import com.finsight.briefing.SentimentHint;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /** Assigns a user-facing Korean category label to a headline via keyword rules. */
@@ -35,13 +36,13 @@ public class NewsCategoryClassifier {
     }
 
     public String importanceReason(String title, String content, String storedReason,
-                                  String relatedSymbol, SentimentHint sentiment) {
+                                  String relatedSymbol) {
         if (storedReason != null && !storedReason.isBlank() && !GENERIC_REASON.equals(storedReason)) {
             return storedReason;
         }
         String headline = title == null ? "" : title;
         String body = content == null ? "" : content;
-        String evidence = firstEvidence(headline);
+        Evidence evidence = firstEvidence(headline);
         if (evidence == null) {
             evidence = firstEvidence(body);
         }
@@ -50,34 +51,48 @@ public class NewsCategoryClassifier {
         if (evidence == null) {
             return "기사에서 확인되는 구체적 근거가 부족해 추가 확인이 필요합니다.";
         }
-        String impact = sentiment == SentimentHint.POSITIVE
-                ? "투자심리와 전망을 개선할 수 있습니다."
-                : sentiment == SentimentHint.NEGATIVE
-                ? "실적과 투자심리에 부담이 될 수 있습니다."
-                : "시장 영향을 추가로 확인할 필요가 있습니다.";
-        return subject + " " + evidence + " " + impact;
+        return "핵심 근거: " + evidence.keywords() + ". " + subject + " " + evidence.impact()
+                + " " + evidence.check();
     }
 
-    private String firstEvidence(String text) {
-        if (containsAny(text, "영업이익", "순이익", "실적", "매출", "컨센서스")) {
-            return "실적과 전망 변화는";
+    private Evidence firstEvidence(String text) {
+        Evidence evidence = findEvidence(text, "실적과 전망 변화는",
+                "실적 발표와 전망치 변화를 확인하세요.", "영업이익", "순이익", "실적", "매출", "컨센서스");
+        if (evidence != null) {
+            return evidence;
         }
-        if (containsAny(text, "수출", "수입", "무역", "주문", "계약", "수주")) {
-            return "수출·수주 흐름은";
+        evidence = findEvidence(text, "수출·수주 흐름은",
+                "수출액, 수주 규모와 실적 전망 변화를 확인하세요.", "수출", "수입", "무역", "주문", "계약", "수주");
+        if (evidence != null) {
+            return evidence;
         }
-        if (containsAny(text, "금리", "기준금리", "연준", "FOMC", "물가", "인플레이션")) {
-            return "금리·물가 환경은";
+        evidence = findEvidence(text, "금리·물가 환경은",
+                "기준금리 경로와 물가 지표의 변화를 확인하세요.", "금리", "기준금리", "연준", "FOMC", "물가", "인플레이션");
+        if (evidence != null) {
+            return evidence;
         }
-        if (containsAny(text, "환율", "원/달러", "달러", "유가", "원유", "원자재")) {
-            return "환율·원자재 가격은";
+        evidence = findEvidence(text, "환율·원자재 가격은",
+                "원달러 환율과 원자재 가격의 추가 변화를 확인하세요.", "환율", "원/달러", "달러", "유가", "원유", "원자재");
+        if (evidence != null) {
+            return evidence;
         }
-        if (containsAny(text, "규제", "정책", "법안", "지원", "관세", "세제")) {
-            return "정책·규제 변화는";
+        evidence = findEvidence(text, "정책·규제 변화는",
+                "정책 시행 시점과 적용 대상의 변화를 확인하세요.", "규제", "정책", "법안", "지원", "관세", "세제");
+        if (evidence != null) {
+            return evidence;
         }
-        if (containsAny(text, "수요", "판매", "출하", "생산", "공급", "가격")) {
-            return "수요·공급 변화는";
+        return findEvidence(text, "수요·공급 변화는",
+                "판매량, 출하량과 가격의 지속성을 확인하세요.", "수요", "판매", "출하", "생산", "공급", "가격");
+    }
+
+    private Evidence findEvidence(String text, String impact, String check, String... keywords) {
+        List<String> matches = new ArrayList<>();
+        for (String keyword : keywords) {
+            if (text.contains(keyword)) {
+                matches.add(keyword);
+            }
         }
-        return null;
+        return matches.isEmpty() ? null : new Evidence(String.join(", ", matches), impact, check);
     }
 
     private boolean containsAny(String title, String... keywords) {
@@ -87,5 +102,8 @@ public class NewsCategoryClassifier {
             }
         }
         return false;
+    }
+
+    private record Evidence(String keywords, String impact, String check) {
     }
 }
