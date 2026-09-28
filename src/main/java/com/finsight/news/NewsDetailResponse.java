@@ -33,7 +33,7 @@ public record NewsDetailResponse(
                 news.getRewrittenNormal(),
                 news.getRewrittenAnalyst(),
                 categoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
-                        news.getRelatedSymbol(), news.getSentimentHint()),
+                        news.getRelatedSymbol()),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle()),
