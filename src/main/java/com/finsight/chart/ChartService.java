@@ -14,6 +14,7 @@ import com.finsight.news.collect.ArticleContentExtractor;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
@@ -28,6 +29,7 @@ public class ChartService {
     private static final Logger log = LoggerFactory.getLogger(ChartService.class);
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final LocalTime MARKET_CLOSE = LocalTime.of(15, 30);
     private static final int DAILY_CANDLE_COUNT = 30;
     private static final int WEEKLY_CANDLE_COUNT = 6; // ~a month and a bit of weekly bars
 
@@ -123,8 +125,16 @@ public class ChartService {
                 continue;
             }
             LocalDate windowEnd = "W".equals(period) ? current.date().plusDays(7) : current.date().plusDays(1);
+            Instant periodEnd = windowEnd.atStartOfDay(KST).toInstant();
+            // A daily candle closes at 15:30 KST. For the currently forming
+            // weekly candle, do not let an after-close article explain today's
+            // price. Historical weekly candles may use the whole labelled week.
+            Instant causalCutoff = "W".equals(period) && i < candles.size() - 1
+                    ? periodEnd
+                    : current.date().atTime(MARKET_CLOSE).atZone(KST).toInstant();
             var news = relatedNews.stream()
                     .filter(item -> item.getPublishedAt() != null
+                            && !item.getPublishedAt().isAfter(causalCutoff)
                             && !item.getPublishedAt().atZone(KST).toLocalDate().isBefore(current.date())
                             && item.getPublishedAt().atZone(KST).toLocalDate().isBefore(windowEnd))
                     .findFirst();
@@ -174,7 +184,9 @@ public class ChartService {
             LocalDate currentDate = current.timestamp().toLocalDate();
             var news = relatedNews.stream()
                     .filter(item -> item.getPublishedAt() != null
+                            && !item.getPublishedAt().isAfter(current.timestamp().atZone(KST).toInstant())
                             && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate))
+                    .sorted(Comparator.comparing(News::getPublishedAt).reversed())
                     .findFirst();
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             insights.add(new ChartResponse.MoveInsightView(
@@ -205,9 +217,9 @@ public class ChartService {
         boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
                 || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
         if (directionMatches) {
-            return "가능성 높은 원인(규칙 기반): " + news.getTitle()
-                    + ". 근거: " + firstNonBlank(news.getImportanceReason(), "뉴스 방향과 주가 방향이 일치합니다.")
-                    + " 신뢰도: " + Math.round(causeScore * 100.0) + "%";
+            return "관련 뉴스와 주가 방향은 일치하지만 단일 원인으로 확정할 수 없습니다: "
+                    + news.getTitle() + ". 확인 포인트: "
+                    + firstNonBlank(news.getImportanceReason(), "추가적인 시장·기업 공시 확인이 필요합니다.");
         }
         if (sentiment == SentimentHint.NEUTRAL) {
             return "관련 뉴스는 확인됐지만 방향성 근거가 부족해 원인으로 단정하지 않습니다.";
@@ -222,9 +234,12 @@ public class ChartService {
         boolean directionMatches = (changePercent > 0 && news.getSentimentHint() == SentimentHint.POSITIVE)
                 || (changePercent < 0 && news.getSentimentHint() == SentimentHint.NEGATIVE);
         if (directionMatches) {
-            return 0.8; // date + symbol match are already guaranteed by the query
+            return 0.8; // heuristic association only; this is not a probability
         }
-        return news.getSentimentHint() == SentimentHint.NEUTRAL ? 0.4 : 0.1;
+        // Direction mismatch or neutral sentiment is related-news context,
+        // not evidence for the move. Keep the API value zero so the client
+        // cannot present it as a confidence percentage.
+        return 0.0;
     }
 
     private String firstNonBlank(String value, String fallback) {

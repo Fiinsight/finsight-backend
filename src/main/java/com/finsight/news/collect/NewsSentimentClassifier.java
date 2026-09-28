@@ -38,7 +38,15 @@ public class NewsSentimentClassifier {
         if (title.contains("환율") && !(title.contains("수출") || title.contains("수입"))) {
             return SentimentHint.NEUTRAL;
         }
-        int score = countHits(title, POSITIVE_KEYWORDS) - countHits(title, NEGATIVE_KEYWORDS);
+        int positiveHits = countHits(title, POSITIVE_KEYWORDS);
+        int negativeHits = countHits(title, NEGATIVE_KEYWORDS);
+        // A headline such as "호황 ... 하락" contains opposing signals. Picking
+        // whichever side has one more keyword creates confident-looking but
+        // contradictory chart explanations, so mixed headlines stay neutral.
+        if (positiveHits > 0 && negativeHits > 0) {
+            return SentimentHint.NEUTRAL;
+        }
+        int score = positiveHits - negativeHits;
         if (score > 0) {
             return SentimentHint.POSITIVE;
         }

@@ -69,6 +69,8 @@ class NewsPipelineQualityTest {
         assertThat(classifier.classify("美 금리 급등에 국고채 금리 상승")).isEqualTo(SentimentHint.NEGATIVE);
         assertThat(classifier.classify("금리 인하 기대에 성장주 강세")).isEqualTo(SentimentHint.POSITIVE);
         assertThat(classifier.classify("원달러 환율 변동성 확대")).isEqualTo(SentimentHint.NEUTRAL);
+        assertThat(classifier.classify("반도체 초호황에 성과급 기대감…육아휴직률 첫 동반 하락"))
+                .isEqualTo(SentimentHint.NEUTRAL);
     }
 
     @Test
