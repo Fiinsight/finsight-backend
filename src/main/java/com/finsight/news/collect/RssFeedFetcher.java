@@ -52,9 +52,13 @@ public class RssFeedFetcher {
                 if (entry.getLink() == null || entry.getTitle() == null) {
                     continue;
                 }
+                if (entry.getPublishedDate() == null && entry.getUpdatedDate() == null) {
+                    log.warn("Skipping RSS entry without published/updated time: {}", entry.getTitle());
+                    continue;
+                }
                 Instant publishedAt = entry.getPublishedDate() != null
                         ? entry.getPublishedDate().toInstant()
-                        : Instant.now();
+                        : entry.getUpdatedDate().toInstant();
                 candidates.add(new NewsCandidate(entry.getTitle().trim(), entry.getLink().trim(), source, publishedAt, 0));
             }
         }
