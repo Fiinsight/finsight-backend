@@ -6,7 +6,7 @@ public record NewsBriefResponse(
         String summary,
         String importanceReason,
         String relatedSymbol,
+        String category,
         SentimentHint sentimentHint
 ) {
 }
-

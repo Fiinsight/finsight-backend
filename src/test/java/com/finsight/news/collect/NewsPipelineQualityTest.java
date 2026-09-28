@@ -32,4 +32,12 @@ class NewsPipelineQualityTest {
         assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("005930");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
     }
+
+    @Test
+    void classifiesNewsByTopicInsteadOfIndexName() {
+        NewsCategoryClassifier classifier = new NewsCategoryClassifier();
+        assertThat(classifier.classify("원달러 환율 변동성 확대")).isEqualTo("환율·원자재");
+        assertThat(classifier.classify("반도체 수출 회복세")).isEqualTo("산업·기술");
+        assertThat(classifier.classify("코스피 장 마감 상승")).isEqualTo("국내증시");
+    }
 }
