@@ -31,7 +31,8 @@ public record ChartResponse(
             Long newsId,
             String newsTitle,
             String newsSource,
-            String explanation
+            String explanation,
+            double causeScore
     ) {
     }
 

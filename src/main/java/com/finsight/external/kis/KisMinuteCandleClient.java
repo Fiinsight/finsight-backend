@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /** Fetches recent domestic-stock intraday OHLC bars from KIS. */
 @Component
@@ -91,6 +92,13 @@ public class KisMinuteCandleClient {
             return candles.isEmpty()
                     ? new KisMinuteCandleResult(fallback(interval, safeCount), true)
                     : new KisMinuteCandleResult(candles, false);
+        } catch (WebClientResponseException e) {
+            if (e.getResponseBodyAsString().contains("EGW00201")) {
+                log.warn("KIS minute candle rate limit reached for {} ({}m), using fallback", stockCode, interval);
+            } else {
+                log.warn("KIS minute candle HTTP {} for {}, using fallback: {}", e.getStatusCode().value(), stockCode, e.getMessage());
+            }
+            return new KisMinuteCandleResult(fallback(interval, safeCount), true);
         } catch (Exception e) {
             log.warn("KIS minute candle call failed for {} ({}m), using fallback: {}", stockCode, interval, e.getMessage());
             return new KisMinuteCandleResult(fallback(interval, safeCount), true);
