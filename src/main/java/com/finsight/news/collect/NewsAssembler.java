@@ -63,7 +63,8 @@ public class NewsAssembler {
         news.setRewrittenNormal(normal.summary());
         news.setRewrittenAnalyst(analyst.summary());
         news.setImportanceReason(firstNonBlank(normal.importanceReason(), beginner.importanceReason(), analyst.importanceReason())
-                .orElse(newsCategoryClassifier.importanceReason(candidate.title(), null)));
+                .orElse(newsCategoryClassifier.importanceReason(candidate.title(), rawContent, null,
+                        news.getRelatedSymbol(), news.getSentimentHint())));
         news.setKeyTerms(mergeTerms(beginner.detectedTerms(), normal.detectedTerms(), analyst.detectedTerms()));
     }
 

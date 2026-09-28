@@ -1,5 +1,6 @@
 package com.finsight.news.collect;
 
+import com.finsight.briefing.SentimentHint;
 import org.springframework.stereotype.Component;
 
 /** Assigns a user-facing Korean category label to a headline via keyword rules. */
@@ -33,20 +34,50 @@ public class NewsCategoryClassifier {
         return "정책·경제";
     }
 
-    public String importanceReason(String title, String storedReason) {
+    public String importanceReason(String title, String content, String storedReason,
+                                  String relatedSymbol, SentimentHint sentiment) {
         if (storedReason != null && !storedReason.isBlank() && !GENERIC_REASON.equals(storedReason)) {
             return storedReason;
         }
-        return switch (classify(title)) {
-            case "금리·채권" -> "금리와 채권 수익률은 주식의 할인율과 자금 흐름을 바꿀 수 있습니다.";
-            case "환율·원자재" -> "환율과 원자재 가격은 기업의 비용, 수익성, 외국인 수급에 영향을 줍니다.";
-            case "해외증시" -> "해외 시장 흐름은 국내 증시의 투자심리와 자금 방향에 영향을 줍니다.";
-            case "국내증시" -> "시장 수급과 지수 흐름은 개별 종목의 단기 방향을 판단하는 기준입니다.";
-            case "산업·기술" -> "산업의 수요와 기술 변화는 관련 기업의 실적 전망을 바꿀 수 있습니다.";
-            case "기업·종목" -> "기업의 실적과 사업 변화는 해당 종목의 가치와 주가에 직접 연결됩니다.";
-            case "IPO·공시" -> "공시와 자본 조달 정보는 기업 가치와 투자 판단에 직접 영향을 줍니다.";
-            default -> "정책과 경제 환경의 변화는 시장 전반의 기대와 위험 선호를 움직일 수 있습니다.";
-        };
+        String headline = title == null ? "" : title;
+        String body = content == null ? "" : content;
+        String evidence = firstEvidence(headline);
+        if (evidence == null) {
+            evidence = firstEvidence(body);
+        }
+        String subject = relatedSymbol != null && !relatedSymbol.isBlank()
+                && !relatedSymbol.startsWith("KOS") ? "관련 종목의" : "시장";
+        if (evidence == null) {
+            return "기사에서 확인되는 구체적 근거가 부족해 추가 확인이 필요합니다.";
+        }
+        String impact = sentiment == SentimentHint.POSITIVE
+                ? "투자심리와 전망을 개선할 수 있습니다."
+                : sentiment == SentimentHint.NEGATIVE
+                ? "실적과 투자심리에 부담이 될 수 있습니다."
+                : "시장 영향을 추가로 확인할 필요가 있습니다.";
+        return subject + " " + evidence + " " + impact;
+    }
+
+    private String firstEvidence(String text) {
+        if (containsAny(text, "영업이익", "순이익", "실적", "매출", "컨센서스")) {
+            return "실적과 전망 변화는";
+        }
+        if (containsAny(text, "수출", "수입", "무역", "주문", "계약", "수주")) {
+            return "수출·수주 흐름은";
+        }
+        if (containsAny(text, "금리", "기준금리", "연준", "FOMC", "물가", "인플레이션")) {
+            return "금리·물가 환경은";
+        }
+        if (containsAny(text, "환율", "원/달러", "달러", "유가", "원유", "원자재")) {
+            return "환율·원자재 가격은";
+        }
+        if (containsAny(text, "규제", "정책", "법안", "지원", "관세", "세제")) {
+            return "정책·규제 변화는";
+        }
+        if (containsAny(text, "수요", "판매", "출하", "생산", "공급", "가격")) {
+            return "수요·공급 변화는";
+        }
+        return null;
     }
 
     private boolean containsAny(String title, String... keywords) {
