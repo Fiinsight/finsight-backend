@@ -1,5 +1,7 @@
 package com.finsight.news;
 
+import com.finsight.news.collect.NewsCategoryClassifier;
+import com.finsight.news.collect.ArticleContentExtractor;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,9 +18,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class NewsController {
 
     private final NewsRepository newsRepository;
+    private final NewsCategoryClassifier newsCategoryClassifier;
+    private final ArticleContentExtractor articleContentExtractor;
 
-    public NewsController(NewsRepository newsRepository) {
+    public NewsController(NewsRepository newsRepository, NewsCategoryClassifier newsCategoryClassifier,
+                          ArticleContentExtractor articleContentExtractor) {
         this.newsRepository = newsRepository;
+        this.newsCategoryClassifier = newsCategoryClassifier;
+        this.articleContentExtractor = articleContentExtractor;
     }
 
     @GetMapping("/{id}")
@@ -26,6 +33,9 @@ public class NewsController {
     public NewsDetailResponse detail(@Parameter(description = "News 엔티티 id") @PathVariable Long id) {
         News news = newsRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 뉴스 id 입니다: " + id));
-        return NewsDetailResponse.from(news);
+        if (!articleContentExtractor.isUsable(news.getTitle(), news.getRawContent())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "원문을 확인할 수 없는 뉴스입니다: " + id);
+        }
+        return NewsDetailResponse.from(news, newsCategoryClassifier);
     }
 }

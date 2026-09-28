@@ -28,9 +28,9 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
-    private static final int TOP_CANDIDATE_COUNT = 10;
-    private static final int TARGET_SAVED_COUNT = 3;
-    private static final int MAX_EXTRACTION_ATTEMPTS = 10;
+    private static final int TOP_CANDIDATE_COUNT = 220;
+    private static final int TARGET_SAVED_COUNT = 220;
+    private static final int MAX_EXTRACTION_ATTEMPTS = 220;
 
     private final RssFeedFetcher rssFeedFetcher;
     private final NewsDeduplicator newsDeduplicator;
@@ -118,9 +118,8 @@ public class NewsCollectionScheduler {
     public int reprocessExisting(int limit) {
         int updated = 0;
         for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
-            if (updated >= limit || news.getRawContent() == null || news.getRawContent().isBlank()) break;
-            String rewritten = news.getRewrittenNormal();
-            if (rewritten != null && !rewritten.equals(news.getRawContent()) && !rewritten.contains("Google 검색")) continue;
+            if (updated >= limit) break;
+            if (news.getRawContent() == null || news.getRawContent().isBlank()) continue;
             newsAssembler.reprocess(news);
             newsRepository.save(news);
             updated++;

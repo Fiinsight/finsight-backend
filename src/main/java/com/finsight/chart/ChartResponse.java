@@ -2,6 +2,7 @@ package com.finsight.chart;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record ChartResponse(
@@ -10,6 +11,7 @@ public record ChartResponse(
         double changePercent,
         List<CandleView> candles,
         List<NewsMarkerView> newsMarkers,
+        List<NewsMarkerView> relatedNews,
         DocentView docent,
         String period,
         Integer intervalMinutes,
@@ -29,11 +31,12 @@ public record ChartResponse(
             Long newsId,
             String newsTitle,
             String newsSource,
-            String explanation
+            String explanation,
+            double causeScore
     ) {
     }
 
-    public record NewsMarkerView(LocalDate date, Long newsId, String title, String source) {
+    public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source) {
     }
 
     // Grounded in the most recently published news actually tagged with this

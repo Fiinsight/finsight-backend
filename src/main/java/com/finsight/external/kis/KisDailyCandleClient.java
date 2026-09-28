@@ -10,8 +10,10 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
  * Fetches recent daily OHLC candles for a stock symbol from KIS.
@@ -25,7 +27,7 @@ public class KisDailyCandleClient {
 
     private static final String DAILY_CANDLE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_CANDLE_TR_ID = "FHKST03010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
@@ -51,11 +53,17 @@ public class KisDailyCandleClient {
     /**
      * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
      */
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
     public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
+        return getCandlesWithStatus(stockCode, count, periodDivCode).candles();
+    }
+
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
+    public KisDailyCandleResult getCandlesWithStatus(String stockCode, int count, String periodDivCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
-                return fallback(count);
+                return new KisDailyCandleResult(fallback(count), true);
             }
             LocalDate endDate = LocalDate.now();
             // Weekly/monthly bars span much more calendar time per candle than
@@ -82,10 +90,19 @@ public class KisDailyCandleClient {
                     .timeout(CALL_TIMEOUT)
                     .block();
             List<KisDailyCandle> candles = parseCandles(response, count);
-            return candles.isEmpty() ? fallback(count) : candles;
+            return candles.isEmpty()
+                    ? new KisDailyCandleResult(fallback(count), true)
+                    : new KisDailyCandleResult(candles, false);
+        } catch (WebClientResponseException e) {
+            if (e.getResponseBodyAsString().contains("EGW00201")) {
+                log.warn("KIS daily candle rate limit reached for {} ({}), using fallback", stockCode, periodDivCode);
+            } else {
+                log.warn("KIS daily candle HTTP {} for {}, using fallback: {}", e.getStatusCode().value(), stockCode, e.getMessage());
+            }
+            return new KisDailyCandleResult(fallback(count), true);
         } catch (Exception e) {
             log.warn("KIS daily candle call failed for {}, using fallback: {}", stockCode, e.getMessage());
-            return fallback(count);
+            return new KisDailyCandleResult(fallback(count), true);
         }
     }
 

@@ -16,5 +16,10 @@ server:
   forward-headers-strategy: framework
 
 finsight:
+  auth:
+    # Production must provide a private, base64-encoded secret; never use the
+    # development fallback from application.yml in a deployed environment.
+    jwt-secret: ${JWT_SECRET}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
   cors:
-    allowed-origin-patterns: ${FRONTEND_ORIGIN:http://localhost:*,http://127.0.0.1:*}
+    allowed-origin-patterns: ${FRONTEND_ORIGIN}

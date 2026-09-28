@@ -3,9 +3,11 @@ package com.finsight.briefing;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import com.finsight.news.collect.ArticleContentExtractor;
+import com.finsight.news.collect.NewsCategoryClassifier;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -19,10 +21,13 @@ public class BriefingService {
 
     private final NewsRepository newsRepository;
     private final ArticleContentExtractor articleContentExtractor;
+    private final NewsCategoryClassifier newsCategoryClassifier;
 
-    public BriefingService(NewsRepository newsRepository, ArticleContentExtractor articleContentExtractor) {
+    public BriefingService(NewsRepository newsRepository, ArticleContentExtractor articleContentExtractor,
+                           NewsCategoryClassifier newsCategoryClassifier) {
         this.newsRepository = newsRepository;
         this.articleContentExtractor = articleContentExtractor;
+        this.newsCategoryClassifier = newsCategoryClassifier;
     }
 
     public List<NewsBriefResponse> getTodayBriefing() {
@@ -35,11 +40,20 @@ public class BriefingService {
         if (today.size() >= MIN_REQUIRED_ITEMS) {
             return today.stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
         }
-        List<News> latest = newsRepository.findTop3ByOrderByPublishedAtDesc().stream().filter(this::isUsable).toList();
+        List<News> latest = newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 100));
+        var usable = new LinkedHashMap<Long, News>();
+        for (News news : today) {
+            usable.putIfAbsent(news.getId(), news);
+        }
+        for (News news : latest) {
+            if (isUsable(news)) {
+                usable.putIfAbsent(news.getId(), news);
+            }
+        }
         // Never label hard-coded demo copy as today's live market news. During
         // the first collection run this may be empty or partial; the client
         // can show a truthful loading/empty state instead.
-        return latest.stream().map(this::toBriefResponse).toList();
+        return usable.values().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
     }
 
     /**
@@ -53,11 +67,8 @@ public class BriefingService {
         // everything up to the end of the requested window in one page-0
         // query, then slice out just the target range in Java.
         int offset = MIN_REQUIRED_ITEMS + page * size;
-        var request = PageRequest.of(0, offset + size, Sort.by(Sort.Direction.DESC, "publishedAt"));
+        var request = PageRequest.of(0, 1000, Sort.by(Sort.Direction.DESC, "publishedAt"));
         List<News> rows = newsRepository.findAllByOrderByPublishedAtDesc(request);
-        if (offset >= rows.size()) {
-            return List.of();
-        }
         List<News> usableRows = rows.stream().filter(this::isUsable).toList();
         if (offset >= usableRows.size()) {
             return List.of();
@@ -77,8 +88,10 @@ public class BriefingService {
                 news.getId(),
                 news.getTitle(),
                 summary,
-                news.getImportanceReason(),
+                newsCategoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
+                        news.getRelatedSymbol()),
                 news.getRelatedSymbol(),
+                newsCategoryClassifier.classify(news.getTitle()),
                 news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL
         );
     }

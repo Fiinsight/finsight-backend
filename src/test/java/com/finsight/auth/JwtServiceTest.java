@@ -21,6 +21,7 @@ class JwtServiceTest {
         JwtService jwt = new JwtService(SECRET, 60);
         User user = new User("person@example.com", "hash", "User", AuthProvider.LOCAL);
         String issued = jwt.issue(user);
+        String tampered = issued.substring(0, issued.lastIndexOf('.') + 1) + "invalid-signature";
         Instant old = Instant.now().minusSeconds(120);
         String expired = Jwts.builder().subject(user.getEmail())
                 .issuedAt(Date.from(old)).expiration(Date.from(old.plusSeconds(30)))
@@ -29,6 +30,6 @@ class JwtServiceTest {
         assertTrue(jwt.isValid(issued));
         assertEquals("person@example.com", jwt.subject(issued));
         assertFalse(jwt.isValid(expired));
-        assertFalse(jwt.isValid(issued.substring(0, issued.length() - 1) + "x"));
+        assertFalse(jwt.isValid(tampered));
     }
 }

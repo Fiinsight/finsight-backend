@@ -23,19 +23,20 @@ public class NewsAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsAssembler.class);
 
-    private static final String FALLBACK_IMPORTANCE_REASON = "경제 지표 및 시장 동향과 관련된 뉴스입니다.";
-
     private final AiServiceClient aiServiceClient;
     private final NewsCategoryClassifier newsCategoryClassifier;
     private final NewsSymbolMatcher newsSymbolMatcher;
     private final NewsSentimentClassifier newsSentimentClassifier;
+    private final ArticleContentExtractor articleContentExtractor;
 
     public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier,
-                          NewsSymbolMatcher newsSymbolMatcher, NewsSentimentClassifier newsSentimentClassifier) {
+                          NewsSymbolMatcher newsSymbolMatcher, NewsSentimentClassifier newsSentimentClassifier,
+                          ArticleContentExtractor articleContentExtractor) {
         this.aiServiceClient = aiServiceClient;
         this.newsCategoryClassifier = newsCategoryClassifier;
         this.newsSymbolMatcher = newsSymbolMatcher;
         this.newsSentimentClassifier = newsSentimentClassifier;
+        this.articleContentExtractor = articleContentExtractor;
     }
 
     public News assemble(NewsCandidate candidate, String rawContent) {
@@ -49,7 +50,22 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
-        applyRewrite(news, candidate, news.getRawContent());
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle()));
+        Optional<String> extracted = articleContentExtractor.extract(news.getUrl());
+        if (extracted.isEmpty()) {
+            // Never present an RSS teaser, old summary, or AI rewrite as the
+            // original article when the publisher blocks the fetch.
+            news.setRawContent("");
+            news.setRewrittenBeginner("");
+            news.setRewrittenNormal("");
+            news.setRewrittenAnalyst("");
+            news.setImportanceReason("");
+            news.setKeyTerms(List.of());
+            return;
+        }
+        String cleanedContent = extracted.get();
+        news.setRawContent(cleanedContent);
+        applyRewrite(news, candidate, cleanedContent);
     }
 
     // finsight-ai rewrites one reading level per call, so we call it 3 times
@@ -64,7 +80,8 @@ public class NewsAssembler {
         news.setRewrittenNormal(normal.summary());
         news.setRewrittenAnalyst(analyst.summary());
         news.setImportanceReason(firstNonBlank(normal.importanceReason(), beginner.importanceReason(), analyst.importanceReason())
-                .orElse(FALLBACK_IMPORTANCE_REASON));
+                .orElse(newsCategoryClassifier.importanceReason(candidate.title(), rawContent, null,
+                        news.getRelatedSymbol())));
         news.setKeyTerms(mergeTerms(beginner.detectedTerms(), normal.detectedTerms(), analyst.detectedTerms()));
     }
 

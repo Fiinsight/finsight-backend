@@ -38,7 +38,7 @@ public class NaverFxClient {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
     }
 
-    @Cacheable(cacheNames = "naverFx", unless = "#result == null || #result.fallback()")
+    @Cacheable(cacheNames = "naverFx", sync = true)
     public EcosRate getUsdKrwRate() {
         try {
             JsonNode response = webClient.get()

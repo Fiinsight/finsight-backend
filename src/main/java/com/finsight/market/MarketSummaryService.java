@@ -10,6 +10,7 @@ import com.finsight.market.MarketSummaryResponse.RateView;
 import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class MarketSummaryService {
@@ -45,15 +46,18 @@ public class MarketSummaryService {
             return current.value();
         }
 
+        CompletableFuture<EcosRate> baseRateFuture = CompletableFuture.supplyAsync(ecosClient::getBaseRate);
+        CompletableFuture<EcosRate> usdKrwRateFuture = CompletableFuture.supplyAsync(naverFxClient::getUsdKrwRate);
+
         KisIndexQuote kospi = kisIndexQuoteClient.getIndexQuote(KOSPI_INDEX_CODE);
         // KIS's paper-trading tier limits requests per second. Calls are kept
         // sequential, but the result is cached so user requests do not pay a
         // blocking sleep or repeat the same external calls.
         KisIndexQuote kosdaq = kisIndexQuoteClient.getIndexQuote(KOSDAQ_INDEX_CODE);
-        EcosRate baseRate = ecosClient.getBaseRate();
         // ECOS's daily 매매기준율 is fixed once each morning — 원/달러 now comes from
         // Naver's live 고시환율 feed instead, which republishes many times a day.
-        EcosRate usdKrwRate = naverFxClient.getUsdKrwRate();
+        EcosRate baseRate = baseRateFuture.join();
+        EcosRate usdKrwRate = usdKrwRateFuture.join();
 
         MarketSummaryResponse result = new MarketSummaryResponse(
                 new MarketIndexView(kospi.currentValue(), kospi.changePercent(), kospi.fallback()),
