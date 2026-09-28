@@ -1,6 +1,7 @@
 package com.finsight.news;
 
 import com.finsight.briefing.SentimentHint;
+import com.finsight.news.collect.NewsCategoryClassifier;
 import java.time.Instant;
 import java.util.List;
 
@@ -20,7 +21,7 @@ public record NewsDetailResponse(
         String category,
         List<String> keyTerms
 ) {
-    public static NewsDetailResponse from(News news) {
+    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier) {
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
@@ -34,7 +35,7 @@ public record NewsDetailResponse(
                 news.getImportanceReason(),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
-                news.getCategory(),
+                categoryClassifier.classify(news.getTitle()),
                 news.getKeyTerms()
         );
     }

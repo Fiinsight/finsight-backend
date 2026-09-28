@@ -3,6 +3,7 @@ package com.finsight.briefing;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import com.finsight.news.collect.ArticleContentExtractor;
+import com.finsight.news.collect.NewsCategoryClassifier;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -20,10 +21,13 @@ public class BriefingService {
 
     private final NewsRepository newsRepository;
     private final ArticleContentExtractor articleContentExtractor;
+    private final NewsCategoryClassifier newsCategoryClassifier;
 
-    public BriefingService(NewsRepository newsRepository, ArticleContentExtractor articleContentExtractor) {
+    public BriefingService(NewsRepository newsRepository, ArticleContentExtractor articleContentExtractor,
+                           NewsCategoryClassifier newsCategoryClassifier) {
         this.newsRepository = newsRepository;
         this.articleContentExtractor = articleContentExtractor;
+        this.newsCategoryClassifier = newsCategoryClassifier;
     }
 
     public List<NewsBriefResponse> getTodayBriefing() {
@@ -86,6 +90,7 @@ public class BriefingService {
                 summary,
                 news.getImportanceReason(),
                 news.getRelatedSymbol(),
+                newsCategoryClassifier.classify(news.getTitle()),
                 news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL
         );
     }
