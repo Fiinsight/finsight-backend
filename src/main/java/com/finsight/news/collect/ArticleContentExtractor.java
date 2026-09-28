@@ -8,6 +8,8 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,7 @@ import org.springframework.util.StringUtils;
 public class ArticleContentExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(ArticleContentExtractor.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(5);
     private static final String USER_AGENT = "Mozilla/5.0 (compatible; FinsightBot/1.0)";
@@ -35,7 +38,13 @@ public class ArticleContentExtractor {
 
             removePageChrome(doc);
 
-            String text = extractFromArticleBody(doc);
+            String text = extractFromJsonLd(doc);
+            if (!StringUtils.hasText(text)) {
+                text = extractFromKnownPublisherBody(doc, url);
+            }
+            if (!StringUtils.hasText(text)) {
+                text = extractFromArticleBody(doc);
+            }
             if (!StringUtils.hasText(text)) {
                 text = extractFromArticleTag(doc);
             }
@@ -138,6 +147,55 @@ public class ArticleContentExtractor {
     private String extractFromArticleBody(Document doc) {
         Element articleBody = doc.selectFirst("[itemprop=articleBody]");
         return articleBody == null ? null : articleBody.text();
+    }
+
+    private String extractFromJsonLd(Document doc) {
+        for (Element script : doc.select("script[type=application/ld+json]")) {
+            try {
+                JsonNode json = JSON.readTree(script.data());
+                String body = json.path("articleBody").asText("");
+                if (StringUtils.hasText(body)) {
+                    return body;
+                }
+                JsonNode graph = json.path("@graph");
+                if (graph.isArray()) {
+                    for (JsonNode item : graph) {
+                        String graphBody = item.path("articleBody").asText("");
+                        if (StringUtils.hasText(graphBody)) {
+                            return graphBody;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // Publishers often emit an array or malformed JSON-LD; use the DOM fallbacks.
+            }
+        }
+        return null;
+    }
+
+    private String extractFromKnownPublisherBody(Document doc, String url) {
+        String host = url.toLowerCase();
+        List<String> selectors = new ArrayList<>();
+        if (host.contains("mk.co.kr")) {
+            selectors.addAll(List.of("#article_body", ".news_cnt_detail_wrap", ".news_cnt_detail", ".art_txt"));
+        } else if (host.contains("hankyung.com")) {
+            selectors.addAll(List.of("#articletxt", ".article-body", ".article-body__content", ".article-content"));
+        } else if (host.contains("yna.co.kr")) {
+            selectors.addAll(List.of(".story-news", ".story-news__content", "#articleWrap", ".article-txt"));
+        }
+        for (String selector : selectors) {
+            Element body = doc.selectFirst(selector);
+            if (body != null) {
+                String text = joinParagraphs(body.select("p"));
+                if (StringUtils.hasText(text)) {
+                    return text;
+                }
+                if (StringUtils.hasText(body.text())) {
+                    return body.text();
+                }
+            }
+        }
+        return null;
     }
 
     private String extractFromParagraphs(Document doc) {
