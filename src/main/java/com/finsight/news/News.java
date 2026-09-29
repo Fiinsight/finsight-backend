@@ -46,6 +46,15 @@ public class News {
     @Column(columnDefinition = "TEXT")
     private String importanceReason;
 
+    @Column(columnDefinition = "TEXT")
+    private String importanceReasonBeginner;
+
+    @Column(columnDefinition = "TEXT")
+    private String importanceReasonNormal;
+
+    @Column(columnDefinition = "TEXT")
+    private String importanceReasonAnalyst;
+
     private String relatedSymbol;
 
     @Enumerated(EnumType.STRING)
@@ -148,6 +157,30 @@ public class News {
 
     public void setImportanceReason(String importanceReason) {
         this.importanceReason = importanceReason;
+    }
+
+    public String getImportanceReasonBeginner() {
+        return importanceReasonBeginner;
+    }
+
+    public void setImportanceReasonBeginner(String importanceReasonBeginner) {
+        this.importanceReasonBeginner = importanceReasonBeginner;
+    }
+
+    public String getImportanceReasonNormal() {
+        return importanceReasonNormal;
+    }
+
+    public void setImportanceReasonNormal(String importanceReasonNormal) {
+        this.importanceReasonNormal = importanceReasonNormal;
+    }
+
+    public String getImportanceReasonAnalyst() {
+        return importanceReasonAnalyst;
+    }
+
+    public void setImportanceReasonAnalyst(String importanceReasonAnalyst) {
+        this.importanceReasonAnalyst = importanceReasonAnalyst;
     }
 
     public String getRelatedSymbol() {

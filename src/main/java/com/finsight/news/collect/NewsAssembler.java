@@ -58,6 +58,9 @@ public class NewsAssembler {
         news.setRewrittenBeginner(beginner.summary());
         news.setRewrittenNormal(normal.summary());
         news.setRewrittenAnalyst(analyst.summary());
+        news.setImportanceReasonBeginner(beginner.importanceReason());
+        news.setImportanceReasonNormal(normal.importanceReason());
+        news.setImportanceReasonAnalyst(analyst.importanceReason());
         news.setImportanceReason(firstNonBlank(normal.importanceReason(), beginner.importanceReason(), analyst.importanceReason())
                 .orElse(FALLBACK_IMPORTANCE_REASON));
         news.setKeyTerms(mergeTerms(beginner.detectedTerms(), normal.detectedTerms(), analyst.detectedTerms()));
@@ -69,7 +72,10 @@ public class NewsAssembler {
         if (response.isPresent()) {
             AiRewriteResponse body = response.get();
             List<String> terms = body.detectedTerms() != null ? body.detectedTerms() : List.of();
-            return new RewriteLevelResult(body.summary(), body.importanceReason(), terms);
+            String levelReason = body.importanceReasons() == null
+                    ? body.importanceReason()
+                    : firstNonBlank(body.importanceReasons().get(level), body.importanceReason()).orElse(null);
+            return new RewriteLevelResult(body.summary(), levelReason, terms);
         }
         log.warn("AI rewrite unavailable for level={} url={}, falling back to raw article text for this level",
                 level, candidate.url());
