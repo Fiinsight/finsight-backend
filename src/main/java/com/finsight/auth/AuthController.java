@@ -1,14 +1,13 @@
 package com.finsight.auth;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
-import java.util.Map;
-import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -26,22 +25,29 @@ public class AuthController {
         rateLimiter.check("login", request.email(), httpRequest.getRemoteAddr());
         return auth.login(request);
     }
+    @GetMapping("/me")
+    public AuthDtos.AuthResponse me(@AuthenticationPrincipal Long userId) { return auth.me(userId); }
     @GetMapping("/kakao/url")
     public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String state) {
         return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(state));
     }
+    @GetMapping("/kakao/status")
+    public AuthDtos.KakaoConfigStatus kakaoStatus() {
+        return auth.kakaoConfigStatus();
+    }
     @GetMapping("/kakao/callback")
-    public ResponseEntity<Void> kakaoCallback(@RequestParam String code, @RequestParam(required = false) String state) {
+    public ResponseEntity<Void> kakaoCallback(@RequestParam(required = false) String code,
+                                              @RequestParam(required = false) String state,
+                                              @RequestParam(required = false) String error,
+                                              @RequestParam(name = "error_description", required = false) String errorDescription) {
+        if ((code == null || code.isBlank()) && (error == null || error.isBlank())) {
+            error = "invalid_callback";
+            errorDescription = "카카오 인증 결과가 비어 있습니다.";
+        }
         HttpHeaders headers = new HttpHeaders();
-        headers.setLocation(URI.create(auth.kakaoCallbackUri(code, state)));
+        headers.setLocation(URI.create(auth.kakaoCallbackUri(code, state, error, errorDescription)));
         return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
     }
     @PostMapping("/kakao")
     public AuthDtos.AuthResponse kakao(@Valid @RequestBody AuthDtos.KakaoRequest request) { return auth.kakao(request.code()); }
-
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, Object>> handleAuthError(ResponseStatusException exception) {
-        return ResponseEntity.status(exception.getStatusCode())
-                .body(Map.of("status", exception.getStatusCode().value(), "message", exception.getReason()));
-    }
 }

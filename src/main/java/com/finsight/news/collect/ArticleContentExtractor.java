@@ -1,11 +1,15 @@
 package com.finsight.news.collect;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Optional;
+import java.util.List;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,6 +24,7 @@ import org.springframework.util.StringUtils;
 public class ArticleContentExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(ArticleContentExtractor.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(5);
     private static final String USER_AGENT = "Mozilla/5.0 (compatible; FinsightBot/1.0)";
@@ -31,11 +36,23 @@ public class ArticleContentExtractor {
                     .timeout((int) FETCH_TIMEOUT.toMillis())
                     .get();
 
-            String text = extractFromArticleTag(doc);
+            removePageChrome(doc);
+
+            String text = extractFromJsonLd(doc);
+            if (!StringUtils.hasText(text)) {
+                text = extractFromKnownPublisherBody(doc, url);
+            }
+            if (!StringUtils.hasText(text)) {
+                text = extractFromArticleBody(doc);
+            }
+            if (!StringUtils.hasText(text)) {
+                text = extractFromArticleTag(doc);
+            }
             if (!StringUtils.hasText(text)) {
                 text = extractFromParagraphs(doc);
             }
-            return StringUtils.hasText(text) ? Optional.of(text) : Optional.empty();
+            String cleaned = clean("", text);
+            return StringUtils.hasText(cleaned) ? Optional.of(cleaned) : Optional.empty();
         } catch (Exception e) {
             log.warn("Failed to extract article body from {}: {}", url, e.getMessage());
             return Optional.empty();
@@ -46,6 +63,72 @@ public class ArticleContentExtractor {
     // buttons, font-size controls, "번역" widgets) rather than actual article
     // text, so it's dropped instead of getting mixed into the body.
     private static final int MIN_PARAGRAPH_LENGTH = 20;
+
+    private static final List<String> ECONOMIC_TERMS = List.of(
+            "금리", "환율", "증시", "주가", "수출", "무역", "반도체", "기업", "투자", "물가", "채권", "고용", "실적");
+    private static final List<String> PAGE_CHROME = List.of(
+            "Google 검색", "검색어를 입력", "개인정보처리방침", "로그인 후", "쿠키 설정",
+            "주소 :", "전화 :", "일간신문등록번호", "저작권", "무단전재", "무제한으로 만나보세요",
+            "AI가 제공", "서비스 이용 제한", "회원가입", "로그인", "구독", "댓글", "공유");
+
+    public boolean isUsable(String title, String body) {
+        String cleaned = clean(title, body);
+        if (!StringUtils.hasText(cleaned) || cleaned.length() < 120) return false;
+        String combined = (title + " " + cleaned).toLowerCase();
+        return ECONOMIC_TERMS.stream().anyMatch(combined::contains);
+    }
+
+    /** Remove publisher search/SEO chrome and a duplicated headline before rewriting. */
+    public String clean(String title, String body) {
+        if (!StringUtils.hasText(body)) {
+            return "";
+        }
+        body = cutKnownPageChrome(body)
+                .replace("ⓒ 한경닷컴, 무단전재 및 재배포 금지", "")
+                .trim();
+        String titleKey = compact(title);
+        String[] parts = body.replace('\r', '\n').split("(?<=[.!?。！？])\\s+|\\n+");
+        List<String> cleaned = new ArrayList<>();
+        for (String part : parts) {
+            String item = part.trim().replaceAll("\\s+", " ");
+            if (item.isBlank() || PAGE_CHROME.stream().anyMatch(item::contains)) {
+                continue;
+            }
+            if (!titleKey.isBlank() && compact(item).equals(titleKey)) {
+                continue;
+            }
+            cleaned.add(item);
+        }
+        return String.join("\n\n", cleaned).trim();
+    }
+
+    private String cutKnownPageChrome(String body) {
+        int cut = body.length();
+        for (String marker : List.of(
+                "주소 :", "주소:", "한경 프리미엄9의 모든 콘텐츠",
+                "일간신문등록번호", "개인정보처리방침", "서비스 이용 제한",
+                "ⓒ 한경닷컴, 무단전재 및 재배포 금지", "1000원의 힘",
+                "삼전닉스 괜히 팔았나")) {
+            int index = body.indexOf(marker);
+            if (index > 0) {
+                cut = Math.min(cut, index);
+            }
+        }
+        return body.substring(0, cut);
+    }
+
+    private void removePageChrome(Document doc) {
+        doc.select("script, style, nav, header, footer, aside, form, "
+                + "[class*=ad], [class*=advert], [class*=share], [class*=comment], "
+                + "[class*=related], [class*=recommend], [class*=copyright], [class*=footer], "
+                + "[id*=footer], [id*=comment], [id*=related], [id*=recommend], "
+                + "[class*=subscribe], [class*=recirculation], [class*=promotion], [class*=article-list]")
+                .remove();
+    }
+
+    private String compact(String value) {
+        return value == null ? "" : value.replaceAll("[^0-9A-Za-z가-힣]", "").toLowerCase();
+    }
 
     private String extractFromArticleTag(Document doc) {
         Elements articleTags = doc.select("article");
@@ -59,6 +142,60 @@ public class ArticleContentExtractor {
         // the <article> tag has no <p> children to work with.
         String joined = joinParagraphs(articleTags.select("p"));
         return joined.isBlank() ? articleTags.text() : joined;
+    }
+
+    private String extractFromArticleBody(Document doc) {
+        Element articleBody = doc.selectFirst("[itemprop=articleBody]");
+        return articleBody == null ? null : articleBody.text();
+    }
+
+    private String extractFromJsonLd(Document doc) {
+        for (Element script : doc.select("script[type=application/ld+json]")) {
+            try {
+                JsonNode json = JSON.readTree(script.data());
+                String body = json.path("articleBody").asText("");
+                if (StringUtils.hasText(body)) {
+                    return body;
+                }
+                JsonNode graph = json.path("@graph");
+                if (graph.isArray()) {
+                    for (JsonNode item : graph) {
+                        String graphBody = item.path("articleBody").asText("");
+                        if (StringUtils.hasText(graphBody)) {
+                            return graphBody;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // Publishers often emit an array or malformed JSON-LD; use the DOM fallbacks.
+            }
+        }
+        return null;
+    }
+
+    private String extractFromKnownPublisherBody(Document doc, String url) {
+        String host = url.toLowerCase();
+        List<String> selectors = new ArrayList<>();
+        if (host.contains("mk.co.kr")) {
+            selectors.addAll(List.of("#article_body", ".news_cnt_detail_wrap", ".news_cnt_detail", ".art_txt"));
+        } else if (host.contains("hankyung.com")) {
+            selectors.addAll(List.of("#articletxt", ".article-body", ".article-body__content", ".article-content"));
+        } else if (host.contains("yna.co.kr")) {
+            selectors.addAll(List.of(".story-news", ".story-news__content", "#articleWrap", ".article-txt"));
+        }
+        for (String selector : selectors) {
+            Element body = doc.selectFirst(selector);
+            if (body != null) {
+                String text = joinParagraphs(body.select("p"));
+                if (StringUtils.hasText(text)) {
+                    return text;
+                }
+                if (StringUtils.hasText(body.text())) {
+                    return body.text();
+                }
+            }
+        }
+        return null;
     }
 
     private String extractFromParagraphs(Document doc) {

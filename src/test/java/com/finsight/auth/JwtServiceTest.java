@@ -1,16 +1,42 @@
 package com.finsight.auth;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import java.time.Instant;
+import java.util.Date;
 import org.junit.jupiter.api.Test;
 
 class JwtServiceTest {
 
+    private static final String SECRET = java.util.Base64.getEncoder().encodeToString(
+            "finsight-test-jwt-secret-32-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
     @Test
-    void rejectsMissingOrPublicJwtSecret() {
-        assertThatThrownBy(() -> new JwtService("", 86400))
-                .isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> new JwtService("Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=", 86400))
-                .isInstanceOf(IllegalStateException.class);
+    void acceptsIssuedTokenAndRejectsExpiredOrTamperedTokens() {
+        JwtService jwt = new JwtService(SECRET, 60);
+        User user = new User("person@example.com", "hash", "User", AuthProvider.LOCAL);
+        String issued = jwt.issue(user);
+        String tampered = issued.substring(0, issued.lastIndexOf('.') + 1) + "invalid-signature";
+        Instant old = Instant.now().minusSeconds(120);
+        String expired = Jwts.builder().subject(user.getEmail())
+                .issuedAt(Date.from(old)).expiration(Date.from(old.plusSeconds(30)))
+                .signWith(Keys.hmacShaKeyFor(Decoders.BASE64.decode(SECRET))).compact();
+
+        assertTrue(jwt.isValid(issued));
+        assertEquals("person@example.com", jwt.subject(issued));
+        assertFalse(jwt.isValid(expired));
+        assertFalse(jwt.isValid(tampered));
+    }
+
+    @Test
+    void rejectsMissingOrPublicDefaultSecret() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> new JwtService("", 60));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> new JwtService("Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=", 60));
     }
 }

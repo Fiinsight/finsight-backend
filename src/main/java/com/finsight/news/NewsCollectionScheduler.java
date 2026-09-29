@@ -28,9 +28,9 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
-    private static final int TOP_CANDIDATE_COUNT = 10;
-    private static final int TARGET_SAVED_COUNT = 3;
-    private static final int MAX_EXTRACTION_ATTEMPTS = 10;
+    private static final int TOP_CANDIDATE_COUNT = 220;
+    private static final int TARGET_SAVED_COUNT = 220;
+    private static final int MAX_EXTRACTION_ATTEMPTS = 220;
 
     private final RssFeedFetcher rssFeedFetcher;
     private final NewsDeduplicator newsDeduplicator;
@@ -101,7 +101,8 @@ public class NewsCollectionScheduler {
             }
             attempts++;
             Optional<String> body = articleContentExtractor.extract(candidate.url());
-            if (body.isEmpty() || body.get().isBlank()) {
+            if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
+                log.info("Skipping unsuitable article body for {}", candidate.url());
                 continue;
             }
             try {
@@ -112,5 +113,18 @@ public class NewsCollectionScheduler {
             }
         }
         return savedCount;
+    }
+
+    public int reprocessExisting(int limit) {
+        int updated = 0;
+        for (News news : newsRepository.findTop100ByOrderByCreatedAtDesc()) {
+            if (updated >= limit) break;
+            newsAssembler.refreshMetadata(news);
+            if (news.getRawContent() == null || news.getRawContent().isBlank()) continue;
+            newsAssembler.reprocess(news);
+            newsRepository.save(news);
+            updated++;
+        }
+        return updated;
     }
 }

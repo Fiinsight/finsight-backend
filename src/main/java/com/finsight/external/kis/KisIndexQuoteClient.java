@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -43,6 +44,7 @@ public class KisIndexQuoteClient {
         this.appSecret = appSecret;
     }
 
+    @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", sync = true)
     public KisIndexQuote getIndexQuote(String indexCode) {
         CachedQuote current = cache.get(indexCode);
         if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {

@@ -1,6 +1,9 @@
 package com.finsight.news;
 
 import com.finsight.briefing.SentimentHint;
+import com.finsight.news.collect.NewsCategoryClassifier;
+import com.finsight.news.collect.ArticleContentExtractor;
+import java.time.Instant;
 import java.util.List;
 
 public record NewsDetailResponse(
@@ -8,6 +11,7 @@ public record NewsDetailResponse(
         String title,
         String url,
         String source,
+        Instant publishedAt,
         String rawContent,
         String rewrittenBeginner,
         String rewrittenNormal,
@@ -21,24 +25,39 @@ public record NewsDetailResponse(
         String category,
         List<String> keyTerms
 ) {
-    public static NewsDetailResponse from(News news) {
+    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
+                                          ArticleContentExtractor contentExtractor) {
+        String rawContent = contentExtractor.clean(news.getTitle(), news.getRawContent());
+        String beginner = replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
+        String normal = replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
+        String analyst = replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
                 news.getUrl(),
                 news.getSource(),
-                news.getRawContent(),
-                news.getRewrittenBeginner(),
-                news.getRewrittenNormal(),
-                news.getRewrittenAnalyst(),
-                news.getImportanceReason(),
+                news.getPublishedAt(),
+                rawContent,
+                beginner,
+                normal,
+                analyst,
+                categoryClassifier.importanceReason(news.getTitle(), rawContent, news.getImportanceReason(),
+                        news.getRelatedSymbol()),
                 news.getImportanceReasonBeginner(),
                 news.getImportanceReasonNormal(),
                 news.getImportanceReasonAnalyst(),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
-                news.getCategory(),
+                categoryClassifier.classify(news.getTitle()),
                 news.getKeyTerms()
         );
+    }
+
+    private static String replaceStaleRewrite(String rewrite, String cleanedContent) {
+        if (rewrite == null) {
+            return null;
+        }
+        return rewrite.contains("Google 검색") || rewrite.contains("더 자주 볼 수 있습니다")
+                ? cleanedContent : rewrite;
     }
 }

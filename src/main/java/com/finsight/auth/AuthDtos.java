@@ -11,4 +11,6 @@ public final class AuthDtos {
     public record KakaoRequest(@NotBlank String code) {}
     public record AuthResponse(String accessToken, Long userId, String email, String nickname) {}
     public record KakaoUrlResponse(String authorizationUrl) {}
+    /** Non-secret diagnostics used to verify the active Kakao environment. */
+    public record KakaoConfigStatus(boolean configured, String redirectUri, String appRedirectUri) {}
 }
