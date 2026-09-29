@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.finsight.news.News;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -18,5 +19,15 @@ class ChartServiceTest {
 
         assertThat(ChartService.deduplicateRelatedNews(List.of(first, duplicate, other)))
                 .containsExactly(first, other);
+    }
+
+    @Test
+    void detectsOnlyMovesThatExceedRecentRelativeVolatility() {
+        List<Double> stableChanges = List.of(0.10, -0.10, 0.08, -0.08, 0.10);
+
+        assertThat(ChartService.isSignificantMove(stableChanges, 0.15)).isFalse();
+        assertThat(ChartService.isSignificantMove(stableChanges, 0.50)).isTrue();
+        assertThat(ChartService.isSignificantMove(new ArrayList<>(stableChanges).subList(0, 4), 0.50))
+                .isFalse();
     }
 }

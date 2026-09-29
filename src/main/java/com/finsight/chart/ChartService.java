@@ -24,7 +24,10 @@ public class ChartService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int DAILY_CANDLE_COUNT = 30;
-    private static final int WEEKLY_CANDLE_COUNT = 6; // ~a month and a bit of weekly bars
+    private static final int WEEKLY_CANDLE_COUNT = 7; // enough bars for a five-return baseline
+    private static final int VOLATILITY_WINDOW = 20;
+    private static final int MIN_VOLATILITY_OBSERVATIONS = 5;
+    private static final double VOLATILITY_MULTIPLIER = 2.0;
 
     private final KisDailyCandleClient kisDailyCandleClient;
     private final KisMinuteCandleClient kisMinuteCandleClient;
@@ -58,9 +61,10 @@ public class ChartService {
                     .toList();
             double price = minuteCandles.isEmpty() ? 0.0 : minuteCandles.get(minuteCandles.size() - 1).close();
             double changePercent = computeMinuteChangePercent(minuteCandles);
+            List<MovePoint> points = toMinuteMovePoints(result.candles());
             return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), null,
                     "MINUTE", interval, minuteCandles, result.fallback(),
-                    result.fallback() ? List.of() : findMoveInsights(symbol, result.candles()));
+                    result.fallback() ? List.of() : findMoveInsights(symbol, points));
         }
 
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
@@ -74,6 +78,7 @@ public class ChartService {
 
         double price = candleViews.isEmpty() ? 0.0 : candleViews.get(candleViews.size() - 1).close();
         double changePercent = computeChangePercent(candleViews);
+        List<MovePoint> points = toDailyMovePoints(candles);
 
         List<News> matchedNews;
         if (candleViews.isEmpty()) {
@@ -94,7 +99,7 @@ public class ChartService {
         ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
-                periodDivCode, null, List.of(), false, List.of());
+                periodDivCode, null, List.of(), false, findMoveInsights(symbol, points));
     }
 
     static List<News> deduplicateRelatedNews(List<News> news) {
@@ -126,36 +131,34 @@ public class ChartService {
         return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase();
     }
 
-    private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<com.finsight.external.kis.KisMinuteCandle> candles) {
-        if (candles.size() < 2) {
+    private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<MovePoint> points) {
+        if (points.size() < MIN_VOLATILITY_OBSERVATIONS + 1) {
             return List.of();
         }
-        LocalDate startDate = candles.get(0).timestamp().toLocalDate();
-        LocalDate endDate = candles.get(candles.size() - 1).timestamp().toLocalDate();
+        LocalDate startDate = points.get(0).timestamp().toLocalDate();
+        LocalDate endDate = points.get(points.size() - 1).timestamp().toLocalDate();
         List<News> relatedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(
                 symbol,
                 startDate.atStartOfDay(KST).toInstant(),
                 endDate.plusDays(1).atStartOfDay(KST).toInstant());
 
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
-        for (int i = 1; i < candles.size(); i++) {
-            var previous = candles.get(i - 1);
-            var current = candles.get(i);
-            if (previous.close() == 0.0) {
+        for (int i = 1; i < points.size(); i++) {
+            MovePoint current = points.get(i);
+            int from = Math.max(0, i - VOLATILITY_WINDOW);
+            List<Double> previousChanges = points.subList(from, i).stream()
+                    .map(MovePoint::changePercent)
+                    .toList();
+            if (!isSignificantMove(previousChanges, current.changePercent())) {
                 continue;
             }
-            double change = (current.close() - previous.close()) / previous.close() * 100.0;
-            if (Math.abs(change) < 0.5) {
-                continue;
-            }
-            LocalDate currentDate = current.timestamp().toLocalDate();
             var news = relatedNews.stream()
                     .filter(item -> item.getPublishedAt() != null
-                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate))
+                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(current.timestamp().toLocalDate()))
                     .findFirst();
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),
-                    Math.round(change * 100.0) / 100.0,
+                    Math.round(current.changePercent() * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
                     news.map(News::getSource).orElse(null),
@@ -167,6 +170,54 @@ public class ChartService {
                 .limit(3)
                 .toList();
     }
+
+    static boolean isSignificantMove(List<Double> previousChanges, double changePercent) {
+        if (previousChanges.size() < MIN_VOLATILITY_OBSERVATIONS) {
+            return false;
+        }
+        double mean = previousChanges.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = previousChanges.stream()
+                .mapToDouble(value -> Math.pow(value - mean, 2))
+                .average()
+                .orElse(0.0);
+        double standardDeviation = Math.sqrt(variance);
+        return standardDeviation > 0.0
+                && Math.abs(changePercent) >= VOLATILITY_MULTIPLIER * standardDeviation;
+    }
+
+    private List<MovePoint> toDailyMovePoints(List<KisDailyCandle> candles) {
+        List<KisDailyCandle> sorted = candles.stream()
+                .sorted(Comparator.comparing(KisDailyCandle::date))
+                .toList();
+        List<MovePoint> points = new ArrayList<>();
+        for (int i = 1; i < sorted.size(); i++) {
+            KisDailyCandle previous = sorted.get(i - 1);
+            KisDailyCandle current = sorted.get(i);
+            if (previous.close() != 0.0) {
+                points.add(new MovePoint(current.date().atStartOfDay(),
+                        (current.close() - previous.close()) / previous.close() * 100.0));
+            }
+        }
+        return points;
+    }
+
+    private List<MovePoint> toMinuteMovePoints(List<com.finsight.external.kis.KisMinuteCandle> candles) {
+        List<com.finsight.external.kis.KisMinuteCandle> sorted = candles.stream()
+                .sorted(Comparator.comparing(com.finsight.external.kis.KisMinuteCandle::timestamp))
+                .toList();
+        List<MovePoint> points = new ArrayList<>();
+        for (int i = 1; i < sorted.size(); i++) {
+            var previous = sorted.get(i - 1);
+            var current = sorted.get(i);
+            if (previous.close() != 0.0) {
+                points.add(new MovePoint(current.timestamp(),
+                        (current.close() - previous.close()) / previous.close() * 100.0));
+            }
+        }
+        return points;
+    }
+
+    private record MovePoint(LocalDateTime timestamp, double changePercent) { }
 
     private ChartResponse.DocentView buildDocent(News news) {
         String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
