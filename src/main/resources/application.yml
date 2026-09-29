@@ -21,7 +21,7 @@ spring:
 
 finsight:
   auth:
-    jwt-secret: ${JWT_SECRET:Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=}
+    jwt-secret: ${JWT_SECRET:}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
     kakao-client-id: ${KAKAO_CLIENT_ID:}
     kakao-client-secret: ${KAKAO_CLIENT_SECRET:}
@@ -41,6 +41,9 @@ finsight:
     allowed-origin-patterns: ${FINSIGHT_CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*,http://10.*:*,http://192.168.*:*,http://172.16.*:*,http://172.17.*:*,http://172.18.*:*,http://172.19.*:*,http://172.20.*:*,http://172.21.*:*,http://172.22.*:*,http://172.23.*:*,http://172.24.*:*,http://172.25.*:*,http://172.26.*:*,http://172.27.*:*,http://172.28.*:*,http://172.29.*:*,http://172.30.*:*,http://172.31.*:*}
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8001}
+  local-ml:
+    enabled: ${FINSIGHT_LOCAL_ML_ENABLED:false}
+    base-url: ${FINSIGHT_LOCAL_ML_BASE_URL:http://127.0.0.1:8002}
   kis:
     base-url: ${KIS_BASE_URL:https://openapivts.koreainvestment.com:29443}
     app-key: ${KIS_APP_KEY:}

@@ -6,18 +6,30 @@ import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import java.time.Instant;
 import java.util.Date;
+import org.springframework.util.StringUtils;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JwtService {
+    private static final String PUBLIC_DEFAULT_BASE64 = "Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=";
+    private static final String PUBLIC_DEFAULT_PLAIN = "for-local-development-secret-change-me";
     private final SecretKey key;
     private final long expirationSeconds;
 
     public JwtService(@Value("${finsight.auth.jwt-secret}") String secret,
                       @Value("${finsight.auth.expiration-seconds:86400}") long expirationSeconds) {
-        this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        if (!StringUtils.hasText(secret)
+                || PUBLIC_DEFAULT_BASE64.equals(secret.trim())
+                || PUBLIC_DEFAULT_PLAIN.equals(secret.trim())) {
+            throw new IllegalStateException("JWT_SECRET must be configured with a private base64-encoded key");
+        }
+        try {
+            this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("JWT_SECRET must be valid base64 and long enough for JWT signing", exception);
+        }
         this.expirationSeconds = expirationSeconds;
     }
     public String issue(User user) {

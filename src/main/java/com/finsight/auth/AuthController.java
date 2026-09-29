@@ -1,6 +1,7 @@
 package com.finsight.auth;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -12,11 +13,18 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService auth;
-    public AuthController(AuthService auth) { this.auth = auth; }
+    private final AuthRateLimiter rateLimiter;
+    public AuthController(AuthService auth, AuthRateLimiter rateLimiter) { this.auth = auth; this.rateLimiter = rateLimiter; }
     @PostMapping("/signup") @ResponseStatus(HttpStatus.CREATED)
-    public AuthDtos.AuthResponse signup(@Valid @RequestBody AuthDtos.SignupRequest request) { return auth.signup(request); }
+    public AuthDtos.AuthResponse signup(@Valid @RequestBody AuthDtos.SignupRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check("signup", request.email(), httpRequest.getRemoteAddr());
+        return auth.signup(request);
+    }
     @PostMapping("/login")
-    public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request) { return auth.login(request); }
+    public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check("login", request.email(), httpRequest.getRemoteAddr());
+        return auth.login(request);
+    }
     @GetMapping("/me")
     public AuthDtos.AuthResponse me(@AuthenticationPrincipal Long userId) { return auth.me(userId); }
     @GetMapping("/kakao/url")

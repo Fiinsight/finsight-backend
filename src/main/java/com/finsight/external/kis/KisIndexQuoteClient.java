@@ -3,6 +3,8 @@ package com.finsight.external.kis;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,11 +25,13 @@ public class KisIndexQuoteClient {
     private static final String INDEX_QUOTE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-index-price";
     private static final String INDEX_QUOTE_TR_ID = "FHPUP02100000";
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(1);
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
     private final String appKey;
     private final String appSecret;
+    private final Map<String, CachedQuote> cache = new ConcurrentHashMap<>();
 
     public KisIndexQuoteClient(WebClient.Builder webClientBuilder,
                                 KisTokenProvider tokenProvider,
@@ -42,6 +46,22 @@ public class KisIndexQuoteClient {
 
     @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", sync = true)
     public KisIndexQuote getIndexQuote(String indexCode) {
+        CachedQuote current = cache.get(indexCode);
+        if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+            return current.value();
+        }
+        synchronized (cache) {
+            current = cache.get(indexCode);
+            if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+                return current.value();
+            }
+            KisIndexQuote result = fetchIndexQuote(indexCode);
+            cache.put(indexCode, new CachedQuote(result, java.time.Instant.now().plus(CACHE_TTL)));
+            return result;
+        }
+    }
+
+    private KisIndexQuote fetchIndexQuote(String indexCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
@@ -75,4 +95,6 @@ public class KisIndexQuoteClient {
         double sample = "1001".equals(indexCode) ? 780.0 : 2650.0;
         return new KisIndexQuote(indexCode, sample, 0.0, true);
     }
+
+    private record CachedQuote(KisIndexQuote value, java.time.Instant expiresAt) { }
 }

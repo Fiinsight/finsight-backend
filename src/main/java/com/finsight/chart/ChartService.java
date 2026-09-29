@@ -32,7 +32,10 @@ public class ChartService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final int DAILY_CANDLE_COUNT = 30;
-    private static final int WEEKLY_CANDLE_COUNT = 6; // ~a month and a bit of weekly bars
+    private static final int WEEKLY_CANDLE_COUNT = 7; // enough bars for a five-return baseline
+    private static final int VOLATILITY_WINDOW = 20;
+    private static final int MIN_VOLATILITY_OBSERVATIONS = 5;
+    private static final double VOLATILITY_MULTIPLIER = 2.0;
 
     private final KisDailyCandleClient kisDailyCandleClient;
     private final KisMinuteCandleClient kisMinuteCandleClient;
@@ -99,24 +102,35 @@ public class ChartService {
             Instant start = startDate.atStartOfDay(KST).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
 
-            matchedNews = findRelatedNews(symbol, start, end).stream()
+            matchedNews = deduplicateRelatedNews(findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
                     .sorted(Comparator.comparing(News::getPublishedAt,
                             Comparator.nullsLast(Comparator.reverseOrder())))
-                    .toList();
+                    .toList());
         }
 
         List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
-        ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
+        List<ChartResponse.MoveInsightView> moveInsights = candleResult.fallback()
+                ? List.of()
+                : findDailyMoveInsights(candleViews, matchedNews, periodDivCode);
+        ChartResponse.DocentView docent = moveInsights.stream()
+                .map(ChartResponse.MoveInsightView::newsId)
+                .filter(id -> id != null)
+                .findFirst()
+                .flatMap(id -> matchedNews.stream().filter(news -> id.equals(news.getId())).findFirst())
+                .map(this::buildDocent)
+                .orElse(null);
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, markers, docent,
                 periodDivCode, null, List.of(), candleResult.fallback(),
-                candleResult.fallback() ? List.of() : findDailyMoveInsights(candleViews, matchedNews, periodDivCode));
+                moveInsights);
     }
 
     private List<ChartResponse.MoveInsightView> findDailyMoveInsights(
             List<CandleView> candles, List<News> relatedNews, String period) {
-        double threshold = "W".equals(period) ? 3.0 : 1.0;
+        if (candles.size() < MIN_VOLATILITY_OBSERVATIONS + 1) {
+            return List.of();
+        }
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
         for (int i = 1; i < candles.size(); i++) {
             CandleView previous = candles.get(i - 1);
@@ -125,21 +139,19 @@ public class ChartService {
                 continue;
             }
             double change = (current.close() - previous.close()) / previous.close() * 100.0;
-            if (Math.abs(change) < threshold) {
+            List<Double> previousChanges = new ArrayList<>();
+            for (int j = Math.max(1, i - VOLATILITY_WINDOW); j < i; j++) {
+                CandleView before = candles.get(j - 1);
+                CandleView prior = candles.get(j);
+                if (before.close() != 0.0) {
+                    previousChanges.add((prior.close() - before.close()) / before.close() * 100.0);
+                }
+            }
+            if (!isSignificantMove(previousChanges, change)) {
                 continue;
             }
-            LocalDate windowStart = "W".equals(period) ? previous.date() : current.date();
-            Instant windowStartInstant = windowStart.atStartOfDay(KST).toInstant();
-            Instant windowEndInstant = "W".equals(period)
-                    ? current.date().atTime(15, 30).atZone(KST).toInstant()
-                    : current.date().plusDays(1).atStartOfDay(KST).toInstant();
-            List<News> windowNews = relatedNews.stream()
-                    .filter(item -> item.getPublishedAt() != null
-                            && !item.getPublishedAt().isBefore(windowStartInstant)
-                            && !item.getPublishedAt().isAfter(windowEndInstant))
-                    .toList();
-            Optional<News> news = windowNews.stream()
-                    .max(Comparator.comparingDouble(item -> causeScore(item, change)));
+            Instant moveAt = current.date().atStartOfDay(KST).toInstant();
+            Optional<News> news = Optional.ofNullable(latestNewsBefore(relatedNews, moveAt));
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             String explanation = news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null);
             insights.add(new ChartResponse.MoveInsightView(
@@ -185,13 +197,8 @@ public class ChartService {
                 continue;
             }
             LocalDate currentDate = current.timestamp().toLocalDate();
-            List<News> windowNews = relatedNews.stream()
-                    .filter(item -> item.getPublishedAt() != null
-                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(currentDate)
-                            && !item.getPublishedAt().isAfter(current.timestamp().atZone(KST).toInstant()))
-                    .toList();
-            Optional<News> news = windowNews.stream()
-                    .max(Comparator.comparingDouble(item -> causeScore(item, change)));
+            Optional<News> news = Optional.ofNullable(latestNewsBefore(relatedNews,
+                    current.timestamp().atZone(KST).toInstant()));
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             String explanation = news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null);
             insights.add(new ChartResponse.MoveInsightView(
@@ -215,6 +222,48 @@ public class ChartService {
     private ChartResponse.DocentView buildDocent(News news) {
         String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
         return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
+    }
+
+    static List<News> deduplicateRelatedNews(List<News> news) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<News> result = new ArrayList<>();
+        for (News item : news) {
+            String title = normalize(item.getTitle());
+            String content = normalize(item.getRawContent());
+            String url = normalize(item.getUrl());
+            List<String> keys = new ArrayList<>();
+            if (!url.isBlank()) keys.add("url:" + url);
+            if (!content.isBlank()) keys.add("content:" + content);
+            if (!title.isBlank() && item.getPublishedAt() != null) {
+                keys.add("meta:" + title + "|" + normalize(item.getSource()) + "|" + item.getPublishedAt());
+            }
+            if (keys.stream().noneMatch(seen::contains)) {
+                seen.addAll(keys);
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase();
+    }
+
+    static News latestNewsBefore(List<News> news, Instant moveAt) {
+        return news.stream()
+                .filter(item -> item.getPublishedAt() != null && item.getPublishedAt().isBefore(moveAt))
+                .max(Comparator.comparing(News::getPublishedAt))
+                .orElse(null);
+    }
+
+    static boolean isSignificantMove(List<Double> previousChanges, double changePercent) {
+        if (previousChanges.size() < MIN_VOLATILITY_OBSERVATIONS) return false;
+        double mean = previousChanges.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = previousChanges.stream()
+                .mapToDouble(value -> Math.pow(value - mean, 2))
+                .average().orElse(0.0);
+        double standardDeviation = Math.sqrt(variance);
+        return standardDeviation > 0.0 && Math.abs(changePercent) >= VOLATILITY_MULTIPLIER * standardDeviation;
     }
 
     private String buildCauseExplanation(News news, double changePercent, double causeScore) {

@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class MarketSummaryService {
 
-    private static final Duration CACHE_TTL = Duration.ofSeconds(30);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(1);
 
     private static final String KOSPI_INDEX_CODE = "0001";
     private static final String KOSDAQ_INDEX_CODE = "1001";

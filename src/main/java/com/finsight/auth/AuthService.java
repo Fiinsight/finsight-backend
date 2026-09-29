@@ -165,22 +165,8 @@ public class AuthService {
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
     private boolean isAllowedAppRedirect(String state) {
-        if (state == null || state.isBlank()) {
-            return false;
-        }
-        if (state.equals(kakaoAppRedirectUri) || kakaoWebRedirectUris.contains(state)) {
-            return true;
-        }
-        try {
-            URI uri = URI.create(state);
-            return "exp".equals(uri.getScheme())
-                    && uri.getHost() != null
-                    && ("/--/auth/kakao".equals(uri.getPath()) || "/auth/kakao".equals(uri.getPath()))
-                    && uri.getQuery() == null
-                    && uri.getFragment() == null;
-        } catch (IllegalArgumentException ignored) {
-            return false;
-        }
+        if (state == null || state.isBlank()) return false;
+        return state.equals(kakaoAppRedirectUri) || kakaoWebRedirectUris.contains(state);
     }
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private long elapsedMs(long startedAt) { return (System.nanoTime() - startedAt) / 1_000_000; }

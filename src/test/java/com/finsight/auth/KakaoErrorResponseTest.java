@@ -33,6 +33,9 @@ class KakaoErrorResponseTest {
     @MockitoBean
     private JwtService jwtService;
 
+    @MockitoBean
+    private AuthRateLimiter authRateLimiter;
+
     @Test
     void returnsKakaoProviderErrorInsteadOfMaskingItAsForbidden() throws Exception {
         when(authService.kakao(anyString())).thenThrow(

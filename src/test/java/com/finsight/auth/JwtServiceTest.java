@@ -32,4 +32,11 @@ class JwtServiceTest {
         assertFalse(jwt.isValid(expired));
         assertFalse(jwt.isValid(tampered));
     }
+
+    @Test
+    void rejectsMissingOrPublicDefaultSecret() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> new JwtService("", 60));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> new JwtService("Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=", 60));
+    }
 }
