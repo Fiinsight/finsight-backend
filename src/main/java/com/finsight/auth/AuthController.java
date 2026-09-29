@@ -8,16 +8,24 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
     private final AuthService auth;
-    public AuthController(AuthService auth) { this.auth = auth; }
+    private final AuthRateLimiter rateLimiter;
+    public AuthController(AuthService auth, AuthRateLimiter rateLimiter) { this.auth = auth; this.rateLimiter = rateLimiter; }
     @PostMapping("/signup") @ResponseStatus(HttpStatus.CREATED)
-    public AuthDtos.AuthResponse signup(@Valid @RequestBody AuthDtos.SignupRequest request) { return auth.signup(request); }
+    public AuthDtos.AuthResponse signup(@Valid @RequestBody AuthDtos.SignupRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check("signup", request.email(), httpRequest.getRemoteAddr());
+        return auth.signup(request);
+    }
     @PostMapping("/login")
-    public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request) { return auth.login(request); }
+    public AuthDtos.AuthResponse login(@Valid @RequestBody AuthDtos.LoginRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check("login", request.email(), httpRequest.getRemoteAddr());
+        return auth.login(request);
+    }
     @GetMapping("/kakao/url")
     public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String state) {
         return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(state));
