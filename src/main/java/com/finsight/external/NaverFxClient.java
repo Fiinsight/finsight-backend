@@ -2,6 +2,7 @@ package com.finsight.external;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
@@ -28,9 +29,11 @@ public class NaverFxClient {
     private static final String SERIES_NAME = "원/달러 환율";
     private static final double FALLBACK_VALUE = 1380.0;
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
 
     private final WebClient webClient;
+    private volatile CachedRate cachedRate;
 
     public NaverFxClient(WebClient.Builder webClientBuilder,
                           @Value("${finsight.naver-fx.base-url}") String baseUrl) {
@@ -38,6 +41,22 @@ public class NaverFxClient {
     }
 
     public EcosRate getUsdKrwRate() {
+        CachedRate current = cachedRate;
+        if (current != null && current.expiresAt().isAfter(Instant.now())) {
+            return current.value();
+        }
+        synchronized (this) {
+            current = cachedRate;
+            if (current != null && current.expiresAt().isAfter(Instant.now())) {
+                return current.value();
+            }
+            EcosRate result = fetchUsdKrwRate();
+            cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
+            return result;
+        }
+    }
+
+    private EcosRate fetchUsdKrwRate() {
         try {
             JsonNode response = webClient.get()
                     .uri("/marketindex/exchange/FX_USDKRW")
@@ -83,4 +102,6 @@ public class NaverFxClient {
     private EcosRate fallback() {
         return new EcosRate(SERIES_NAME, FALLBACK_VALUE, "N/A", null, true);
     }
+
+    private record CachedRate(EcosRate value, Instant expiresAt) { }
 }

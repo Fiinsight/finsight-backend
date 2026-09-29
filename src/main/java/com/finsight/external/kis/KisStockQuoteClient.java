@@ -3,6 +3,8 @@ package com.finsight.external.kis;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,11 +24,13 @@ public class KisStockQuoteClient {
     private static final String STOCK_QUOTE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String STOCK_QUOTE_TR_ID = "FHKST01010100";
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(1);
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
     private final String appKey;
     private final String appSecret;
+    private final Map<String, CachedQuote> cache = new ConcurrentHashMap<>();
 
     public KisStockQuoteClient(WebClient.Builder webClientBuilder,
                                 KisTokenProvider tokenProvider,
@@ -40,6 +44,22 @@ public class KisStockQuoteClient {
     }
 
     public KisStockQuote getStockQuote(String stockCode) {
+        CachedQuote current = cache.get(stockCode);
+        if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+            return current.value();
+        }
+        synchronized (cache) {
+            current = cache.get(stockCode);
+            if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+                return current.value();
+            }
+            KisStockQuote result = fetchStockQuote(stockCode);
+            cache.put(stockCode, new CachedQuote(result, java.time.Instant.now().plus(CACHE_TTL)));
+            return result;
+        }
+    }
+
+    private KisStockQuote fetchStockQuote(String stockCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
@@ -71,4 +91,6 @@ public class KisStockQuoteClient {
     private KisStockQuote fallback(String stockCode) {
         return new KisStockQuote(stockCode, 70000.0, 0.0, true);
     }
+
+    private record CachedQuote(KisStockQuote value, java.time.Instant expiresAt) { }
 }

@@ -7,6 +7,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,12 +28,14 @@ public class KisDailyCandleClient {
     private static final String DAILY_CANDLE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_CANDLE_TR_ID = "FHKST03010100";
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
     private final String appKey;
     private final String appSecret;
+    private final Map<String, CachedCandles> cache = new ConcurrentHashMap<>();
 
     public KisDailyCandleClient(WebClient.Builder webClientBuilder,
                                  KisTokenProvider tokenProvider,
@@ -52,6 +56,23 @@ public class KisDailyCandleClient {
      * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
      */
     public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
+        String key = stockCode + ":" + count + ":" + periodDivCode;
+        CachedCandles current = cache.get(key);
+        if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+            return current.value();
+        }
+        synchronized (cache) {
+            current = cache.get(key);
+            if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+                return current.value();
+            }
+            List<KisDailyCandle> result = fetchCandles(stockCode, count, periodDivCode);
+            cache.put(key, new CachedCandles(result, java.time.Instant.now().plus(CACHE_TTL)));
+            return result;
+        }
+    }
+
+    private List<KisDailyCandle> fetchCandles(String stockCode, int count, String periodDivCode) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
@@ -123,4 +144,6 @@ public class KisDailyCandleClient {
         }
         return candles;
     }
+
+    private record CachedCandles(List<KisDailyCandle> value, java.time.Instant expiresAt) { }
 }

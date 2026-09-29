@@ -2,6 +2,7 @@ package com.finsight.external;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
@@ -34,10 +35,12 @@ public class EcosClient {
     private static final String BASE_RATE_ITEM_CODE = "0101000";
 
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofHours(12);
     private static final DateTimeFormatter YYYYMM = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final WebClient webClient;
     private final String apiKey;
+    private volatile CachedRate cachedRate;
 
     public EcosClient(WebClient.Builder webClientBuilder,
                        @Value("${finsight.ecos.base-url}") String baseUrl,
@@ -47,6 +50,22 @@ public class EcosClient {
     }
 
     public EcosRate getBaseRate() {
+        CachedRate current = cachedRate;
+        if (current != null && current.expiresAt().isAfter(Instant.now())) {
+            return current.value();
+        }
+        synchronized (this) {
+            current = cachedRate;
+            if (current != null && current.expiresAt().isAfter(Instant.now())) {
+                return current.value();
+            }
+            EcosRate result = fetchBaseRate();
+            cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
+            return result;
+        }
+    }
+
+    private EcosRate fetchBaseRate() {
         // 722Y001 (기준금리) is only published monthly. A policy rate is
         // conventionally read in percentage POINTS (e.g. "+0.25%p"), not a
         // relative % change — 2.75 -> 3.00 is only +0.25%p but would read as
@@ -113,4 +132,6 @@ public class EcosClient {
     private EcosRate fallback(String seriesName, double value) {
         return new EcosRate(seriesName, value, "N/A", null, true);
     }
+
+    private record CachedRate(EcosRate value, Instant expiresAt) { }
 }

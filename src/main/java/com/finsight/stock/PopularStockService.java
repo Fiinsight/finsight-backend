@@ -5,6 +5,8 @@ import com.finsight.external.kis.KisStockQuoteClient;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
+import java.time.Instant;
 import org.springframework.stereotype.Service;
 
 /**
@@ -14,6 +16,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class PopularStockService {
+
+    private static final Duration CACHE_TTL = Duration.ofMinutes(1);
 
     // Same 5 symbols the frontend previously hardcoded as sample data.
     private static final Map<String, String> SYMBOLS = new LinkedHashMap<>();
@@ -27,13 +31,26 @@ public class PopularStockService {
     }
 
     private final KisStockQuoteClient kisStockQuoteClient;
+    private volatile CachedPopularStocks cached;
 
     public PopularStockService(KisStockQuoteClient kisStockQuoteClient) {
         this.kisStockQuoteClient = kisStockQuoteClient;
     }
 
     public List<PopularStockView> getPopularStocks() {
-        return SYMBOLS.entrySet().stream()
+        CachedPopularStocks current = cached;
+        if (current != null && current.expiresAt().isAfter(Instant.now())) {
+            return current.value();
+        }
+        return refreshIfNeeded();
+    }
+
+    private synchronized List<PopularStockView> refreshIfNeeded() {
+        CachedPopularStocks current = cached;
+        if (current != null && current.expiresAt().isAfter(Instant.now())) {
+            return current.value();
+        }
+        List<PopularStockView> result = SYMBOLS.entrySet().stream()
                 .map(entry -> {
                     KisStockQuote quote = kisStockQuoteClient.getStockQuote(entry.getKey());
                     // KIS's 모의투자 tier throttles hard on back-to-back calls (see
@@ -43,6 +60,8 @@ public class PopularStockService {
                     return new PopularStockView(entry.getKey(), entry.getValue(), quote.currentPrice(), quote.changePercent(), quote.fallback());
                 })
                 .toList();
+        cached = new CachedPopularStocks(result, Instant.now().plus(CACHE_TTL));
+        return result;
     }
 
     private void sleepBetweenKisCalls() {
@@ -52,4 +71,6 @@ public class PopularStockService {
             Thread.currentThread().interrupt();
         }
     }
+
+    private record CachedPopularStocks(List<PopularStockView> value, Instant expiresAt) { }
 }

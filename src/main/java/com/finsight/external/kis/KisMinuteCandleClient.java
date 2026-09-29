@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,7 @@ public class KisMinuteCandleClient {
     private static final String PATH = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice";
     private static final String TR_ID = "FHKST03010200";
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(1);
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HHmmss");
 
@@ -33,6 +35,7 @@ public class KisMinuteCandleClient {
     private final KisTokenProvider tokenProvider;
     private final String appKey;
     private final String appSecret;
+    private final Map<String, CachedResult> cache = new ConcurrentHashMap<>();
 
     public KisMinuteCandleClient(WebClient.Builder webClientBuilder,
                                  KisTokenProvider tokenProvider,
@@ -53,6 +56,23 @@ public class KisMinuteCandleClient {
     public KisMinuteCandleResult getCandlesWithStatus(String stockCode, int intervalMinutes, int count) {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
+        String key = stockCode + ":" + interval + ":" + safeCount;
+        CachedResult current = cache.get(key);
+        if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+            return current.value();
+        }
+        synchronized (cache) {
+            current = cache.get(key);
+            if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
+                return current.value();
+            }
+            KisMinuteCandleResult result = fetchCandles(stockCode, interval, safeCount);
+            cache.put(key, new CachedResult(result, java.time.Instant.now().plus(CACHE_TTL)));
+            return result;
+        }
+    }
+
+    private KisMinuteCandleResult fetchCandles(String stockCode, int interval, int safeCount) {
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
@@ -148,4 +168,6 @@ public class KisMinuteCandleClient {
     private int normalizeInterval(int interval) {
         return interval == 1 || interval == 5 || interval == 15 ? interval : 5;
     }
+
+    private record CachedResult(KisMinuteCandleResult value, java.time.Instant expiresAt) { }
 }
