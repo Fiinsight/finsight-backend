@@ -15,6 +15,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
@@ -60,11 +61,21 @@ public class AuthService {
         form.add("grant_type", "authorization_code"); form.add("client_id", kakaoClientId);
         form.add("redirect_uri", kakaoRedirectUri); form.add("code", code);
         if (!kakaoClientSecret.isBlank()) form.add("client_secret", kakaoClientSecret);
-        JsonNode token = webClient.post().uri("https://kauth.kakao.com/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .bodyValue(form).retrieve().bodyToMono(JsonNode.class).block();
+        JsonNode token;
+        try {
+            token = webClient.post().uri("https://kauth.kakao.com/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(form).retrieve().bodyToMono(JsonNode.class).block();
+        } catch (WebClientException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.", e);
+        }
         if (token == null || token.get("access_token") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
-        JsonNode profile = webClient.get().uri("https://kapi.kakao.com/v2/user/me").headers(h -> h.setBearerAuth(token.get("access_token").asText()))
-                .retrieve().bodyToMono(JsonNode.class).block();
+        JsonNode profile;
+        try {
+            profile = webClient.get().uri("https://kapi.kakao.com/v2/user/me").headers(h -> h.setBearerAuth(token.get("access_token").asText()))
+                    .retrieve().bodyToMono(JsonNode.class).block();
+        } catch (WebClientException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.", e);
+        }
         if (profile == null || profile.get("id") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
         String kakaoId = profile.get("id").asText();
         JsonNode account = profile.path("kakao_account");

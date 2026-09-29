@@ -6,6 +6,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -28,4 +30,10 @@ public class AuthController {
     }
     @PostMapping("/kakao")
     public AuthDtos.AuthResponse kakao(@Valid @RequestBody AuthDtos.KakaoRequest request) { return auth.kakao(request.code()); }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleAuthError(ResponseStatusException exception) {
+        return ResponseEntity.status(exception.getStatusCode())
+                .body(Map.of("status", exception.getStatusCode().value(), "message", exception.getReason()));
+    }
 }
