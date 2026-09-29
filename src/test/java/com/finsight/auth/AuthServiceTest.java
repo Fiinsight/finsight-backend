@@ -30,7 +30,7 @@ class AuthServiceTest {
 
     private AuthService service(String webRedirectUris) {
         JwtService jwt = new JwtService(
-                "Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=", 86400);
+                "VGhpcyBpcyBhIHRlc3Qga2V5IHRoYXQgaXMgbG9uZyBlbm91Z2ggZm9yIEpXVA==", 86400);
         return new AuthService(mock(UserRepository.class), jwt, WebClient.builder(),
                 "client", "", "http://localhost:8080/api/auth/kakao/callback",
                 "finsight://auth/kakao", webRedirectUris);

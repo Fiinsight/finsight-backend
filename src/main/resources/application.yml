@@ -21,7 +21,7 @@ spring:
 
 finsight:
   auth:
-    jwt-secret: ${JWT_SECRET:Zm9yLWxvY2FsLWRldmVsb3BtZW50LXNlY3JldC1jaGFuZ2UtbWU=}
+    jwt-secret: ${JWT_SECRET:}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
     kakao-client-id: ${KAKAO_CLIENT_ID:}
     kakao-client-secret: ${KAKAO_CLIENT_SECRET:}
