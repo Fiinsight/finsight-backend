@@ -97,10 +97,17 @@ public class ChartService {
         }
 
         List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
-        ChartResponse.DocentView docent = matchedNews.isEmpty() ? null : buildDocent(matchedNews.get(0));
+        List<ChartResponse.MoveInsightView> moveInsights = findMoveInsights(symbol, points);
+        ChartResponse.DocentView docent = moveInsights.stream()
+                .map(ChartResponse.MoveInsightView::newsId)
+                .filter(id -> id != null)
+                .findFirst()
+                .flatMap(id -> matchedNews.stream().filter(news -> id.equals(news.getId())).findFirst())
+                .map(this::buildDocent)
+                .orElse(null);
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
-                periodDivCode, null, List.of(), false, findMoveInsights(symbol, points));
+                periodDivCode, null, List.of(), false, moveInsights);
     }
 
     static List<News> deduplicateRelatedNews(List<News> news) {
@@ -227,7 +234,11 @@ public class ChartService {
 
     private ChartResponse.DocentView buildDocent(News news) {
         String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
-        return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
+        String reason = "시장 방향과 변동 시점이 겹치는 관련 뉴스입니다. 개별 종목의 직접 원인으로 단정하지 않습니다.";
+        if (news.getImportanceReason() != null && !news.getImportanceReason().isBlank()) {
+            reason += " " + news.getImportanceReason();
+        }
+        return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, reason);
     }
 
     // % change vs the previous trading day's close — this was previously
