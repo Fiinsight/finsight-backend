@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Value;
@@ -101,13 +100,7 @@ public class AuthService {
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
     private boolean isAllowedAppRedirect(String state) {
         if (state == null || state.isBlank()) return false;
-        if (state.equals(kakaoAppRedirectUri) || kakaoWebRedirectUris.contains(state)) return true;
-        try {
-            URI uri = URI.create(state);
-            return "exp".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null;
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
+        return state.equals(kakaoAppRedirectUri) || kakaoWebRedirectUris.contains(state);
     }
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 }

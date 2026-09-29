@@ -20,10 +20,12 @@ class AuthServiceTest {
 
     @Test
     void keepsExpoRedirectSupportWithoutAllowingHttpUrlsByPrefix() {
-        AuthService service = service("");
+        AuthService service = service("exp://127.0.0.1:8081/--/auth/kakao");
 
         assertThat(service.kakaoCallbackUri("code", "exp://127.0.0.1:8081/--/auth/kakao"))
                 .startsWith("exp://127.0.0.1:8081/--/auth/kakao?code=");
+        assertThat(service.kakaoCallbackUri("code", "exp://127.0.0.1:8081/--/auth/kakao.evil"))
+                .startsWith("finsight://auth/kakao?code=");
         assertThat(service.kakaoCallbackUri("code", "http://localhost:8081/auth/kakao.evil"))
                 .startsWith("finsight://auth/kakao?code=");
     }
