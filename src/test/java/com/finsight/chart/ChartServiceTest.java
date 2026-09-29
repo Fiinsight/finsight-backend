@@ -30,4 +30,14 @@ class ChartServiceTest {
         assertThat(ChartService.isSignificantMove(new ArrayList<>(stableChanges).subList(0, 4), 0.50))
                 .isFalse();
     }
+
+    @Test
+    void matchesOnlyTheLatestNewsPublishedBeforeTheMove() {
+        Instant moveAt = Instant.parse("2026-09-29T02:00:00Z");
+        News before = new News("이전 기사", "https://before.example", "매체", moveAt.minusSeconds(3600), "본문");
+        News after = new News("이후 기사", "https://after.example", "매체", moveAt.plusSeconds(60), "본문");
+
+        assertThat(ChartService.latestNewsBefore(List.of(before, after), moveAt))
+                .isSameAs(before);
+    }
 }

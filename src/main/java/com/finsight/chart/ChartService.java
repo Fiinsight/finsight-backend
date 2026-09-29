@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -152,10 +153,8 @@ public class ChartService {
             if (!isSignificantMove(previousChanges, current.changePercent())) {
                 continue;
             }
-            var news = relatedNews.stream()
-                    .filter(item -> item.getPublishedAt() != null
-                            && item.getPublishedAt().atZone(KST).toLocalDate().equals(current.timestamp().toLocalDate()))
-                    .findFirst();
+            Optional<News> news = Optional.ofNullable(latestNewsBefore(relatedNews,
+                    current.timestamp().atZone(KST).toInstant()));
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),
                     Math.round(current.changePercent() * 100.0) / 100.0,
@@ -169,6 +168,13 @@ public class ChartService {
                 .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
                 .limit(3)
                 .toList();
+    }
+
+    static News latestNewsBefore(List<News> news, Instant moveAt) {
+        return news.stream()
+                .filter(item -> item.getPublishedAt() != null && item.getPublishedAt().isBefore(moveAt))
+                .max(Comparator.comparing(News::getPublishedAt))
+                .orElse(null);
     }
 
     static boolean isSignificantMove(List<Double> previousChanges, double changePercent) {
