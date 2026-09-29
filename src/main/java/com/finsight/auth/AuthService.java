@@ -57,6 +57,7 @@ public class AuthService {
                 .collect(Collectors.toUnmodifiableSet());
         this.kakaoTokenUri = kakaoTokenUri;
         this.kakaoProfileUri = kakaoProfileUri;
+        warnIfNonLocalBrowserRedirect();
     }
     public AuthDtos.AuthResponse signup(AuthDtos.SignupRequest request) {
         if (users.findByEmail(request.email()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 가입된 이메일입니다.");
@@ -164,6 +165,17 @@ public class AuthService {
     }
     private ResponseStatusException unauthorized() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."); }
     private void requireKakaoConfig() { if (kakaoClientId.isBlank() || kakaoRedirectUri.isBlank()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정이 필요합니다."); }
+    private void warnIfNonLocalBrowserRedirect() {
+        if (kakaoRedirectUri.isBlank()) return;
+        try {
+            String host = URI.create(kakaoRedirectUri).getHost();
+            if (!"localhost".equalsIgnoreCase(host) && !"127.0.0.1".equals(host)) {
+                log.warn("KAKAO_REDIRECT_URI host '{}' is not localhost/127.0.0.1; this demo expects a localhost browser callback.", host);
+            }
+        } catch (IllegalArgumentException e) {
+            log.warn("KAKAO_REDIRECT_URI is not a valid URI; this demo expects a localhost browser callback.");
+        }
+    }
     private boolean isAllowedAppRedirect(String state) {
         if (state == null || state.isBlank()) return false;
         return state.equals(kakaoAppRedirectUri) || kakaoWebRedirectUris.contains(state);
