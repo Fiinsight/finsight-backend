@@ -25,7 +25,7 @@ finsight:
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
     kakao-client-id: ${KAKAO_CLIENT_ID:}
     kakao-client-secret: ${KAKAO_CLIENT_SECRET:}
-    # Kakao Developers에 동일한 LAN/운영 URI를 등록하고, 운영 환경에서는 KAKAO_REDIRECT_URI로 덮어쓴다.
+    # 웹 브라우저 데모는 localhost로 고정하고, 운영 환경에서는 KAKAO_REDIRECT_URI로 덮어쓴다.
     kakao-redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:8080/api/auth/kakao/callback}
     kakao-app-redirect-uri: ${KAKAO_APP_REDIRECT_URI:finsight://auth/kakao}
     # Ask only for consent items enabled in Kakao Developers. Add account_email
