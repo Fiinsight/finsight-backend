@@ -13,8 +13,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -82,10 +84,10 @@ public class ChartService {
             Instant start = startDate.atStartOfDay(KST).toInstant();
             Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
 
-            matchedNews = newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
+            matchedNews = deduplicateRelatedNews(newsRepository.findByRelatedSymbolAndPublishedAtBetween(symbol, start, end).stream()
                     .sorted(Comparator.comparing(News::getPublishedAt,
                             Comparator.nullsLast(Comparator.reverseOrder())))
-                    .toList();
+                    .toList());
         }
 
         List<NewsMarkerView> markers = matchedNews.stream().map(this::toMarker).toList();
@@ -93,6 +95,35 @@ public class ChartService {
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, docent,
                 periodDivCode, null, List.of(), false, List.of());
+    }
+
+    static List<News> deduplicateRelatedNews(List<News> news) {
+        Set<String> seen = new HashSet<>();
+        List<News> result = new ArrayList<>();
+        for (News item : news) {
+            String titleKey = normalize(item.getTitle());
+            String contentKey = normalize(item.getRawContent());
+            List<String> keys = new ArrayList<>();
+            String urlKey = normalize(item.getUrl());
+            if (!urlKey.isBlank()) {
+                keys.add("url:" + urlKey);
+            }
+            if (!contentKey.isBlank()) {
+                keys.add("content:" + contentKey);
+            }
+            if (!titleKey.isBlank() && item.getPublishedAt() != null) {
+                keys.add("meta:" + titleKey + "|" + normalize(item.getSource()) + "|" + item.getPublishedAt());
+            }
+            if (keys.stream().noneMatch(seen::contains)) {
+                seen.addAll(keys);
+                result.add(item);
+            }
+        }
+        return result;
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase();
     }
 
     private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<com.finsight.external.kis.KisMinuteCandle> candles) {
