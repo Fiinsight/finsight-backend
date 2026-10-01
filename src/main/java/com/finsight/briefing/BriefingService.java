@@ -60,7 +60,9 @@ public class BriefingService {
     }
 
     private boolean isUsable(News news) {
-        return articleContentExtractor.isUsable(news.getTitle(), news.getRawContent());
+        return (news.getSource() == null || !news.getSource().startsWith("SYNTHETIC"))
+                && news.getUrl() != null && !news.getUrl().contains("example.invalid")
+                && articleContentExtractor.isUsable(news.getTitle(), news.getRawContent());
     }
 
     private NewsBriefResponse toBriefResponse(News news) {

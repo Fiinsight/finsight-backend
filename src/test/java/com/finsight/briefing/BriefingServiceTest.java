@@ -20,8 +20,10 @@ class BriefingServiceTest {
         News high = news(2L, "금리 환율 실적 증시", today.plusSeconds(100));
         News middle = news(3L, "반도체 수출 주가", today.plusSeconds(200));
         News tied = news(4L, "금리 실적", today.plusSeconds(300));
+        News synthetic = news(6L, "금리 환율 실적 증시 물가 수출 반도체", today);
+        when(synthetic.getSource()).thenReturn("SYNTHETIC_TEST");
         News old = news(5L, "금리 환율 실적 증시 물가 수출", today.minusSeconds(1));
-        when(repository.findAllByOrderByPublishedAtDesc(any(Pageable.class))).thenReturn(List.of(newest, tied, middle, high, old));
+        when(repository.findAllByOrderByPublishedAtDesc(any(Pageable.class))).thenReturn(List.of(newest, tied, middle, high, old, synthetic));
         var service = new BriefingService(repository, extractor, new NewsCategoryClassifier(), new NewsRelevanceScorer());
         assertEquals(List.of(2L, 3L, 4L), service.getTodayBriefing().stream().map(NewsBriefResponse::id).toList());
         assertEquals(List.of(1L, 5L), service.getMoreBriefing(0, 10).stream().map(NewsBriefResponse::id).toList());
@@ -35,6 +37,7 @@ class BriefingServiceTest {
         var news = mock(News.class);
         when(news.getId()).thenReturn(id);
         when(news.getTitle()).thenReturn(title);
+        when(news.getUrl()).thenReturn("https://publisher.test/" + id);
         when(news.getPublishedAt()).thenReturn(published);
         when(news.getRawContent()).thenReturn("기사 본문");
         return news;

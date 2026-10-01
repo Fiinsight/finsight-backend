@@ -41,6 +41,17 @@ class NewsPipelineQualityTest {
     }
 
     @Test
+    void extractsJsonLdBeforeRemovingScriptChrome() throws Exception {
+        try (var server = new okhttp3.mockwebserver.MockWebServer()) {
+            server.start();
+            server.enqueue(new okhttp3.mockwebserver.MockResponse().setHeader("Content-Type", "text/html")
+                    .setBody("<html><script type=\"application/ld+json\">{\"articleBody\":\"반도체 수출이 늘었다.\"}</script><nav>광고</nav></html>"));
+            assertThat(new ArticleContentExtractor().extract(server.url("/article").toString()))
+                    .contains("반도체 수출이 늘었다.");
+        }
+    }
+
+    @Test
     void mapsCommonCompanyAliasesToChartSymbols() {
         NewsSymbolMatcher matcher = new NewsSymbolMatcher();
         assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isNull();

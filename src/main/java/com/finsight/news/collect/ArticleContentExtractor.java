@@ -36,9 +36,8 @@ public class ArticleContentExtractor {
                     .timeout((int) FETCH_TIMEOUT.toMillis())
                     .get();
 
-            removePageChrome(doc);
-
             String text = extractFromJsonLd(doc);
+            removePageChrome(doc);
             if (!StringUtils.hasText(text)) {
                 text = extractFromKnownPublisherBody(doc, url);
             }
