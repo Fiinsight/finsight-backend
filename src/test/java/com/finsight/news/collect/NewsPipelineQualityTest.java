@@ -36,6 +36,8 @@ class NewsPipelineQualityTest {
         assertThat(cleaned).doesNotContain("Google 검색", "더 자주 볼 수 있습니다");
         assertThat(cleaned).doesNotContain("원화값 강세에도 순항");
         assertThat(cleaned).contains("반도체 수요가 늘었습니다");
+        assertThat(extractor.clean("", "반도체 수출이 늘었다.\n제보는 카카오톡 okjebo <저작권자(c) 연합뉴스>"))
+                .isEqualTo("반도체 수출이 늘었다.");
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.finsight.localml;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finsight.news.News;
+import com.finsight.news.collect.ArticleContentExtractor;
 import com.finsight.term.Term;
 import com.finsight.judgement.Judgement;
 import jakarta.persistence.EntityManager;
@@ -33,6 +34,7 @@ public class LocalRetrievalController {
                         @Size(max=100) String term) {}
     public record Doc(String id, String kind, String title, String body, Instant publishedAt,
                       String symbol, String owner, String url, String source, boolean synthetic) {}
+    private final ArticleContentExtractor contentExtractor = new ArticleContentExtractor();
     private final EntityManager em;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -138,7 +140,7 @@ public class LocalRetrievalController {
         return query.setMaxResults(company == null ? 200 : 500).getResultList().stream()
             .filter(n -> company == null || ChartCompanyMatcher.reason(q.symbol(),n.getTitle(),n.getRawContent()) != null)
             .limit(company == null ? 200 : 100).map(n -> new Doc(n.getId().toString(), "news", n.getTitle(),
-            company == null ? safe(n.getRawContent()) : ChartCompanyMatcher.excerpt(q.symbol(),n.getRawContent(),4000), n.getPublishedAt(), company == null ? n.getRelatedSymbol() : q.symbol(), null, n.getUrl(), n.getSource(),
+            company == null ? safe(contentExtractor.clean(n.getTitle(), n.getRawContent())) : ChartCompanyMatcher.excerpt(q.symbol(),contentExtractor.clean(n.getTitle(), n.getRawContent()),4000), n.getPublishedAt(), company == null ? n.getRelatedSymbol() : q.symbol(), null, n.getUrl(), n.getSource(),
             n.getSource() != null && n.getSource().startsWith("SYNTHETIC"))).toList();
     }
 

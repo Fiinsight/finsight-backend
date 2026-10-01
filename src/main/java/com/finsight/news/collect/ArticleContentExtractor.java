@@ -107,7 +107,7 @@ public class ArticleContentExtractor {
         for (String marker : List.of(
                 "주소 :", "주소:", "한경 프리미엄9의 모든 콘텐츠",
                 "일간신문등록번호", "개인정보처리방침", "서비스 이용 제한",
-                "ⓒ 한경닷컴, 무단전재 및 재배포 금지", "1000원의 힘",
+                "ⓒ 한경닷컴, 무단전재 및 재배포 금지", "제보는 카카오톡", "<저작권자", "1000원의 힘",
                 "삼전닉스 괜히 팔았나")) {
             int index = body.indexOf(marker);
             if (index > 0) {
