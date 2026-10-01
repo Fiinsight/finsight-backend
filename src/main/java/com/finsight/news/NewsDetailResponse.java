@@ -37,10 +37,10 @@ public record NewsDetailResponse(
                 news.getUrl(),
                 news.getSource(),
                 news.getPublishedAt(),
-                rawContent,
-                beginner,
-                normal,
-                analyst,
+                excerpt(rawContent),
+                excerpt(beginner),
+                excerpt(normal),
+                excerpt(analyst),
                 categoryClassifier.importanceReason(news.getTitle(), rawContent, news.getImportanceReason(),
                         news.getRelatedSymbol()),
                 news.getImportanceReasonBeginner(),
@@ -51,6 +51,11 @@ public record NewsDetailResponse(
                 categoryClassifier.classify(news.getTitle()),
                 news.getKeyTerms()
         );
+    }
+
+    public static String excerpt(String text) {
+        if (text == null) return null;
+        return text.length() <= 600 ? text : text.substring(0, 600).strip() + "…\n전체 원문은 출처 링크에서 확인하세요.";
     }
 
     private static String replaceStaleRewrite(String rewrite, String cleanedContent) {

@@ -7,6 +7,10 @@ public record NewsBriefResponse(
         String importanceReason,
         String relatedSymbol,
         String category,
-        SentimentHint sentimentHint
+        SentimentHint sentimentHint,
+        String url,
+        String source,
+        java.time.Instant publishedAt,
+        int relevanceScore
 ) {
 }

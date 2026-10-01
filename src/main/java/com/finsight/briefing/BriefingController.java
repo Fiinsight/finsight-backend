@@ -22,7 +22,7 @@ public class BriefingController {
 
     @GetMapping("/today")
     @Operation(summary = "오늘의 브리핑 조회",
-            description = "최신 뉴스 3건을 반환합니다. DB에 아직 데이터가 없으면(예: 스케줄러 미실행) 샘플 데이터로 대체합니다.")
+            description = "오늘 기사를 우선하고 경제 키워드 점수순으로 3건을 선별합니다. 동점은 실제 발행시간순이며 데이터가 없으면 빈 목록을 반환합니다.")
     public List<NewsBriefResponse> today() {
         return briefingService.getTodayBriefing();
     }
