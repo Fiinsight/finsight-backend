@@ -27,13 +27,17 @@ public class NewsRelevanceScorer {
     }
 
     private NewsCandidate score(NewsCandidate candidate) {
+        return candidate.withScore(scoreTitle(candidate.title()));
+    }
+
+    public int scoreTitle(String title) {
+        if (title == null) return 0;
         int score = 0;
-        String title = candidate.title();
         for (String keyword : SCORING_KEYWORDS) {
             if (title.contains(keyword)) {
                 score++;
             }
         }
-        return candidate.withScore(score);
+        return score;
     }
 }

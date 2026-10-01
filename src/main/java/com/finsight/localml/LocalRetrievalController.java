@@ -70,10 +70,18 @@ public class LocalRetrievalController {
             if (!List.of("MODEL", "RULE_FALLBACK", "DATA_UNAVAILABLE", "DISABLED").contains(result.get("status")))
                 return empty("RULE_FALLBACK", "INVALID_ADAPTER_STATUS");
             if (!(result.get("results") instanceof List<?> rows)) return empty("RULE_FALLBACK", "INVALID_ADAPTER_RESULT");
-            Set<String> allowed = new HashSet<>(); docs.forEach(d -> allowed.add(d.id()));
+            Map<String,Doc> authorized = new HashMap<>(); docs.forEach(d -> authorized.put(d.id(), d));
             for (Object row : rows) {
-                if (!(row instanceof Map<?,?> map) || !allowed.contains(map.get("id")))
+                if (!(row instanceof Map<?,?> map) || !authorized.containsKey(map.get("id")))
                     return empty("RULE_FALLBACK", "INVALID_RESULT_ID");
+                @SuppressWarnings("unchecked") Map<String,Object> item = (Map<String,Object>) row;
+                Doc doc = authorized.get(item.get("id"));
+                item.put("url", doc.url());
+                item.put("source", doc.source());
+                item.put("publishedAt", doc.publishedAt());
+                if (item.get("evidence") instanceof String evidence) {
+                    item.put("evidence", evidence.substring(0, Math.min(600, evidence.length())));
+                }
             }
             result.put("candidateCount", docs.size());
             if ("news".equals(query.kind()) && ChartCompanyMatcher.get(query.symbol()) != null) {

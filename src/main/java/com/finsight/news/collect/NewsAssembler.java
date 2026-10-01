@@ -108,7 +108,7 @@ public class NewsAssembler {
         }
         log.warn("AI rewrite unavailable for level={} url={}, falling back to raw article text for this level",
                 level, candidate.url());
-        return new RewriteLevelResult(rawContent, null, List.of());
+        return new RewriteLevelResult("수준별 요약을 확인할 수 없음 · 원문 링크에서 확인하세요 (fallback)", null, List.of());
     }
 
     private Optional<String> firstNonBlank(String... values) {
