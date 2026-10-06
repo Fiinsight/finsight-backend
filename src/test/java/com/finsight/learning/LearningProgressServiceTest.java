@@ -15,7 +15,7 @@ class LearningProgressServiceTest {
   var quiz=Map.<String,Object>of("news_id",115L,"correct",false,"answered_at",java.sql.Timestamp.from(now));
   var old=Map.<String,Object>of("news_id",116L,"correct",true,"answered_at",java.sql.Timestamp.from(now.minusSeconds(1200)));
   when(db.queryForList(contains("learning_progress"),eq(1L),any(),any())).thenReturn(List.of(quiz,old));
-  when(db.query(contains("UNION"),any(RowMapper.class),eq(1L),any(),eq(1L),any())).thenReturn(List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4),LocalDate.of(2026,10,3)));
+  when(db.query(contains("UNION"),any(RowMapper.class),eq(1L),any(),eq(1L),any(),eq(1L),any())).thenReturn(List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4),LocalDate.of(2026,10,3)));
   var wrong=Map.<String,Object>of("choice","UP","actual_direction","DOWN","news_id",115L,"title","금리 동결","raw_content","금리 환경");
   var single=Map.<String,Object>of("choice","UP","actual_direction","DOWN","news_id",117L,"title","환율 상승","raw_content","달러");
   when(db.queryForList(contains("JOIN news"),eq(1L))).thenReturn(List.of(wrong,wrong,single));

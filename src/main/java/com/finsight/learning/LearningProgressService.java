@@ -38,8 +38,8 @@ public class LearningProgressService {
             if (!day.isBefore(monday)) { weekCount++; if (correct) weekCorrect++; }
             if (completed.size()<100) completed.add(((Number)row.get("news_id")).longValue());
         }
-        Set<LocalDate> activity = new HashSet<>(jdbc.query("SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Seoul')::date AS day FROM judgement WHERE user_id=? AND created_at<=? UNION SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Seoul')::date AS day FROM article_note WHERE user_id=? AND created_at<=?",
-                (rs,index) -> rs.getDate("day").toLocalDate(), userId, java.sql.Timestamp.from(now.toInstant()), userId, java.sql.Timestamp.from(now.toInstant())));
+        Set<LocalDate> activity = new HashSet<>(jdbc.query("SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Seoul')::date AS day FROM judgement WHERE user_id=? AND created_at<=? UNION SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Seoul')::date AS day FROM article_note WHERE user_id=? AND created_at<=? UNION SELECT DISTINCT (answered_at AT TIME ZONE 'Asia/Seoul')::date AS day FROM learning_progress WHERE user_id=? AND answered_at<=?",
+                (rs,index) -> rs.getDate("day").toLocalDate(), userId, java.sql.Timestamp.from(now.toInstant()), userId, java.sql.Timestamp.from(now.toInstant()), userId, java.sql.Timestamp.from(now.toInstant())));
         LocalDate day = activity.contains(today) ? today : today.minusDays(1);
         int streak=0; while (activity.contains(day)) { streak++; day=day.minusDays(1); }
         var decisions = jdbc.queryForList("SELECT j.choice,j.actual_direction,n.id AS news_id,n.title,n.raw_content FROM judgement j JOIN news n ON n.id=j.news_id WHERE j.user_id=? AND j.feedback_generated_at IS NOT NULL AND j.actual_direction IN ('UP','NEUTRAL','DOWN') AND j.actual_change_percent IS NOT NULL ORDER BY j.created_at DESC", userId);

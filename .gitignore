@@ -7,3 +7,6 @@ build/
 out/
 target/
 *.log
+
+# Local Python script bytecode
+scripts/__pycache__/
