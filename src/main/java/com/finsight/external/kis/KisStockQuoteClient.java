@@ -22,7 +22,7 @@ public class KisStockQuoteClient {
 
     private static final String STOCK_QUOTE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String STOCK_QUOTE_TR_ID = "FHKST01010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
 
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
@@ -34,7 +34,7 @@ public class KisStockQuoteClient {
                                 @Value("${finsight.kis.base-url}") String baseUrl,
                                 @Value("${finsight.kis.app-key}") String appKey,
                                 @Value("${finsight.kis.app-secret}") String appSecret) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.webClient = webClientBuilder.clone().baseUrl(baseUrl).filter(tokenProvider.quoteFilter()).build();
         this.tokenProvider = tokenProvider;
         this.appKey = appKey;
         this.appSecret = appSecret;
@@ -71,6 +71,6 @@ public class KisStockQuoteClient {
     }
 
     private KisStockQuote fallback(String stockCode) {
-        return new KisStockQuote(stockCode, 70000.0, 0.0, true);
+        return new KisStockQuote(stockCode, 0.0, 0.0, true);
     }
 }

@@ -12,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
+import reactor.core.publisher.Mono;
 
 /**
  * Issues and Redis-caches the KIS OAuth access token. This is the only
@@ -45,6 +47,31 @@ public class KisTokenProvider {
         this.appSecret = appSecret;
     }
 
+    private long nextQuoteAt;
+    private long blockedUntil;
+
+    // ponytail: protects this server process only; coordinate app-key usage across servers before scaling out.
+    public ExchangeFilterFunction quoteFilter() {
+        return (request, next) -> Mono.defer(() -> {
+            long wait;
+            synchronized (this) {
+                long now = System.nanoTime();
+                if (now < blockedUntil || nextQuoteAt - now > 2_000_000_000L) {
+                    return Mono.error(new IllegalStateException("KIS call guard: cooldown or request queue full"));
+                }
+                wait = Math.max(0, nextQuoteAt - now);
+                nextQuoteAt = now + wait + 1_100_000_000L;
+            }
+            return Mono.delay(Duration.ofNanos(wait)).then(next.exchange(request))
+                    .flatMap(response -> {
+                        if (response.statusCode().isError()) {
+                            synchronized (this) { blockedUntil = System.nanoTime() + 30_000_000_000L; }
+                        }
+                        return Mono.just(response);
+                    });
+        });
+    }
+
     public Optional<String> getAccessToken() {
         if (!StringUtils.hasText(appKey) || !StringUtils.hasText(appSecret)) {
             log.warn("KIS app-key/app-secret not configured, skipping token issuance");
@@ -62,6 +89,8 @@ public class KisTokenProvider {
         }
     }
 
+    private long nextTokenAttemptAt;
+
     private synchronized Optional<String> issueAndCacheToken() {
         try {
             String cached = redisTemplate.opsForValue().get(REDIS_TOKEN_KEY);
@@ -71,6 +100,9 @@ public class KisTokenProvider {
         } catch (Exception e) {
             log.warn("KIS token cache recheck failed, continuing with token issuance: {}", e.getMessage());
         }
+
+        if (System.currentTimeMillis() < nextTokenAttemptAt) return Optional.empty();
+        nextTokenAttemptAt = System.currentTimeMillis() + 60_000;
 
         Map<String, String> body = Map.of(
                 "grant_type", "client_credentials",

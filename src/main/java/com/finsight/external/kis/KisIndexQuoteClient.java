@@ -38,7 +38,7 @@ public class KisIndexQuoteClient {
                                 @Value("${finsight.kis.base-url}") String baseUrl,
                                 @Value("${finsight.kis.app-key}") String appKey,
                                 @Value("${finsight.kis.app-secret}") String appSecret) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.webClient = webClientBuilder.clone().baseUrl(baseUrl).filter(tokenProvider.quoteFilter()).build();
         this.tokenProvider = tokenProvider;
         this.appKey = appKey;
         this.appSecret = appSecret;
@@ -91,9 +91,7 @@ public class KisIndexQuoteClient {
     }
 
     private KisIndexQuote fallback(String indexCode) {
-        // Plausible flat sample values so the home screen never breaks.
-        double sample = "1001".equals(indexCode) ? 780.0 : 2650.0;
-        return new KisIndexQuote(indexCode, sample, 0.0, true);
+        return new KisIndexQuote(indexCode, 0.0, 0.0, true);
     }
 
     private record CachedQuote(KisIndexQuote value, java.time.Instant expiresAt) { }

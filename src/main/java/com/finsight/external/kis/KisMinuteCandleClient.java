@@ -13,11 +13,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -41,14 +41,14 @@ public class KisMinuteCandleClient {
     private final KisTokenProvider tokenProvider;
     private final String appKey;
     private final String appSecret;
-    private final Map<String, CachedResult> cache = new ConcurrentHashMap<>();
+    private final Cache<String, KisMinuteCandleResult> cache = Caffeine.newBuilder().maximumSize(500).expireAfterWrite(CACHE_TTL).build();
 
     public KisMinuteCandleClient(WebClient.Builder webClientBuilder,
                                  KisTokenProvider tokenProvider,
                                  @Value("${finsight.kis.base-url}") String baseUrl,
                                  @Value("${finsight.kis.app-key}") String appKey,
                                  @Value("${finsight.kis.app-secret}") String appSecret) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.webClient = webClientBuilder.clone().baseUrl(baseUrl).filter(tokenProvider.quoteFilter()).build();
         this.tokenProvider = tokenProvider;
         this.appKey = appKey;
         this.appSecret = appSecret;
@@ -59,24 +59,11 @@ public class KisMinuteCandleClient {
         return getCandlesWithStatus(stockCode, intervalMinutes, count).candles();
     }
 
-    @Cacheable(cacheNames = "kisMinuteCandles", key = "#stockCode + ':' + #intervalMinutes + ':' + #count", sync = true)
     public KisMinuteCandleResult getCandlesWithStatus(String stockCode, int intervalMinutes, int count) {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
-        String key = stockCode + ":" + interval + ":" + safeCount;
-        CachedResult current = cache.get(key);
-        if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
-            return current.value();
-        }
-        synchronized (cache) {
-            current = cache.get(key);
-            if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
-                return current.value();
-            }
-            KisMinuteCandleResult result = fetchCandles(stockCode, interval, safeCount);
-            cache.put(key, new CachedResult(result, java.time.Instant.now().plus(CACHE_TTL)));
-            return result;
-        }
+        return cache.get(stockCode + ":" + interval + ":" + safeCount,
+                key -> fetchCandles(stockCode, interval, safeCount));
     }
 
     private KisMinuteCandleResult fetchCandles(String stockCode, int interval, int safeCount) {
@@ -184,21 +171,10 @@ public class KisMinuteCandleClient {
         return new KisMinuteCandle(bucket, first.open(), high, low, last.close());
     }
 
-    private List<KisMinuteCandle> fallback(int interval, int count) {
-        LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
-        double base = 70_000.0;
-        List<KisMinuteCandle> candles = new ArrayList<>();
-        for (int i = count - 1; i >= 0; i--) {
-            LocalDateTime timestamp = now.minusMinutes((long) i * interval);
-            double close = base + ((count - i) % 7 - 3) * 25.0;
-            candles.add(new KisMinuteCandle(timestamp, close, close + 40, close - 40, close));
-        }
-        return candles;
-    }
+    private List<KisMinuteCandle> fallback(int interval, int count) { return List.of(); }
 
     private int normalizeInterval(int interval) {
         return interval == 1 || interval == 5 || interval == 15 ? interval : 5;
     }
 
-    private record CachedResult(KisMinuteCandleResult value, java.time.Instant expiresAt) { }
 }

@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Comparator;
 import com.finsight.news.collect.NewsRelevanceScorer;
+import com.finsight.news.collect.NewsDeduplicator;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -50,13 +51,13 @@ public class BriefingService {
     private List<News> rankedNews() {
         Instant today = LocalDate.now(KOREA_ZONE).atStartOfDay(KOREA_ZONE).toInstant();
         // ponytail: rank the latest 1000 candidates; use DB scoring if the archive grows beyond this window.
-        return newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 1000)).stream()
+        return NewsDeduplicator.distinctArticles(newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 1000)).stream()
                 .filter(this::isUsable)
                 .sorted(Comparator.comparing((News n) -> n.getPublishedAt() != null && !n.getPublishedAt().isBefore(today)).reversed()
                         .thenComparing(Comparator.comparingInt((News n) -> relevanceScorer.scoreTitle(n.getTitle())).reversed())
                         .thenComparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(News::getId, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
+                .toList());
     }
 
     private boolean isUsable(News news) {

@@ -17,6 +17,11 @@ public class TermSeeder implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(TermSeeder.class);
 
     private static final List<Term> SEED_TERMS = List.of(
+            new Term("투자", "미래의 가치나 수익을 기대하며 자금이나 자원을 투입하는 활동입니다. 기대한 결과가 보장되지는 않습니다."),
+            new Term("수출", "국내에서 만든 상품이나 서비스를 해외에 판매하는 활동입니다."),
+            new Term("매출", "기업이 상품이나 서비스를 판매해 얻은 금액입니다. 비용을 뺀 이익과는 다릅니다."),
+            new Term("반도체", "전기 흐름을 제어하는 성질을 이용해 연산·기억 등의 기능을 수행하는 전자 부품의 핵심 재료입니다."),
+            new Term("AI", "데이터를 바탕으로 인식·예측·생성 등의 작업을 수행하도록 만든 인공지능 기술입니다."),
             new Term("기준금리", "한국은행이 시중 금리의 기준이 되도록 정하는 정책금리입니다. 기준금리가 오르면 대출과 예금 금리가 함께 오르는 경향이 있습니다."),
             new Term("환율", "한 나라의 통화를 다른 나라 통화로 교환할 때 적용되는 비율입니다. 원/달러 환율이 오르면 원화 가치는 상대적으로 떨어진 것입니다."),
             new Term("실적", "기업이 일정 기간 동안 거둔 매출, 이익 등 경영 성과를 말합니다. 실적 발표는 주가에 큰 영향을 줍니다."),

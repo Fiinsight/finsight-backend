@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -35,6 +36,19 @@ public class AiServiceClient {
 
     public AiServiceClient(WebClient.Builder webClientBuilder, @Value("${finsight.ai.base-url}") String baseUrl) {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+    }
+
+    public record ReadingAid(String level, String summary, String readingGuide, String mode) {}
+
+    @Cacheable(cacheNames = "readingAids", key = "#request", unless = "#result == null")
+    public Optional<ReadingAid> learning(AiRewriteRequest request) {
+        try {
+            return Optional.ofNullable(webClient.post().uri("/ai/news/learning").bodyValue(request)
+                    .retrieve().bodyToMono(ReadingAid.class).timeout(Duration.ofSeconds(3)).block());
+        } catch (Exception e) {
+            log.warn("Free reading aid unavailable: {}", e.getClass().getSimpleName());
+            return Optional.empty();
+        }
     }
 
     public Optional<AiRewriteResponse> rewrite(AiRewriteRequest request) {

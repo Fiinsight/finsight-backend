@@ -27,7 +27,7 @@ public class KisDailyCandleClient {
 
     private static final String DAILY_CANDLE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_CANDLE_TR_ID = "FHKST03010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
@@ -40,7 +40,7 @@ public class KisDailyCandleClient {
                                  @Value("${finsight.kis.base-url}") String baseUrl,
                                  @Value("${finsight.kis.app-key}") String appKey,
                                  @Value("${finsight.kis.app-secret}") String appSecret) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.webClient = webClientBuilder.clone().baseUrl(baseUrl).filter(tokenProvider.quoteFilter()).build();
         this.tokenProvider = tokenProvider;
         this.appKey = appKey;
         this.appSecret = appSecret;
@@ -53,7 +53,6 @@ public class KisDailyCandleClient {
     /**
      * @param periodDivCode KIS FID_PERIOD_DIV_CODE: "D"(일봉)/"W"(주봉)/"M"(월봉)
      */
-    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
     public List<KisDailyCandle> getCandles(String stockCode, int count, String periodDivCode) {
         return getCandlesWithStatus(stockCode, count, periodDivCode).candles();
     }
@@ -132,12 +131,6 @@ public class KisDailyCandleClient {
     }
 
     private List<KisDailyCandle> fallback(int count) {
-        List<KisDailyCandle> candles = new ArrayList<>();
-        LocalDate date = LocalDate.now();
-        double base = 70000.0;
-        for (int i = 0; i < Math.max(count, 1); i++) {
-            candles.add(new KisDailyCandle(date.minusDays(i), base, base, base, base));
-        }
-        return candles;
+        return List.of();
     }
 }
