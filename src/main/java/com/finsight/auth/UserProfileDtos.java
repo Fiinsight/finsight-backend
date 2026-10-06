@@ -16,6 +16,8 @@ public final class UserProfileDtos {
 
     public record OnboardingRequest(@NotEmpty @Size(max = 10) List<@Valid OnboardingAnswer> answers) {}
 
+    public record LearningLevelRequest(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "beginner|normal|analyst") String level) {}
+
     public record OnboardingResponse(List<OnboardingAnswer> answers, String learningLevel,
                                      String learningPace, String learningFocus, String dailyGoal,
                                      Instant completedAt) {}

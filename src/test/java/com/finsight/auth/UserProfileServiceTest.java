@@ -73,6 +73,31 @@ class UserProfileServiceTest {
         assertEquals("judgement", response.learningFocus());
     }
 
+    @Test
+    void manualLevelPreservesOtherPreferencesAndSurvivesIdenticalLoginSync() {
+        UserRepository users = mock(UserRepository.class);
+        User user = new User("user@example.com", null, "User", AuthProvider.LOCAL);
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        UserProfileService service = new UserProfileService(users, new ObjectMapper());
+        var request = new UserProfileDtos.OnboardingRequest(List.of(
+                answer("experience", "투자 여정", "직접 투자하고 있어요"),
+                answer("interest", "관심사", "시장 흐름"),
+                answer("pace", "공부 방식", "한 번에 깊이"),
+                answer("goal", "습관", "기사 하나 읽기")));
+        var before = service.saveOnboarding(7L, request);
+        var changed = service.setLearningLevel(7L, "beginner");
+        assertEquals("beginner", changed.learningLevel());
+        assertEquals(before.answers(), changed.answers());
+        assertEquals(before.learningPace(), changed.learningPace());
+        assertEquals(before.learningFocus(), changed.learningFocus());
+        assertEquals(before.dailyGoal(), changed.dailyGoal());
+        assertEquals(before.completedAt(), changed.completedAt());
+        assertEquals("beginner", service.saveOnboarding(7L, request).learningLevel());
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.setLearningLevel(7L, "invented"));
+        org.mockito.Mockito.verify(users, org.mockito.Mockito.never()).findById(8L);
+    }
+
     private UserProfileDtos.OnboardingAnswer answer(String id, String question, String value) {
         return new UserProfileDtos.OnboardingAnswer(id, question, value);
     }
