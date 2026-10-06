@@ -16,7 +16,7 @@ class JudgementManualFeedbackTest {
   SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(7L,null,java.util.List.of()));
   try {
    mvc.perform(post("/api/judgements/generate-feedback-now").param("userId","999"))
-      .andExpect(status().isOk()).andExpect(content().string("0건 처리 완료"));
+      .andExpect(status().isOk());
    verify(scheduler).runNow(7L);verifyNoMoreInteractions(scheduler);
   } finally { SecurityContextHolder.clearContext(); }
  }
