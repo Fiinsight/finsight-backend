@@ -31,6 +31,7 @@ public class NewsSymbolMatcher {
         COMPANY_SYMBOLS.put("카카오", "035720");
         COMPANY_SYMBOLS.put("LG에너지솔루션", "373220");
         COMPANY_SYMBOLS.put("현대차", "005380");
+        COMPANY_SYMBOLS.put("현대로템", "064350");
         COMPANY_SYMBOLS.put("기아", "000270");
         COMPANY_SYMBOLS.put("삼성바이오로직스", "207940");
         COMPANY_SYMBOLS.put("LG화학", "051910");
@@ -44,26 +45,25 @@ public class NewsSymbolMatcher {
     }
 
     public String match(String title, String content) {
-        String text = (title == null ? "" : title) + " " + (content == null ? "" : content);
-        if (text.contains("삼전닉스") || text.contains("삼성·SK하닉")) {
-            return text.contains("코스피") ? "KOSPI" : null;
+        String headline = title == null ? "" : title;
+        Set<String> headlineSymbols = companies(headline);
+        if (headline.contains("삼전닉스") || headline.contains("삼성·SK하닉")) {
+            return headline.contains("코스피") ? "KOSPI" : null;
         }
-        Set<String> matchedSymbols = new LinkedHashSet<>();
-        for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
-            if (text.contains(entry.getKey())) {
-                matchedSymbols.add(entry.getValue());
-            }
-        }
-        if (matchedSymbols.size() == 1) {
-            return matchedSymbols.iterator().next();
-        }
-        if (text.contains("코스닥")) {
-            return "KOSDAQ";
-        }
-        if (text.contains("코스피") || text.contains("증시") || text.contains("주가")) {
-            return "KOSPI";
-        }
-        // No identifiable single symbol/index — leave null rather than guessing.
+        if (headlineSymbols.size() == 1) return headlineSymbols.iterator().next();
+        if (headline.contains("코스닥")) return "KOSDAQ";
+        if (headline.contains("코스피")) return "KOSPI";
+        if (headlineSymbols.size() > 1 || headline.matches(".*(美|미국|뉴욕|나스닥|S&P).*")) return null;
+        Set<String> bodySymbols = companies(content == null ? "" : content);
+        if (bodySymbols.size() == 1) return bodySymbols.iterator().next();
         return null;
+    }
+
+    private Set<String> companies(String text) {
+        Set<String> symbols = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
+            if (text.contains(entry.getKey())) symbols.add(entry.getValue());
+        }
+        return symbols;
     }
 }

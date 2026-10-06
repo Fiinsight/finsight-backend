@@ -11,6 +11,26 @@ import org.junit.jupiter.api.Test;
 class ChartServiceTest {
 
     @Test
+    void directlyRelatedNewsComesBeforeNewerMarketNews() {
+        var repository = org.mockito.Mockito.mock(com.finsight.news.NewsRepository.class);
+        var daily = org.mockito.Mockito.mock(com.finsight.external.kis.KisDailyCandleClient.class);
+        var minute = org.mockito.Mockito.mock(com.finsight.external.kis.KisMinuteCandleClient.class);
+        var date = java.time.LocalDate.of(2026, 10, 6);
+        var stock = new News("현대로템 실적 전망", "https://stock.example", "매체", Instant.parse("2026-10-06T01:00:00Z"), "실적 전망을 검토했다. ".repeat(30));
+        stock.setRelatedSymbol("064350");
+        var market = new News("코스피 시장 동향", "https://market.example", "매체", Instant.parse("2026-10-06T02:00:00Z"), "국내 증시의 흐름을 검토했다. ".repeat(30));
+        market.setRelatedSymbol("KOSPI");
+        org.mockito.Mockito.when(daily.getCandlesWithStatus("064350", 30, "D"))
+                .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(new com.finsight.external.kis.KisDailyCandle(date, 100, 110, 90, 105)), false));
+        org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("064350"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock));
+        org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("KOSPI"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(market));
+        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
+        var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
+        assertThat(service.getChart("064350").relatedNews()).extracting(ChartResponse.NewsMarkerView::title)
+                .containsExactly("현대로템 실적 전망", "코스피 시장 동향");
+    }
+
+    @Test
     void removesExactRelatedNewsDuplicates() {
         Instant publishedAt = Instant.parse("2026-09-29T01:00:00Z");
         News first = new News("삼성전자 신규 투자", "https://one.example/news", "매체", publishedAt, "같은 본문");
