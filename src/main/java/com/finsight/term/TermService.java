@@ -4,6 +4,7 @@ import com.finsight.external.AiServiceClient;
 import com.finsight.external.AiTermExplainRequest;
 import com.finsight.external.AiTermExplainResponse;
 import com.finsight.news.News;
+import com.finsight.news.collect.ArticleContentExtractor;
 import com.finsight.news.NewsRepository;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -15,11 +16,13 @@ public class TermService {
 
     private static final Logger log = LoggerFactory.getLogger(TermService.class);
 
+    private final ArticleContentExtractor extractor;
     private final TermRepository termRepository;
     private final NewsRepository newsRepository;
     private final AiServiceClient aiServiceClient;
 
-    public TermService(TermRepository termRepository, NewsRepository newsRepository, AiServiceClient aiServiceClient) {
+    public TermService(TermRepository termRepository, NewsRepository newsRepository, AiServiceClient aiServiceClient, ArticleContentExtractor extractor) {
+        this.extractor = extractor;
         this.termRepository = termRepository;
         this.newsRepository = newsRepository;
         this.aiServiceClient = aiServiceClient;
@@ -40,7 +43,7 @@ public class TermService {
             return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
         }
 
-        String context = buildContext(news.get());
+        String context = buildContext(news.get(), request.term());
         Optional<AiTermExplainResponse> aiResponse = aiServiceClient.explainTerm(
                 new AiTermExplainRequest(request.term(), context));
 
@@ -67,11 +70,10 @@ public class TermService {
         );
     }
 
-    private String buildContext(News news) {
-        String body = news.getRawContent();
-        if (body != null && body.length() > 2000) {
-            body = body.substring(0, 2000);
-        }
-        return news.getTitle() + (body == null ? "" : "\n" + body);
+    private String buildContext(News news, String term) {
+        String body = extractor.clean(news.getTitle(), news.getRawContent());
+        int at = body.indexOf(term);
+        int start = at > 1800 ? Math.max(0, at - 200) : 0;
+        return news.getTitle() + "\n" + body.substring(start, Math.min(body.length(), start + 2000));
     }
 }
