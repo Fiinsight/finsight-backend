@@ -24,7 +24,7 @@ public class UserProfileController {
         return profileService.saveOnboarding(userId, request);
     }
 
-    @org.springframework.web.bind.annotation.PatchMapping("/learning-level")
+    @PutMapping("/learning-level")
     public UserProfileDtos.OnboardingResponse setLearningLevel(@AuthenticationPrincipal Long userId,
             @Valid @RequestBody UserProfileDtos.LearningLevelRequest request) {
         return profileService.setLearningLevel(userId, request.level());
