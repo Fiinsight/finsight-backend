@@ -81,6 +81,11 @@ class ChartServiceTest {
         var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
         assertThat(service.getChart("005930", "D", 5).moveInsights()).extracting(i -> i.timestamp().toLocalDate().toString())
                 .containsExactly("2026-08-24", "2026-09-07", "2026-09-28", "2026-09-21", "2026-09-14");
+        org.mockito.Mockito.when(repository.collectionStart()).thenReturn(Instant.parse("2026-09-22T14:05:00Z"));
+        var prioritized = service.getChart("005930", "D", 5).moveInsights();
+        assertThat(prioritized).extracting(i -> i.timestamp().toLocalDate().toString())
+                .containsExactly("2026-09-28", "2026-09-23", "2026-08-24", "2026-09-07", "2026-09-21");
+        assertThat(prioritized.get(2).explanation()).isEqualTo("뉴스 수집(9/22) 이전 구간이에요");
         org.mockito.Mockito.when(daily.getCandlesWithStatus("005930", 7, "W"))
                 .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(
                     new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.of(2026, 9, 14), 100, 100, 100, 100),

@@ -165,7 +165,7 @@ public class ChartService {
             Optional<News> news = candidates.stream().findFirst();
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
             String explanation = news.map(item -> (relevanceRank(symbol, item) == 1 ? "시장 전체 흐름 · " : "") + buildCauseExplanation(item, change, causeScore))
-                .orElse(collectionStart != null && to.isBefore(collectionStart) ? "뉴스 수집 이전 구간" : "이 시점에 수집된 관련 뉴스가 없어요");
+                .orElse(collectionStart != null && to.atZone(KST).toLocalDate().isBefore(collectionStart.atZone(KST).toLocalDate()) ? "뉴스 수집(" + collectionStart.atZone(KST).format(java.time.format.DateTimeFormatter.ofPattern("M/d")) + ") 이전 구간이에요" : "이 시점에 수집된 관련 뉴스가 없어요");
             insights.add(new ChartResponse.MoveInsightView(
                     current.date().atStartOfDay(),
                     Math.round(change * 100.0) / 100.0,
@@ -180,7 +180,10 @@ public class ChartService {
                     current.date(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
         }
         return insights.stream()
-                .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
+                .sorted(Comparator.comparing((ChartResponse.MoveInsightView item) -> collectionStart != null
+                    && ("W".equals(period) ? item.timestamp().toLocalDate().plusDays(6) : item.timestamp().toLocalDate())
+                        .isBefore(collectionStart.atZone(KST).toLocalDate()))
+                    .thenComparing(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed()))
                 .limit(5)
                 .toList();
     }
