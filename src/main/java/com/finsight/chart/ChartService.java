@@ -106,8 +106,9 @@ public class ChartService {
 
             matchedNews = deduplicateRelatedNews(findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
-                    .sorted(Comparator.comparing(News::getPublishedAt,
-                            Comparator.nullsLast(Comparator.reverseOrder())))
+                    .sorted(Comparator.comparing((News news) -> !symbol.equals(news.getRelatedSymbol())
+                            && !symbol.equals(newsSymbolMatcher.match(news.getTitle(), news.getRawContent())))
+                            .thenComparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                     .toList());
         }
 
