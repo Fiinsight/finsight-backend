@@ -50,21 +50,15 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
-        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         Optional<String> extracted = articleContentExtractor.extract(news.getUrl());
-        if (extracted.isEmpty()) {
-            // Never present an RSS teaser, old summary, or AI rewrite as the
-            // original article when the publisher blocks the fetch.
-            news.setRawContent("");
-            news.setRewrittenBeginner("");
-            news.setRewrittenNormal("");
-            news.setRewrittenAnalyst("");
-            news.setImportanceReason("");
-            news.setKeyTerms(List.of());
+        if (extracted.isEmpty() || extracted.get().isBlank()
+                || !articleContentExtractor.isUsable(news.getTitle(), extracted.get())) {
+            log.warn("Article refresh unavailable; keeping stored content for newsId={}", news.getId());
             return;
         }
         String cleanedContent = extracted.get();
         news.setRawContent(cleanedContent);
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), cleanedContent));
         applyRewrite(news, candidate, cleanedContent);
     }
 
