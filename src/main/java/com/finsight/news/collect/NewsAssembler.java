@@ -41,7 +41,7 @@ public class NewsAssembler {
 
     public News assemble(NewsCandidate candidate, String rawContent) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
-        news.setCategory(newsCategoryClassifier.classify(candidate.title()));
+        news.setCategory(newsCategoryClassifier.classify(candidate.title(), rawContent));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
         applyRewrite(news, candidate, rawContent);
@@ -64,7 +64,7 @@ public class NewsAssembler {
 
     /** Refresh cheap, deterministic metadata without making any AI calls. */
     public void refreshMetadata(News news) {
-        news.setCategory(newsCategoryClassifier.classify(news.getTitle()));
+        news.setCategory(newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()));
         news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         news.setSentimentHint(newsSentimentClassifier.classify(news.getTitle()));
     }

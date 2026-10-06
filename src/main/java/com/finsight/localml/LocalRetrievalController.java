@@ -141,7 +141,7 @@ public class LocalRetrievalController {
                 predicates.add("(lower(n.title) like :keyword"+i+" or lower(coalesce(n.rawContent,'')) like :keyword"+i+")");
             companyFilter += " and (" + String.join(" or ", predicates) + ")";
         }
-        var query = em.createQuery("select n from News n where (n.source is null or n.source not like 'SYNTHETIC%') and n.url not like '%example.invalid%' and lower(coalesce(n.rawContent,'')) not like '%google 검색%' and coalesce(n.rawContent,'') not like '%한경 프리미엄9을 구독%' and n.publishedAt>=:start and n.publishedAt<:end" +
+        var query = em.createQuery("select n from News n where (n.source is null or n.source not like 'SYNTHETIC%') and n.url not like '%example.invalid%' and length(trim(coalesce(n.rawContent,''))) > 0 and lower(coalesce(n.rawContent,'')) not like '%google 검색%' and coalesce(n.rawContent,'') not like '%한경 프리미엄9을 구독%' and n.publishedAt>=:start and n.publishedAt<:end" +
                 companyFilter + " order by n.publishedAt desc", News.class)
             .setParameter("start", start).setParameter("end", end);
         if (company != null) {

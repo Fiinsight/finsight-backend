@@ -28,9 +28,10 @@ public record NewsDetailResponse(
     public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
                                           ArticleContentExtractor contentExtractor) {
         String rawContent = contentExtractor.clean(news.getTitle(), news.getRawContent());
-        String beginner = replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
-        String normal = replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
-        String analyst = replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
+        boolean unavailable = rawContent.isBlank();
+        String beginner = unavailable ? "" : replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
+        String normal = unavailable ? "" : replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
+        String analyst = unavailable ? "" : replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
@@ -41,15 +42,15 @@ public record NewsDetailResponse(
                 excerpt(beginner),
                 excerpt(normal),
                 excerpt(analyst),
-                categoryClassifier.importanceReason(news.getTitle(), rawContent, news.getImportanceReason(),
+                unavailable ? "" : categoryClassifier.importanceReason(news.getTitle(), rawContent, news.getImportanceReason(),
                         news.getRelatedSymbol()),
-                news.getImportanceReasonBeginner(),
-                news.getImportanceReasonNormal(),
-                news.getImportanceReasonAnalyst(),
+                unavailable ? "" : news.getImportanceReasonBeginner(),
+                unavailable ? "" : news.getImportanceReasonNormal(),
+                unavailable ? "" : news.getImportanceReasonAnalyst(),
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
-                categoryClassifier.classify(news.getTitle()),
-                news.getKeyTerms()
+                categoryClassifier.classify(news.getTitle(), rawContent),
+                unavailable ? List.of() : news.getKeyTerms()
         );
     }
 

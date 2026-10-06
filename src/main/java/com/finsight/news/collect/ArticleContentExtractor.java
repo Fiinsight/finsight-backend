@@ -36,6 +36,19 @@ public class ArticleContentExtractor {
                     .timeout((int) FETCH_TIMEOUT.toMillis())
                     .get();
 
+            return extractDocument(doc, url);
+        } catch (Exception e) {
+            log.warn("Failed to extract article body from {}: {}", url, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** Parse an already fetched page without issuing another publisher request. */
+    public Optional<String> extractHtml(String url, String html) {
+        return extractDocument(Jsoup.parse(html, url), url);
+    }
+
+    private Optional<String> extractDocument(Document doc, String url) {
             String text = extractFromJsonLd(doc);
             removePageChrome(doc);
             if (!StringUtils.hasText(text)) {
@@ -52,10 +65,6 @@ public class ArticleContentExtractor {
             }
             String cleaned = clean("", text);
             return StringUtils.hasText(cleaned) ? Optional.of(cleaned) : Optional.empty();
-        } catch (Exception e) {
-            log.warn("Failed to extract article body from {}: {}", url, e.getMessage());
-            return Optional.empty();
-        }
     }
 
     // A paragraph shorter than this is almost certainly page chrome (share
