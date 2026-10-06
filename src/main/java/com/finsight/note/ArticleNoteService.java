@@ -4,6 +4,7 @@ import com.finsight.auth.User;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import java.util.List;
+import com.finsight.history.RecordDateRange;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,16 @@ public class ArticleNoteService {
     public List<ArticleNoteDtos.Response> list(User user) {
         return notes.findTop50ByUser_IdOrderByUpdatedAtDesc(user.getId()).stream()
                 .map(ArticleNoteDtos.Response::from).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticleNoteDtos.Response> list(User user, RecordDateRange range) {
+        return notes.findInRange(user.getId(), range.from(), range.to()).stream().map(ArticleNoteDtos.Response::from).toList();
+    }
+
+    public String previousRecord(User user, RecordDateRange range) {
+        var date = notes.previousRecord(user.getId(), range.from());
+        return date == null ? null : RecordDateRange.date(date);
     }
 
     @Transactional(readOnly = true)
