@@ -24,7 +24,7 @@ class ChartServiceTest {
                 .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(new com.finsight.external.kis.KisDailyCandle(date, 100, 110, 90, 105)), false));
         org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("064350"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock));
         org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("KOSPI"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(market));
-        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
+        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock,market));
         var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
         assertThat(service.getChart("064350").relatedNews()).extracting(ChartResponse.NewsMarkerView::title)
                 .containsExactly("현대로템 실적 전망", "코스피 시장 동향");
@@ -86,5 +86,29 @@ class ChartServiceTest {
                     new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.of(2026, 9, 14), 100, 100, 100, 100),
                     new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.of(2026, 9, 21), 106, 106, 106, 106)), false));
         assertThat(service.getChart("005930", "W", 5).moveInsights()).hasSize(1);
+    }
+
+    @Test
+    void september28CandidatesExcludeForeign59AndIncludeSameDayCompanyNews() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var rows = mapper.readTree(getClass().getResourceAsStream("/chart-news-september.json"));
+        var news = new java.util.ArrayList<News>();
+        for (var row : rows) {
+            var article = new News(row.get("title").asText(), row.get("url").asText(), row.get("source").asText(),
+                java.time.OffsetDateTime.parse(row.get("published_at").asText()).toInstant(), row.get("raw_content").asText());
+            org.springframework.test.util.ReflectionTestUtils.setField(article,"id",row.get("id").asLong());
+            article.setRelatedSymbol(row.get("related_symbol").asText()); news.add(article);
+        }
+        var from = com.finsight.judgement.KoreanTradingCalendar.previous(java.time.LocalDate.parse("2026-09-28"))
+            .atTime(15,30).atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+        var to = java.time.LocalDate.parse("2026-09-28").atTime(15,30).atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+        var candidates = ChartService.candidateNews("005930",news,from,to);
+        assertThat(candidates).isNotEmpty().hasSizeLessThanOrEqualTo(3);
+        assertThat(candidates.get(0).getId()).isIn(77L,91L,100L);
+        assertThat(candidates).extracting(News::getId).doesNotContain(59L);
+        var wrongSector = new News("은행들 채권 발행", "https://test", "매체", to.minusSeconds(1),"은행권 채권 발행");
+        wrongSector.setRelatedSymbol("KOSPI");
+        assertThat(ChartService.relevanceRank("005930",wrongSector)).isZero();
+        assertThat(ChartService.candidateNews("005930",news,to.plusSeconds(1),to.plusSeconds(60))).isEmpty();
     }
 }

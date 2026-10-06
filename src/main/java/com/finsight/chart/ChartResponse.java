@@ -32,11 +32,12 @@ public record ChartResponse(
             String newsTitle,
             String newsSource,
             String explanation,
-            double causeScore
+            double causeScore,
+            List<NewsMarkerView> candidateNews
     ) {
     }
 
-    public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source) {
+    public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source, String relationType) {
     }
 
     // Grounded in the most recently published news actually tagged with this

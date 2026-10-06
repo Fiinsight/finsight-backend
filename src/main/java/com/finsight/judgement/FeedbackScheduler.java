@@ -2,8 +2,6 @@ package com.finsight.judgement;
 
 import com.finsight.external.AiFeedbackRequest;
 import com.finsight.external.AiServiceClient;
-import com.finsight.external.kis.KisStockQuote;
-import com.finsight.external.kis.KisStockQuoteClient;
 import com.finsight.news.News;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,19 +28,17 @@ public class FeedbackScheduler {
     private static final double NEUTRAL_BAND_PERCENT = 0.5;
 
     private final JudgementRepository judgementRepository;
-    private final KisStockQuoteClient kisStockQuoteClient;
+    private final com.finsight.external.kis.KisDailyCandleClient dailyCandles;
     private final AiServiceClient aiServiceClient;
-    private final com.finsight.external.kis.KisIndexQuoteClient indexQuotes;
 
     private java.time.Clock clock = java.time.Clock.system(ZoneId.of("Asia/Seoul"));
 
     public FeedbackScheduler(JudgementRepository judgementRepository,
-                              KisStockQuoteClient kisStockQuoteClient,
-                              AiServiceClient aiServiceClient, com.finsight.external.kis.KisIndexQuoteClient indexQuotes) {
+                              com.finsight.external.kis.KisDailyCandleClient dailyCandles,
+                              AiServiceClient aiServiceClient) {
         this.judgementRepository = judgementRepository;
-        this.kisStockQuoteClient = kisStockQuoteClient;
+        this.dailyCandles = dailyCandles;
         this.aiServiceClient = aiServiceClient;
-        this.indexQuotes = indexQuotes;
     }
 
     // Weekdays, shortly after the KRX market close (~15:30 KST).
@@ -82,38 +78,41 @@ public class FeedbackScheduler {
 
     private boolean processOne(Judgement judgement) {
         var now = java.time.ZonedDateTime.now(clock);
-        LocalDate comparison = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate().plusDays(1);
-        while (comparison.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || comparison.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) comparison = comparison.plusDays(1);
-        // A current quote cannot establish the outcome of an older comparison day.
-        if (!comparison.equals(now.toLocalDate()) || now.toLocalTime().isBefore(java.time.LocalTime.of(15, 40))) return false;
+        if (judgement.getFeedbackGeneratedAt() != null || judgement.getActualDirection() != null) return false;
+        LocalDate judgementDay = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
+        LocalDate comparison = KoreanTradingCalendar.next(judgementDay);
+        LocalDate baseline = KoreanTradingCalendar.onOrBefore(judgementDay);
+        if (comparison.isAfter(now.toLocalDate()) || (comparison.equals(now.toLocalDate()) && now.toLocalTime().isBefore(java.time.LocalTime.of(15, 40)))) return false;
         News news = judgement.getNews();
         String symbol = news == null ? null : news.getRelatedSymbol();
 
         String actualDirection;
         Double actualChangePercent;
         if (StringUtils.hasText(symbol)) {
-            KisStockQuote quote;
-            if ("KOSPI".equals(symbol) || "KOSDAQ".equals(symbol)) {
-                var index = indexQuotes.getIndexQuote("KOSPI".equals(symbol) ? "0001" : "1001");
-                quote = new KisStockQuote(symbol, index.currentValue(), index.changePercent(), index.fallback());
-            } else quote = kisStockQuoteClient.getStockQuote(symbol);
-            if (quote.fallback() || !Double.isFinite(quote.currentPrice()) || quote.currentPrice() <= 0 || !Double.isFinite(quote.changePercent())) {
-                throw new IllegalStateException("실제 시세를 확인하지 못했습니다: " + symbol);
-            }
-            actualChangePercent = quote.changePercent();
-            actualDirection = classifyDirection(quote.changePercent());
+            var result = dailyCandles.getClosingCandles(symbol, baseline, comparison);
+            if (result == null || result.fallback()) return false;
+            var before = result.candles().stream().filter(c -> baseline.equals(c.date())).findFirst();
+            var after = result.candles().stream().filter(c -> comparison.equals(c.date())).findFirst();
+            if (before.isEmpty() || after.isEmpty() || !Double.isFinite(before.get().close()) || before.get().close() <= 0
+                    || !Double.isFinite(after.get().close()) || after.get().close() <= 0) return false;
+            actualChangePercent = (after.get().close() - before.get().close()) / before.get().close() * 100;
+            actualDirection = classifyDirection(actualChangePercent);
+            judgement.setClosingComparison(comparison, before.get().close(), after.get().close());
         } else {
             actualDirection = "UNKNOWN";
             actualChangePercent = null;
         }
 
         String feedbackText = generateFeedbackText(judgement, actualDirection, actualChangePercent);
+        // Atomic conditional update: concurrent scheduler/manual runs or a revised judgement cannot overwrite an outcome.
+        int updated = judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), actualDirection,
+            actualChangePercent, feedbackText, clock.instant(), judgement.getComparisonDate(), judgement.getJudgementClose(), judgement.getComparisonClose());
+        if (updated != 1) return false;
 
         judgement.setActualDirection(actualDirection);
         judgement.setActualChangePercent(actualChangePercent);
         judgement.setFeedbackText(feedbackText);
-        judgement.setFeedbackGeneratedAt(Instant.now());
-        judgementRepository.save(judgement);
+        judgement.setFeedbackGeneratedAt(clock.instant());
         return true;
     }
 
@@ -152,7 +151,7 @@ public class FeedbackScheduler {
     }
 
     private String templatedFeedback(Judgement judgement, String actualDirection, Double actualChangePercent) {
-        if ("UNKNOWN".equals(actualDirection)) return "관련 종목의 실제 시세를 확인할 수 없어 판단 결과를 비교하지 않습니다. 저장한 판단 근거를 다시 읽어보세요.";
+        if ("UNKNOWN".equals(actualDirection)) return "관련 종목이 없어 결과를 비교하지 않았어요";
         String predicted = judgement.getChoice().name();
         boolean matched = predicted.equals(actualDirection);
         String changeText = actualChangePercent == null
