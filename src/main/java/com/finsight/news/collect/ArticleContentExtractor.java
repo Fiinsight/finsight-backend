@@ -82,6 +82,11 @@ public class ArticleContentExtractor {
         if (!StringUtils.hasText(body)) {
             return "";
         }
+        body = body.replaceAll("(?s)\\[[^\\]]{0,500}(?:자료사진|사진 제공|재판매|DB 금지)[^\\]]{0,500}\\]", " ")
+                .replaceFirst("(?s)^.{0,700}?(?:사진|딜링룸|촬영).{0,500}?20\\d{2}\\.\\d{1,2}\\.\\d{1,2}\\s+[\\w.+-]+@[\\w.-]+\\s*", "")
+                .replaceAll("\\([^()\\n]{1,40}=연합뉴스\\)\\s*[가-힣·]{2,12}\\s*기자\\s*=\\s*", "")
+                .replaceAll("사진\\s*=\\s*(?:AFP|AP|EPA|로이터|연합뉴스)(?:/[^\\s]+)?\\s*", "")
+                .replaceAll("[\\w.+-]+@[\\w.-]+", "");
         body = cutKnownPageChrome(body)
                 .replace("ⓒ 한경닷컴, 무단전재 및 재배포 금지", "")
                 .trim();
