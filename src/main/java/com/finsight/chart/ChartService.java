@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +67,7 @@ public class ChartService {
         return getChart(symbol, period, 5);
     }
 
+    @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period + ' : ' + #intervalMinutes", sync = true)
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {
             int interval = intervalMinutes == 1 || intervalMinutes == 5 || intervalMinutes == 15 ? intervalMinutes : 5;

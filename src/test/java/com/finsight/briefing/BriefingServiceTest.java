@@ -33,6 +33,14 @@ class BriefingServiceTest {
         assertTrue(service.getTodayBriefing().get(0).summary().contains("fallback"));
         assertTrue(NewsDetailResponse.excerpt("본문".repeat(1000)).length() < 650);
     }
+    @Test void samePublisherHeadlineVariantsDoNotFillMultipleSlots() {
+        Instant now = Instant.now();
+        News original = news(1L, "금리 인하 발표", now);
+        News duplicate = news(2L, "[속보] 금리 인하 발표(종합)", now);
+        when(original.getSource()).thenReturn("publisher");
+        when(duplicate.getSource()).thenReturn("publisher");
+        assertEquals(List.of(original), NewsDeduplicator.distinctArticles(List.of(original, duplicate)));
+    }
     private News news(Long id, String title, Instant published) {
         var news = mock(News.class);
         when(news.getId()).thenReturn(id);

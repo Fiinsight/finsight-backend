@@ -19,7 +19,8 @@ public class ExternalCacheConfiguration {
     CacheManager cacheManager() {
         SimpleCacheManager manager = new SimpleCacheManager();
         manager.setCaches(List.of(
-                cache("kisMinuteCandles", Duration.ofMinutes(1), 500),
+                cache("chartResponses", Duration.ofMinutes(1), 500),
+                cache("readingAids", Duration.ofMinutes(10), 1000),
                 cache("kisDailyCandles", Duration.ofMinutes(5), 500),
                 cache("kisStockQuotes", Duration.ofMinutes(1), 500),
                 cache("kisIndexQuotes", Duration.ofMinutes(1), 50),

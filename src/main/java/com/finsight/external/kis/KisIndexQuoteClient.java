@@ -38,7 +38,7 @@ public class KisIndexQuoteClient {
                                 @Value("${finsight.kis.base-url}") String baseUrl,
                                 @Value("${finsight.kis.app-key}") String appKey,
                                 @Value("${finsight.kis.app-secret}") String appSecret) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+        this.webClient = webClientBuilder.clone().baseUrl(baseUrl).filter(tokenProvider.quoteFilter()).build();
         this.tokenProvider = tokenProvider;
         this.appKey = appKey;
         this.appSecret = appSecret;

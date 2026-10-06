@@ -59,6 +59,19 @@ public class NewsDeduplicator {
         }
     }
 
+    public static List<com.finsight.news.News> distinctArticles(List<com.finsight.news.News> ranked) {
+        var urls = new java.util.HashSet<String>();
+        var headlines = new java.util.HashSet<String>();
+        return ranked.stream().filter(item -> {
+            String title = item.getTitle().replaceAll("\\[(속보|종합\\d*)\\]|\\(종합\\d*\\)", "")
+                    .replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+            String date = item.getPublishedAt() == null ? "" : item.getPublishedAt().atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString();
+            String key = item.getSource() + ":" + date + ":" + title;
+            if (urls.contains(item.getUrl()) || headlines.contains(key)) return false;
+            urls.add(item.getUrl()); headlines.add(key); return true;
+        }).toList();
+    }
+
     private String sha256(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

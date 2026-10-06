@@ -27,6 +27,9 @@ public class ChartController {
             @Parameter(description = "종목코드, 예: 005930") @PathVariable String symbol,
             @Parameter(description = "D(일봉, 기본값), W(주봉), MINUTE(분봉)") @RequestParam(defaultValue = "D") String period,
             @Parameter(description = "분봉 간격: 1, 5, 15분") @RequestParam(defaultValue = "5") int interval) {
-        return chartService.getChart(symbol, period, interval);
+        if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(period.toUpperCase(java.util.Locale.ROOT))) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
+        }
+        return chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval);
     }
 }

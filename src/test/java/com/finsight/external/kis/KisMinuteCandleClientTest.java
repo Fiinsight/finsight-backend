@@ -27,6 +27,7 @@ class KisMinuteCandleClientTest {
         server = new MockWebServer();
         server.start();
         tokenProvider = mock(KisTokenProvider.class);
+        when(tokenProvider.quoteFilter()).thenReturn((request, next) -> next.exchange(request));
         when(tokenProvider.getAccessToken()).thenReturn(Optional.of("test-token"));
         client = new KisMinuteCandleClient(
                 WebClient.builder(), tokenProvider, server.url("/").toString(), "test-key", "test-secret");
@@ -72,7 +73,7 @@ class KisMinuteCandleClientTest {
         KisMinuteCandleResult result = client.getCandlesWithStatus("005930", 1, 5);
 
         assertTrue(result.fallback());
-        assertEquals(5, result.candles().size());
+        assertTrue(result.candles().isEmpty());
     }
 
     @Test
@@ -82,6 +83,6 @@ class KisMinuteCandleClientTest {
         KisMinuteCandleResult result = client.getCandlesWithStatus("005930", 1, 5);
 
         assertTrue(result.fallback());
-        assertEquals(5, result.candles().size());
+        assertTrue(result.candles().isEmpty());
     }
 }
