@@ -16,6 +16,7 @@ NICKNAME = '시연용 가상 학습 계정'
 ROOT = Path(__file__).resolve().parents[2]
 CREDENTIALS = ROOT / '.env.demo.local'
 KST = ZoneInfo('Asia/Seoul')
+SCENARIOS = [(1,'UP','UP',1.2,False), (3,'UP','DOWN',-0.8,True), (14,'NEUTRAL','NEUTRAL',0.2,False)]
 
 def validate(host, database):
     if host not in ('localhost', '127.0.0.1', '::1') or database != 'finsight':
@@ -71,20 +72,53 @@ def credential_password():
 def account_predicate():
     return f"email={quote(EMAIL)} AND nickname={quote(NICKNAME)} AND provider='LOCAL'"
 
-def build_sql(password_hash, articles):
+def scenario_dates(today=None):
+    today = (today or datetime.now(KST)).astimezone(KST).replace(hour=23, minute=59, second=59, microsecond=0)
+    return [today - timedelta(days=scenario[0]) for scenario in SCENARIOS]
+
+
+def select_articles(args, dates):
+    articles = []
+    for date in dates:
+        excluded = ','.join(str(int(article['id'])) for article in articles) or '0'
+        raw = query(args, f"""SELECT coalesce(json_agg(a), '[]'::json)::text FROM (
+            SELECT n.id, n.published_at AS "publishedAt", (SELECT t.term FROM term t
+                WHERE position(t.term in coalesce(n.title,'') || ' ' || coalesce(n.raw_content,'')) > 0
+                  AND coalesce(t.short_definition,'') <> ''
+                ORDER BY (position(t.term in n.title) > 0) DESC, length(t.term) DESC, t.term LIMIT 1) AS term
+            FROM news n WHERE coalesce(n.source,'') NOT LIKE 'SYNTHETIC%' AND n.url ~ '^https?://'
+                AND n.url NOT LIKE '%example.invalid%' AND length(coalesce(n.raw_content,'')) >= 120
+                AND n.published_at < {quote(date.isoformat())} AND n.id NOT IN ({excluded})
+                AND EXISTS (SELECT 1 FROM term t WHERE coalesce(t.short_definition,'') <> ''
+                    AND position(t.term in coalesce(n.title,'') || ' ' || coalesce(n.raw_content,'')) > 0)
+            ORDER BY n.published_at DESC, n.id DESC LIMIT 1) a;""")
+        rows = json.loads(raw)
+        if len(rows) != 1:
+            raise ValueError('No eligible article published before a scenario date; nothing written.')
+        articles.extend(rows)
+    return articles
+
+
+def build_sql(password_hash, articles, dates=None):
     if not re.fullmatch(r'\$2[aby]\$10\$[./A-Za-z0-9]{53}', password_hash):
         raise ValueError('A generated BCrypt hash is required.')
     if len(articles) != 3 or len({int(a['id']) for a in articles}) != 3 or any(not a['term'] for a in articles):
         raise ValueError('Three distinct existing articles and dictionary terms are required.')
-    today = datetime.now(KST).replace(hour=10, minute=0, second=0, microsecond=0)
+    dates = dates or scenario_dates()
+    if len(dates) != 3:
+        raise ValueError('Three scenario dates are required.')
+    for article, date in zip(articles, dates):
+        published = datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
+        if published.tzinfo is None or date.tzinfo is None or published >= date:
+            raise ValueError('Every judgement must be strictly after article publication.')
     answers = [dict(questionId='experience', question='지금 투자 여정을 어디쯤 걷고 있나요?', answer='조금씩 알아가고 있어요'),
                dict(questionId='interest', question='투자할 때 가장 알고 싶은 것은 무엇인가요?', answer='내 투자 기록을 돌아보고 싶어요'),
                dict(questionId='pace', question='나에게 맞는 투자 공부 방식은 어떤 모습인가요?', answer='짧게, 매일 조금씩'),
                dict(questionId='goal', question='오늘 핀사이트에서 어떤 습관을 시작해볼까요?', answer='기사 메모 남기고 복습하기')]
     statements = ['BEGIN;', "SET LOCAL TIME ZONE 'Asia/Seoul';"]
     statements.append(f"INSERT INTO app_user(email,nickname,password_hash,provider,created_at,onboarding_answers_json,learning_level,learning_pace,learning_focus,daily_goal,onboarding_completed_at) VALUES ({quote(EMAIL)},{quote(NICKNAME)},{quote(password_hash)},'LOCAL',now(),{quote(json.dumps(answers, ensure_ascii=False))},'normal','short','routine','기사 메모 남기고 복습하기',now());")
-    for article, (days, choice, actual, change, correct) in zip(articles, [(1,'UP','UP',1.2,False), (3,'UP','DOWN',-0.8,True), (15,'NEUTRAL','NEUTRAL',0.2,False)]):
-        date = quote((today - timedelta(days=days)).isoformat())
+    for article, created, (_, choice, actual, change, correct) in zip(articles, dates, SCENARIOS):
+        date = quote(created.isoformat())
         news_id = int(article['id'])
         select = f"FROM app_user u WHERE {account_predicate()}"
         statements.append(f"INSERT INTO judgement(user_id,news_id,choice,reason_text,created_at,actual_direction,actual_change_percent,feedback_text,feedback_generated_at) SELECT u.id,{news_id},{quote(choice)},'[시연용 가상 결과] 실제 시세가 아닌 판단 비교 연습입니다.',{date},{quote(actual)},{change},'[시연용 가상 결과] 실제 투자 성과가 아닙니다. 판단 근거와 가정을 다시 비교해보세요.',{date} {select};")
@@ -106,25 +140,43 @@ def self_test():
         except ValueError: pass
         else: raise AssertionError('Unsafe destination accepted')
     password_hash = bcrypt('self-test-only-not-an-account-secret')
-    sql = build_sql(password_hash, [{'id': i, 'term': '금리'} for i in (1,2,3)])
+    reference = datetime(2026, 10, 6, 12, tzinfo=KST)
+    dates = scenario_dates(reference)
+    articles = [{'id': i, 'term': '금리', 'publishedAt': (date - timedelta(hours=2)).isoformat()}
+                for i, date in zip((1,2,3), dates)]
+    sql = build_sql(password_hash, articles, dates)
+    assert [date.date().isoformat() for date in dates] == ['2026-10-05', '2026-10-03', '2026-09-22']
+    assert all(not ('2026-09-23' <= date.date().isoformat() < '2026-09-30') for date in dates)
+    for publication in (dates[0], dates[0] + timedelta(seconds=1)):
+        invalid = [{**articles[0], 'publishedAt': publication.isoformat()}, *articles[1:]]
+        try: build_sql(password_hash, invalid, dates)
+        except ValueError: pass
+        else: raise AssertionError('Judgement before/equal publication was accepted')
     assert sql.startswith('BEGIN;') and sql.endswith('COMMIT;')
     assert sql.count('INSERT INTO app_user') == 1
     for table in ('judgement','article_note','learning_progress'):
         assert sql.count('INSERT INTO ' + table) == 3
     assert 'INSERT INTO news' not in sql and 'UPDATE ' not in sql and 'DELETE ' not in sql
-    for days in (1,3,15):
-        assert (datetime.now(KST).date() - timedelta(days=days)).isoformat() in sql
+    for date in dates:
+        assert date.isoformat() in sql
     cleanup = cleanup_sql(42)
     assert cleanup.count('DELETE FROM') == 5 and 'DELETE FROM news' not in cleanup
     assert all(account_predicate() in line and 'id=42' in line for line in cleanup.splitlines() if line.startswith('DELETE'))
     assert quote("a'b") == "'a''b'"
     assert '.env.*' in (ROOT / '.gitignore').read_text().splitlines()
     from unittest.mock import patch
+    with patch(__name__ + '.query', side_effect=[json.dumps([article]) for article in articles]) as db:
+        assert select_articles(None, dates) == articles
+        assert db.call_count == 3
+        for call, date in zip(db.call_args_list, dates):
+            assert 'n.published_at < ' + quote(date.isoformat()) in call.args[1]
+            assert 'LIMIT 1' in call.args[1]
     with patch('sys.argv', ['seed_demo.py', '--confirm-local-demo']), \
          patch(__name__ + '.query', side_effect=['finsight|127.0.0.1', '42|true']) as db, \
          patch(__name__ + '.credential_password') as credentials, patch('builtins.print'):
         main()
         assert db.call_count == 2  # Only identity/account SELECTs on a repeat run.
+        assert 'host(inet_server_addr())' in db.call_args_list[0].args[1]
         credentials.assert_not_called()
     with patch('sys.argv', ['seed_demo.py', '--cleanup', '--confirm-local-demo']), \
          patch(__name__ + '.query', side_effect=['finsight|127.0.0.1', '42|true', '']) as db, \
@@ -132,7 +184,7 @@ def self_test():
         main()
         assert db.call_args.args[1] == cleanup_sql(42)
         credentials.assert_not_called()
-    print('PASS: loopback/DB guards, BCrypt, seed counts, 1/3/15-day scenarios, idempotent no-op, account-scoped cleanup. No DB access or credential file writes.')
+    print('PASS: loopback/DB guards, BCrypt, seed counts, 1/3/14-day scenarios, strict publication ordering, empty-week gap, idempotent no-op, account-scoped cleanup. No DB access or credential file writes.')
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -149,7 +201,7 @@ def main():
     validate(args.host, args.database)
     if not args.confirm_local_demo:
         parser.error('Separate user approval and --confirm-local-demo are required for seed or cleanup.')
-    identity = query(args, "SELECT current_database() || '|' || inet_server_addr()::text;")
+    identity = query(args, "SELECT current_database() || '|' || host(inet_server_addr());")
     if identity not in ('finsight|127.0.0.1', 'finsight|::1'):
         raise ValueError('Server must identify itself as loopback finsight.')
     existing = query(args, f"SELECT id || '|' || ({account_predicate()})::text FROM app_user WHERE email={quote(EMAIL)};")
@@ -166,18 +218,10 @@ def main():
     if args.cleanup:
         print('No demo account exists; nothing changed.')
         return
-    raw = query(args, """SELECT coalesce(json_agg(a), '[]'::json)::text FROM (
-        SELECT n.id, (SELECT t.term FROM term t WHERE position(t.term in coalesce(n.title,'') || ' ' || coalesce(n.raw_content,'')) > 0
-            ORDER BY (position(t.term in n.title) > 0) DESC, t.term LIMIT 1) AS term
-        FROM news n WHERE coalesce(n.source,'') NOT LIKE 'SYNTHETIC%' AND n.url ~ '^https?://'
-            AND n.url NOT LIKE '%example.invalid%' AND length(coalesce(n.raw_content,'')) >= 120
-            AND EXISTS (SELECT 1 FROM term t WHERE position(t.term in coalesce(n.title,'') || ' ' || coalesce(n.raw_content,'')) > 0)
-        ORDER BY n.published_at DESC NULLS LAST, n.id DESC LIMIT 3) a;""")
-    articles = json.loads(raw)
-    if len(articles) != 3:
-        raise ValueError('Three collected real articles with dictionary terms are required; nothing written.')
+    dates = scenario_dates()
+    articles = select_articles(args, dates)
     password_hash = bcrypt(credential_password())
-    query(args, build_sql(password_hash, articles))
+    query(args, build_sql(password_hash, articles, dates))
     print('Created one demo account and 3 judgements, 3 notes, 3 quiz records linked to existing news. Credentials withheld.')
 
 if __name__ == '__main__':
