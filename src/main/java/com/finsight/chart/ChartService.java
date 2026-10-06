@@ -131,7 +131,7 @@ public class ChartService {
 
     private List<ChartResponse.MoveInsightView> findDailyMoveInsights(
             List<CandleView> candles, List<News> relatedNews, String period) {
-        if (candles.size() < MIN_VOLATILITY_OBSERVATIONS + 1) {
+        if (candles.size() < 2) {
             return List.of();
         }
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
@@ -150,7 +150,7 @@ public class ChartService {
                     previousChanges.add((prior.close() - before.close()) / before.close() * 100.0);
                 }
             }
-            if (!isSignificantMove(previousChanges, change)) {
+            if (Math.abs(change) < ("W".equals(period) ? 5.0 : 3.0) && !isSignificantMove(previousChanges, change)) {
                 continue;
             }
             Instant moveAt = current.date().atStartOfDay(KST).toInstant();
@@ -171,7 +171,7 @@ public class ChartService {
         }
         return insights.stream()
                 .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
-                .limit(3)
+                .limit(5)
                 .toList();
     }
 
@@ -218,7 +218,7 @@ public class ChartService {
         }
         return insights.stream()
                 .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
-                .limit(3)
+                .limit(5)
                 .toList();
     }
 

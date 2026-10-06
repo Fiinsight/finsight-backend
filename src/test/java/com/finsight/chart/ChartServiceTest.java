@@ -60,4 +60,31 @@ class ChartServiceTest {
         assertThat(ChartService.latestNewsBefore(List.of(before, after), moveAt))
                 .isSameAs(before);
     }
+
+    @Test
+    void samsungDailyThirtyBarsReturnFiveLargestMovesAndShortWeeklySeriesWorks() {
+        // Actual saved Samsung 005930 API response, 2026-08-21..2026-10-06; no external calls.
+        String[] dates = {"2026-08-21", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-06"};
+        double[] closes = {281500.0, 257000.0, 257000.0, 261500.0, 266000.0, 257000.0, 260000.0, 261000.0, 250500.0, 250000.0, 255500.0, 270000.0, 269500.0, 269500.0, 269000.0, 259500.0, 249000.0, 248500.0, 253500.0, 252500.0, 261000.0, 274000.0, 276500.0, 285500.0, 270000.0, 272500.0, 268500.0, 276000.0, 276000.0, 272500.0};
+        var repository = org.mockito.Mockito.mock(com.finsight.news.NewsRepository.class);
+        var daily = org.mockito.Mockito.mock(com.finsight.external.kis.KisDailyCandleClient.class);
+        var minute = org.mockito.Mockito.mock(com.finsight.external.kis.KisMinuteCandleClient.class);
+        var bars = new java.util.ArrayList<com.finsight.external.kis.KisDailyCandle>();
+        int absoluteMoves = 0;
+        for (int i = 0; i < dates.length; i++) {
+            bars.add(new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.parse(dates[i]), closes[i], closes[i], closes[i], closes[i]));
+            if (i > 0 && Math.abs((closes[i] / closes[i - 1] - 1) * 100) >= 3) absoluteMoves++;
+        }
+        assertThat(absoluteMoves).isEqualTo(10);
+        org.mockito.Mockito.when(daily.getCandlesWithStatus("005930", 30, "D"))
+                .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(bars, false));
+        var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
+        assertThat(service.getChart("005930", "D", 5).moveInsights()).extracting(i -> i.timestamp().toLocalDate().toString())
+                .containsExactly("2026-08-24", "2026-09-07", "2026-09-28", "2026-09-21", "2026-09-14");
+        org.mockito.Mockito.when(daily.getCandlesWithStatus("005930", 7, "W"))
+                .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(
+                    new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.of(2026, 9, 14), 100, 100, 100, 100),
+                    new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.of(2026, 9, 21), 106, 106, 106, 106)), false));
+        assertThat(service.getChart("005930", "W", 5).moveInsights()).hasSize(1);
+    }
 }

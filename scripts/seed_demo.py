@@ -82,11 +82,12 @@ def select_articles(args, dates):
     for date in dates:
         excluded = ','.join(str(int(article['id'])) for article in articles) or '0'
         raw = query(args, f"""SELECT coalesce(json_agg(a), '[]'::json)::text FROM (
-            SELECT n.id, n.published_at AS "publishedAt", (SELECT t.term FROM term t
+            SELECT n.id, n.related_symbol AS "relatedSymbol", n.published_at AS "publishedAt", (SELECT t.term FROM term t
                 WHERE position(t.term in coalesce(n.title,'') || ' ' || coalesce(n.raw_content,'')) > 0
                   AND coalesce(t.short_definition,'') <> ''
                 ORDER BY (position(t.term in n.title) > 0) DESC, length(t.term) DESC, t.term LIMIT 1) AS term
             FROM news n WHERE coalesce(n.source,'') NOT LIKE 'SYNTHETIC%' AND n.url ~ '^https?://'
+                AND n.related_symbol ~ '^[0-9]{{6}}$'
                 AND n.url NOT LIKE '%example.invalid%' AND length(coalesce(n.raw_content,'')) >= 120
                 AND n.published_at < {quote(date.isoformat())} AND n.id NOT IN ({excluded})
                 AND EXISTS (SELECT 1 FROM term t WHERE coalesce(t.short_definition,'') <> ''
@@ -102,8 +103,8 @@ def select_articles(args, dates):
 def build_sql(password_hash, articles, dates=None):
     if not re.fullmatch(r'\$2[aby]\$10\$[./A-Za-z0-9]{53}', password_hash):
         raise ValueError('A generated BCrypt hash is required.')
-    if len(articles) != 3 or len({int(a['id']) for a in articles}) != 3 or any(not a['term'] for a in articles):
-        raise ValueError('Three distinct existing articles and dictionary terms are required.')
+    if len(articles) != 3 or len({int(a['id']) for a in articles}) != 3 or any(not a['term'] or not re.fullmatch(r'[0-9]{6}', a.get('relatedSymbol', '')) for a in articles):
+        raise ValueError('Three distinct stock-linked articles and dictionary terms are required.')
     dates = dates or scenario_dates()
     if len(dates) != 3:
         raise ValueError('Three scenario dates are required.')
@@ -142,7 +143,7 @@ def self_test():
     password_hash = bcrypt('self-test-only-not-an-account-secret')
     reference = datetime(2026, 10, 6, 12, tzinfo=KST)
     dates = scenario_dates(reference)
-    articles = [{'id': i, 'term': '금리', 'publishedAt': (date - timedelta(hours=2)).isoformat()}
+    articles = [{'id': i, 'relatedSymbol': '005930', 'term': '금리', 'publishedAt': (date - timedelta(hours=2)).isoformat()}
                 for i, date in zip((1,2,3), dates)]
     sql = build_sql(password_hash, articles, dates)
     assert [date.date().isoformat() for date in dates] == ['2026-10-05', '2026-10-03', '2026-09-22']
@@ -152,6 +153,10 @@ def self_test():
         try: build_sql(password_hash, invalid, dates)
         except ValueError: pass
         else: raise AssertionError('Judgement before/equal publication was accepted')
+    for symbol in ('KOSPI', 'KOSDAQ', '', '00593', '0059307'):
+        try: build_sql(password_hash, [{**articles[0], 'relatedSymbol': symbol}, *articles[1:]], dates)
+        except ValueError: pass
+        else: raise AssertionError('Non-stock article accepted')
     assert sql.startswith('BEGIN;') and sql.endswith('COMMIT;')
     assert sql.count('INSERT INTO app_user') == 1
     for table in ('judgement','article_note','learning_progress'):
@@ -170,6 +175,7 @@ def self_test():
         assert db.call_count == 3
         for call, date in zip(db.call_args_list, dates):
             assert 'n.published_at < ' + quote(date.isoformat()) in call.args[1]
+            assert "n.related_symbol ~ '^[0-9]{6}$'" in call.args[1]
             assert 'LIMIT 1' in call.args[1]
     with patch('sys.argv', ['seed_demo.py', '--confirm-local-demo']), \
          patch(__name__ + '.query', side_effect=['finsight|127.0.0.1', '42|true']) as db, \
