@@ -62,7 +62,18 @@ class NewsPipelineQualityTest {
         assertThat(matcher.match("삼성전자와 SK하이닉스 투자 확대")).isNull();
         assertThat(matcher.match("삼성전기 AI 기판 투자 확대")).isEqualTo("009150");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
-        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isEqualTo("009150");
+        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isNull();
+    }
+
+    @Test
+    void overseasAndIncidentalMentionsDoNotBecomeDomesticTickers() {
+        var matcher = new NewsSymbolMatcher();
+        assertThat(matcher.match("인텔 실적 발표", "삼성전자와 비교했다. 삼성전자 실적도 언급했다.")).isNull();
+        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다.")).isNull();
+        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다. 삼성전자 전망도 개선됐다.")).isEqualTo("005930");
+        assertThat(matcher.match("카카오뱅크 실적 개선")).isNull();
+        assertThat(matcher.match("현대차증권 보고서 발표")).isNull();
+        assertThat(matcher.match("코스피·코스닥 전망", "코스닥 비중 상승")).isEqualTo("KOSPI");
     }
 
     @Test
