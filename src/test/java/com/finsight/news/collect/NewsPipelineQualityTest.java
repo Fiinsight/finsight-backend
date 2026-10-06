@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 class NewsPipelineQualityTest {
 
     @Test
+    void storedArticleScoringUsesBodyAndAvoidsNestedKeywordsAndNotices() {
+        var scorer = new NewsRelevanceScorer();
+        assertThat(scorer.scoreTitle("기준금리")).isEqualTo(1);
+        assertThat(scorer.scoreArticle("기업 전망", "반도체 수출 실적")).isGreaterThan(scorer.scoreArticle("기업 전망", ""));
+        assertThat(scorer.scoreArticle("공지 금리 세미나 모집", "금리")).isLessThan(scorer.scoreArticle("금리 전망", "금리"));
+        var classifier = new NewsCategoryClassifier();
+        assertThat(classifier.classify("현대로템, 환율 영향", "방산 수주")).isEqualTo("산업·기술");
+        assertThat(classifier.classify("나스닥, 금리 변화", "채권")).isEqualTo("해외증시");
+        assertThat(classifier.classify("오늘의 동향", "반도체 수출 증가")).isEqualTo("산업·기술");
+    }
+
+    @Test
     void dropsUnrelatedTitlesBeforeArticleExtraction() {
         NewsRelevanceScorer scorer = new NewsRelevanceScorer();
         List<NewsCandidate> ranked = scorer.rank(List.of(
