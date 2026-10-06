@@ -131,12 +131,23 @@ public class LocalRetrievalController {
             for(int i=0;i<company.terms().size();i++) predicates.add("(lower(replace(n.title,' ','')) like :alias"+i+" or lower(replace(n.rawContent,' ','')) like :alias"+i+")");
             companyFilter=" and ("+String.join(" or ",predicates)+")";
         }
+        // Match query words before the bound, rather than truncating all news to the newest 200.
+        List<String> keywords = company == null && q.symbol() == null
+                ? Arrays.stream(q.query().toLowerCase(Locale.ROOT).split("[^a-z0-9가-힣]+"))
+                    .filter(word -> word.length() >= 2).distinct().limit(12).toList() : List.of();
+        if (!keywords.isEmpty()) {
+            List<String> predicates = new ArrayList<>();
+            for (int i=0; i<keywords.size(); i++)
+                predicates.add("(lower(n.title) like :keyword"+i+" or lower(coalesce(n.rawContent,'')) like :keyword"+i+")");
+            companyFilter += " and (" + String.join(" or ", predicates) + ")";
+        }
         var query = em.createQuery("select n from News n where (n.source is null or n.source not like 'SYNTHETIC%') and n.url not like '%example.invalid%' and lower(coalesce(n.rawContent,'')) not like '%google 검색%' and coalesce(n.rawContent,'') not like '%한경 프리미엄9을 구독%' and n.publishedAt>=:start and n.publishedAt<:end" +
                 companyFilter + " order by n.publishedAt desc", News.class)
             .setParameter("start", start).setParameter("end", end);
         if (company != null) {
             for(int i=0;i<company.terms().size();i++) query.setParameter("alias"+i,"%"+company.terms().get(i).toLowerCase(Locale.ROOT)+"%");
         } else if (q.symbol() != null) query.setParameter("symbol", q.symbol());
+        for (int i=0; i<keywords.size(); i++) query.setParameter("keyword"+i, "%"+keywords.get(i)+"%");
         return query.setMaxResults(company == null ? 200 : 500).getResultList().stream()
             .filter(n -> company == null || ChartCompanyMatcher.reason(q.symbol(),n.getTitle(),n.getRawContent()) != null)
             .limit(company == null ? 200 : 100).map(n -> new Doc(n.getId().toString(), "news", n.getTitle(),

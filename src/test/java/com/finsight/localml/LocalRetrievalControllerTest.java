@@ -44,6 +44,20 @@ class LocalRetrievalControllerTest {
             server.stop(0);
         }
     }
+    @Test @SuppressWarnings("unchecked") void appliesQueryWordsBeforeCandidateLimitAndDoesNotForcePastOnly() {
+        var em = mock(EntityManager.class);
+        TypedQuery<News> q = mock(TypedQuery.class, RETURNS_SELF);
+        when(em.createQuery(contains("lower(n.title) like :keyword0"), eq(News.class))).thenReturn(q);
+        when(q.getResultList()).thenReturn(List.of());
+        var c = new LocalRetrievalController(em, new ObjectMapper(), "http://127.0.0.1:1");
+        c.search(7L, new LocalRetrievalController.Query("현대로템 환율", "news", null, null, null, null));
+        verify(q).setParameter("keyword0", "%현대로템%");
+        verify(q).setParameter("keyword1", "%환율%");
+        verify(q).setMaxResults(200);
+        var end = org.mockito.ArgumentCaptor.forClass(Object.class);
+        verify(q).setParameter(eq("end"), end.capture());
+        assertTrue(((Instant)end.getValue()).isAfter(Instant.now().minusSeconds(10)));
+    }
     private LocalRetrievalController.Query query(String kind) {
         return new LocalRetrievalController.Query("HBM 수요",kind,Instant.parse("2026-09-01T00:00:00Z"),Instant.parse("2026-09-28T00:00:00Z"),null,null);
     }
