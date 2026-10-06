@@ -33,6 +33,7 @@ public class UserProfileService {
 
             String level = experience.contains("직접 투자") ? "analyst"
                     : experience.contains("조금씩") ? "normal" : "beginner";
+            if (answersJson.equals(user.getOnboardingAnswersJson()) && user.getLearningLevel() != null) level = user.getLearningLevel();
             String pace = paceAnswer.contains("깊이") ? "deep"
                     : paceAnswer.contains("짧게") || paceAnswer.contains("매일 조금씩") ? "short" : "flexible";
             String focus = interest.contains("판단") || goal.contains("판단") ? "judgement"
@@ -44,6 +45,16 @@ public class UserProfileService {
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩 저장에 실패했습니다.", e);
         }
+    }
+
+    @Transactional
+    public UserProfileDtos.OnboardingResponse setLearningLevel(Long userId, String level) {
+        if (level == null || !List.of("beginner", "normal", "analyst").contains(level)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "올바른 읽기 수준을 선택하세요.");
+        }
+        User user = users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."));
+        user.setLearningLevel(level);
+        return getOnboarding(userId);
     }
 
     private String answer(List<UserProfileDtos.OnboardingAnswer> answers, String id, String questionFragment) {

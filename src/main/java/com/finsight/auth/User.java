@@ -61,6 +61,7 @@ public class User {
     public String getProviderId() { return providerId; }
     public String getOnboardingAnswersJson() { return onboardingAnswersJson; }
     public String getLearningLevel() { return learningLevel; }
+    public void setLearningLevel(String learningLevel) { this.learningLevel = learningLevel; }
     public String getLearningPace() { return learningPace; }
     public String getLearningFocus() { return learningFocus; }
     public String getDailyGoal() { return dailyGoal; }
