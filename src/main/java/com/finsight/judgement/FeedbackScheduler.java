@@ -32,19 +32,23 @@ public class FeedbackScheduler {
     private final JudgementRepository judgementRepository;
     private final KisStockQuoteClient kisStockQuoteClient;
     private final AiServiceClient aiServiceClient;
+    private final com.finsight.external.kis.KisIndexQuoteClient indexQuotes;
+
+    private java.time.Clock clock = java.time.Clock.system(ZoneId.of("Asia/Seoul"));
 
     public FeedbackScheduler(JudgementRepository judgementRepository,
                               KisStockQuoteClient kisStockQuoteClient,
-                              AiServiceClient aiServiceClient) {
+                              AiServiceClient aiServiceClient, com.finsight.external.kis.KisIndexQuoteClient indexQuotes) {
         this.judgementRepository = judgementRepository;
         this.kisStockQuoteClient = kisStockQuoteClient;
         this.aiServiceClient = aiServiceClient;
+        this.indexQuotes = indexQuotes;
     }
 
     // Weekdays, shortly after the KRX market close (~15:30 KST).
     @Scheduled(cron = "0 40 15 * * MON-FRI", zone = "Asia/Seoul")
     public void generatePendingFeedback() {
-        Instant today = LocalDate.now(ZoneId.of("Asia/Seoul")).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        Instant today = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
         process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(today));
     }
 
@@ -53,8 +57,9 @@ public class FeedbackScheduler {
      * exercise the real flow on demand instead of waiting for tomorrow's
      * 15:40 cron to prove it actually works.
      */
-    public int runNow() {
-        return process(judgementRepository.findByFeedbackGeneratedAtIsNull());
+    public int runNow(Long userId) {
+        Instant cutoff = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        return process(judgementRepository.findPendingByOwner(userId, cutoff));
     }
 
     private int process(List<Judgement> pending) {
@@ -66,8 +71,7 @@ public class FeedbackScheduler {
         int succeeded = 0;
         for (Judgement judgement : pending) {
             try {
-                processOne(judgement);
-                succeeded++;
+                if (processOne(judgement)) succeeded++;
             } catch (Exception e) {
                 log.warn("Failed to generate feedback for judgement {}: {}", judgement.getId(), e.getMessage());
             }
@@ -76,15 +80,24 @@ public class FeedbackScheduler {
         return succeeded;
     }
 
-    private void processOne(Judgement judgement) {
+    private boolean processOne(Judgement judgement) {
+        var now = java.time.ZonedDateTime.now(clock);
+        LocalDate comparison = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate().plusDays(1);
+        while (comparison.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || comparison.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) comparison = comparison.plusDays(1);
+        // A current quote cannot establish the outcome of an older comparison day.
+        if (!comparison.equals(now.toLocalDate()) || now.toLocalTime().isBefore(java.time.LocalTime.of(15, 40))) return false;
         News news = judgement.getNews();
         String symbol = news == null ? null : news.getRelatedSymbol();
 
         String actualDirection;
         Double actualChangePercent;
         if (StringUtils.hasText(symbol)) {
-            KisStockQuote quote = kisStockQuoteClient.getStockQuote(symbol);
-            if (quote.fallback() || !Double.isFinite(quote.changePercent())) {
+            KisStockQuote quote;
+            if ("KOSPI".equals(symbol) || "KOSDAQ".equals(symbol)) {
+                var index = indexQuotes.getIndexQuote("KOSPI".equals(symbol) ? "0001" : "1001");
+                quote = new KisStockQuote(symbol, index.currentValue(), index.changePercent(), index.fallback());
+            } else quote = kisStockQuoteClient.getStockQuote(symbol);
+            if (quote.fallback() || !Double.isFinite(quote.currentPrice()) || quote.currentPrice() <= 0 || !Double.isFinite(quote.changePercent())) {
                 throw new IllegalStateException("실제 시세를 확인하지 못했습니다: " + symbol);
             }
             actualChangePercent = quote.changePercent();
@@ -101,6 +114,7 @@ public class FeedbackScheduler {
         judgement.setFeedbackText(feedbackText);
         judgement.setFeedbackGeneratedAt(Instant.now());
         judgementRepository.save(judgement);
+        return true;
     }
 
     private String classifyDirection(double changePercent) {
