@@ -4,6 +4,7 @@ import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import com.finsight.auth.User;
 import java.util.List;
+import com.finsight.history.RecordDateRange;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -51,6 +52,18 @@ public class JudgementService {
                         j.getFeedbackGeneratedAt()
                 ))
                 .toList();
+    }
+
+    public List<JudgementHistoryResponse> getHistory(User user, RecordDateRange range) {
+        return judgementRepository.findInRange(user, range.from(), range.to()).stream()
+                .map(j -> new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
+                        j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(),
+                        j.getActualChangePercent(), j.getFeedbackText(), j.getFeedbackGeneratedAt())).toList();
+    }
+
+    public String previousRecord(User user, RecordDateRange range) {
+        var date = judgementRepository.previousRecord(user, range.from());
+        return date == null ? null : RecordDateRange.date(date);
     }
 
     public Page<JudgementHistoryResponse> getHistoryPage(User user, int page, int size) {

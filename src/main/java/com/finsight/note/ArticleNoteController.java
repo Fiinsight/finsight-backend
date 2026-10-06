@@ -4,10 +4,13 @@ import com.finsight.auth.User;
 import com.finsight.auth.UserRepository;
 import jakarta.validation.Valid;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
+import com.finsight.history.RecordDateRange;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -28,8 +31,15 @@ public class ArticleNoteController {
     }
 
     @GetMapping
-    public List<ArticleNoteDtos.Response> list(@AuthenticationPrincipal Long userId) {
-        return service.list(user(userId));
+    public ResponseEntity<List<ArticleNoteDtos.Response>> list(@AuthenticationPrincipal Long userId,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+        var range = RecordDateRange.parse(from, to);
+        User owner = user(userId);
+        if (range == null) return ResponseEntity.ok(service.list(owner));
+        var response = ResponseEntity.ok();
+        String previous = service.previousRecord(owner, range);
+        if (previous != null) response.header(RecordDateRange.PREVIOUS_HEADER, previous);
+        return response.body(service.list(owner, range));
     }
 
     @GetMapping("/news/{newsId}")

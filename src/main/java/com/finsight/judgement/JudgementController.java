@@ -3,6 +3,8 @@ package com.finsight.judgement;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
+import com.finsight.history.RecordDateRange;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,8 +41,15 @@ public class JudgementController {
 
     @GetMapping("/history")
     @Operation(summary = "판단 이력 조회", description = "과거 판단과 (있다면) 실제 결과/피드백을 최신순으로 반환합니다.")
-    public List<JudgementHistoryResponse> history(@AuthenticationPrincipal Long userId) {
-        return judgementService.getHistory(user(userId));
+    public ResponseEntity<List<JudgementHistoryResponse>> history(@AuthenticationPrincipal Long userId,
+            @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
+        var range = RecordDateRange.parse(from, to);
+        User owner = user(userId);
+        if (range == null) return ResponseEntity.ok(judgementService.getHistory(owner));
+        var response = ResponseEntity.ok();
+        String previous = judgementService.previousRecord(owner, range);
+        if (previous != null) response.header(RecordDateRange.PREVIOUS_HEADER, previous);
+        return response.body(judgementService.getHistory(owner, range));
     }
 
     @GetMapping("/history/page")

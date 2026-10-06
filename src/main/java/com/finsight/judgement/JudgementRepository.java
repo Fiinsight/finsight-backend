@@ -36,4 +36,9 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
 
     @EntityGraph(attributePaths = "news")
     Page<Judgement> findAllByUserOrderByCreatedAtDesc(User user, Pageable pageable);
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.user = :user AND j.createdAt >= :from AND j.createdAt < :to ORDER BY j.createdAt DESC, j.id DESC")
+    List<Judgement> findInRange(User user, Instant from, Instant to);
+
+    @Query("SELECT MAX(j.createdAt) FROM Judgement j WHERE j.user = :user AND j.createdAt < :from")
+    Instant previousRecord(User user, Instant from);
 }
