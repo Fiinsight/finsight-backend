@@ -47,6 +47,7 @@ class KisMinuteCandleClientTest {
                 ]}
                 """));
 
+        server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("{\"rt_cd\":\"0\",\"output2\":[]}"));
         KisMinuteCandleResult result = client.getCandlesWithStatus("005930", 5, 10);
 
         assertFalse(result.fallback());
@@ -63,6 +64,33 @@ class KisMinuteCandleClientTest {
         assertTrue(Pattern.matches("\\d{6}", cursor));
         assertFalse(request.getPath().contains("FID_INPUT_HOUR_1=&"));
         assertTrue(request.getPath().contains("FID_PW_DATA_INCU_YN=Y"));
+    }
+
+    private MockResponse page(int start, int count) {
+        var rows = new java.util.ArrayList<String>();
+        for (int i = start + count - 1; i >= start; i--) {
+            String time = java.time.LocalTime.of(9, 0).plusMinutes(i).format(java.time.format.DateTimeFormatter.ofPattern("HHmmss"));
+            rows.add("{\"stck_bsop_date\":\"20261012\",\"stck_cntg_hour\":\"" + time + "\",\"stck_oprc\":\"" + i + "\",\"stck_hgpr\":\"" + (i + 2) + "\",\"stck_lwpr\":\"" + i + "\",\"stck_prpr\":\"" + (i + 1) + "\"}");
+        }
+        return new MockResponse().setHeader("Content-Type", "application/json").setBody("{\"rt_cd\":\"0\",\"output2\":[" + String.join(",", rows) + "]}");
+    }
+    @Test void threePagesFillContinuousFiveMinuteBucketsAndStopAtOpen() {
+        server.enqueue(page(60, 30)); server.enqueue(page(30, 31)); server.enqueue(page(0, 31));
+        var result = client.getCandlesWithStatus("005930", 5, 120);
+        assertFalse(result.fallback()); assertEquals(18, result.candles().size());
+        assertEquals(java.time.LocalTime.of(9, 0), result.candles().getFirst().timestamp().toLocalTime());
+        assertEquals(0, result.candles().getFirst().open()); assertEquals(5, result.candles().getFirst().close());
+        assertEquals(java.time.LocalTime.of(10, 25), result.candles().getLast().timestamp().toLocalTime());
+        assertEquals(3, server.getRequestCount());
+        for (int i = 1; i < result.candles().size(); i++) assertEquals(result.candles().get(i - 1).timestamp().plusMinutes(5), result.candles().get(i).timestamp());
+    }
+    @Test void emptyPageStopsAndRateLimitKeepsCollectedRows() {
+        server.enqueue(page(30, 30)); server.enqueue(page(0, 0));
+        var result = client.getCandlesWithStatus("005930", 5, 120);
+        assertEquals(6, result.candles().size()); assertEquals(2, server.getRequestCount());
+        server.enqueue(page(30, 30)); server.enqueue(new MockResponse().setResponseCode(429).setBody("EGW00201"));
+        var partial = client.getCandlesWithStatus("000660", 5, 120);
+        assertFalse(partial.fallback()); assertEquals(6, partial.candles().size());
     }
 
     @Test

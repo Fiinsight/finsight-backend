@@ -24,11 +24,8 @@ public final class ChartCompanyMatcher {
         Map.entry("005490", company("포스코홀딩스|POSCO\\s*홀딩스|포스코(?!퓨처엠|인터내셔널|이앤씨)", "포스코", "posco"))
     );
     public static Map<String,String> names() {
-        var names=new LinkedHashMap<String,String>();
-        names.put("005930","삼성전자"); names.put("000660","SK하이닉스");
-        names.put("035420","NAVER"); names.put("035720","카카오"); names.put("373220","LG에너지솔루션");
-        names.put("005380","현대차"); names.put("000270","기아"); names.put("207940","삼성바이오로직스");
-        names.put("051910","LG화학"); names.put("068270","셀트리온"); names.put("005490","POSCO홀딩스");
+        var names = new LinkedHashMap<String,String>();
+        com.finsight.stock.StockCatalog.entries().forEach((code, stock) -> names.put(code, stock.name()));
         return Collections.unmodifiableMap(names);
     }
     public static String normalize(String text) {
@@ -55,7 +52,11 @@ public final class ChartCompanyMatcher {
         }
         return body.substring(start,Math.min(body.length(),start+length));
     }
-    public static Company get(String symbol) { return symbol == null ? null : COMPANIES.get(symbol); }
+    public static Company get(String symbol) { if (symbol == null) return null;
+        Company alias = COMPANIES.get(symbol);
+        if (alias != null) return alias;
+        var stock = com.finsight.stock.StockCatalog.entries().get(symbol);
+        return stock == null ? null : company(stock.name().matches("[A-Za-z]+") ? "(?<![A-Za-z])" + Pattern.quote(stock.name()) + "(?![A-Za-z가-힣])" : Pattern.quote(stock.name()), stock.name()); }
     public static String cleanBody(String body) {
         if (body == null) return "";
         int end=body.length();

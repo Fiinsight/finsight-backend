@@ -19,6 +19,9 @@ public record ChartResponse(
         boolean fallback,
         List<MoveInsightView> moveInsights
 ) {
+    @com.fasterxml.jackson.annotation.JsonProperty("symbolName")
+    public String symbolName() { return com.finsight.stock.StockCatalog.name(symbol); }
+
     public record CandleView(LocalDate date, double open, double high, double low, double close) {
     }
 

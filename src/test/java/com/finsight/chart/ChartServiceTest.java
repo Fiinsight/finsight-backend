@@ -10,6 +10,23 @@ import org.junit.jupiter.api.Test;
 
 class ChartServiceTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"머스크 테라팹에 TSMC도 참여 인텔주가 하락", "은행들 금리 오르기전에 빨리 채권 찍자", "아산시 삼성발 훈풍 투자유치설명회", "수출길 막힐라 베트남 시장", "전남광주 산업지도", "진코스텍 코스닥 상장", "키움운용 코스닥150 분배금"})
+    void unrelatedNewsIsNotDirectOrOtherMarket(String title) {
+        var news = new News(title, "https://fixture.test", "fixture", Instant.EPOCH, "삼성 사업을 소개했다.");
+        assertThat(ChartService.relevanceRank("005930", news)).isZero();
+    }
+    @Test void periodHeadersReuseCachedQuoteWithoutAnyQuoteRequest() {
+        var manager = new org.springframework.cache.concurrent.ConcurrentMapCacheManager("popularStockQuotes", "kisStockQuotes");
+        manager.getCache("popularStockQuotes").put("all", List.of(new com.finsight.stock.PopularStockView("005930", "삼성전자", 257500, -1.72, false)));
+        var service = new ChartService(null, null, null, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "cacheManager", manager);
+        for (String period : List.of("D", "W", "MINUTE")) {
+            var chart = new ChartResponse("005930", 1, 2, List.of(), List.of(), List.of(), null, period, null, List.of(), false, List.of());
+            var result = service.withCurrentQuote(chart);
+            assertThat(result.price()).isEqualTo(257500); assertThat(result.changePercent()).isEqualTo(-1.72);
+        }
+    }
     @Test
     void directlyRelatedNewsComesBeforeNewerMarketNews() {
         var repository = org.mockito.Mockito.mock(com.finsight.news.NewsRepository.class);
@@ -27,7 +44,7 @@ class ChartServiceTest {
         org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock,market));
         var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
         assertThat(service.getChart("064350").relatedNews()).extracting(ChartResponse.NewsMarkerView::title)
-                .containsExactly("현대로템 실적 전망", "코스피 시장 동향");
+                .containsExactly("코스피 시장 동향", "현대로템 실적 전망");
     }
 
     @Test

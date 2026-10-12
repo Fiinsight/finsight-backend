@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 public class PopularStockService {
 
     // Keep this local catalog separate from quote fetching so search never calls KIS.
-    private static final Map<String, String> SYMBOLS = new LinkedHashMap<>();
     private static final Map<String, String> POPULAR_SYMBOLS = new LinkedHashMap<>();
     private static final Map<String, String> ALIASES = Map.of(
             "삼전", "005930",
@@ -29,18 +28,11 @@ public class PopularStockService {
     );
 
     static {
-        SYMBOLS.put("005930", "삼성전자");
-        SYMBOLS.put("000660", "SK하이닉스");
-        SYMBOLS.put("035420", "NAVER");
-        SYMBOLS.put("035720", "카카오");
-        SYMBOLS.put("373220", "LG에너지솔루션");
-        POPULAR_SYMBOLS.putAll(SYMBOLS);
-        SYMBOLS.put("005380", "현대차");
-        SYMBOLS.put("000270", "기아");
-        SYMBOLS.put("207940", "삼성바이오로직스");
-        SYMBOLS.put("051910", "LG화학");
-        SYMBOLS.put("068270", "셀트리온");
-        SYMBOLS.put("005490", "POSCO홀딩스");
+        POPULAR_SYMBOLS.put("005930", "삼성전자");
+        POPULAR_SYMBOLS.put("000660", "SK하이닉스");
+        POPULAR_SYMBOLS.put("035420", "NAVER");
+        POPULAR_SYMBOLS.put("035720", "카카오");
+        POPULAR_SYMBOLS.put("373220", "LG에너지솔루션");
     }
 
     private final KisStockQuoteClient kisStockQuoteClient;
@@ -68,12 +60,14 @@ public class PopularStockService {
         if (normalized.isBlank()) {
             return List.of();
         }
-        return SYMBOLS.entrySet().stream()
-                .filter(entry -> entry.getKey().contains(normalized)
-                        || entry.getValue().toLowerCase(Locale.ROOT).contains(normalized)
+        if (normalized.matches("\\d{6}") && !StockCatalog.entries().containsKey(normalized)) return List.of(new StockSearchView(normalized, normalized + " 차트 보기"));
+        return StockCatalog.entries().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith(normalized)
+                        || entry.getValue().name().toLowerCase(Locale.ROOT).contains(normalized)
                         || ALIASES.entrySet().stream().anyMatch(alias -> alias.getValue().equals(entry.getKey())
                                 && alias.getKey().toLowerCase(Locale.ROOT).contains(normalized)))
-                .map(entry -> new StockSearchView(entry.getKey(), entry.getValue()))
+                .sorted(java.util.Comparator.comparingInt(entry -> entry.getKey().equals(normalized) || entry.getValue().name().equalsIgnoreCase(normalized) ? 0 : 1))
+                .map(entry -> new StockSearchView(entry.getKey(), entry.getValue().name()))
                 .limit(10)
                 .toList();
     }
