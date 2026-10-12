@@ -59,36 +59,38 @@ public class KisDailyCandleClient {
 
     @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
     public KisDailyCandleResult getCandlesWithStatus(String stockCode, int count, String periodDivCode) {
+        LocalDate end = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        long days = switch (periodDivCode) { case "W" -> count * 10L; case "M" -> count * 35L; default -> count * 2L; };
+        return fetch(stockCode, count, periodDivCode, end.minusDays(days), end);
+    }
+
+    @Cacheable(cacheNames = "kisDailyCandles", key = "'close:' + #symbol + ':' + #start + ':' + #end", sync = true)
+    public KisDailyCandleResult getClosingCandles(String symbol, LocalDate start, LocalDate end) {
+        return fetch(symbol, 100, "D", start, end);
+    }
+
+    private KisDailyCandleResult fetch(String stockCode, int count, String periodDivCode, LocalDate startDate, LocalDate endDate) {
+        boolean index = "KOSPI".equals(stockCode) || "KOSDAQ".equals(stockCode);
+        if (!index && !stockCode.matches("\\d{6}")) return new KisDailyCandleResult(List.of(), true);
+        String code = index ? ("KOSPI".equals(stockCode) ? "0001" : "1001") : stockCode;
         try {
             Optional<String> token = tokenProvider.getAccessToken();
-            if (token.isEmpty()) {
-                return new KisDailyCandleResult(fallback(count), true);
-            }
-            LocalDate endDate = LocalDate.now();
-            // Weekly/monthly bars span much more calendar time per candle than
-            // daily ones, so the lookback window needs to widen accordingly —
-            // padding by calendar days (not bar count) undershoots badly for "W"/"M".
-            long lookbackDays = switch (periodDivCode) {
-                case "W" -> (long) count * 10L;
-                case "M" -> (long) count * 35L;
-                default -> (long) count * 2L;
-            };
-            LocalDate startDate = endDate.minusDays(lookbackDays);
+            if (token.isEmpty()) return new KisDailyCandleResult(List.of(), true);
             JsonNode response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder.path(DAILY_CANDLE_PATH)
-                            .queryParam("FID_COND_MRKT_DIV_CODE", "J")
-                            .queryParam("FID_INPUT_ISCD", stockCode)
+                    .uri(uriBuilder -> uriBuilder.path(index ? "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice" : DAILY_CANDLE_PATH)
+                            .queryParam("FID_COND_MRKT_DIV_CODE", index ? "U" : "J")
+                            .queryParam("FID_INPUT_ISCD", code)
                             .queryParam("FID_INPUT_DATE_1", startDate.format(YYYYMMDD))
                             .queryParam("FID_INPUT_DATE_2", endDate.format(YYYYMMDD))
                             .queryParam("FID_PERIOD_DIV_CODE", periodDivCode)
                             .queryParam("FID_ORG_ADJ_PRC", "1")
                             .build())
-                    .headers(headers -> KisApiHeaders.apply(headers, token.get(), DAILY_CANDLE_TR_ID, appKey, appSecret))
+                    .headers(headers -> KisApiHeaders.apply(headers, token.get(), index ? "FHKUP03500100" : DAILY_CANDLE_TR_ID, appKey, appSecret))
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .timeout(CALL_TIMEOUT)
                     .block();
-            List<KisDailyCandle> candles = parseCandles(response, count);
+            List<KisDailyCandle> candles = parseCandles(response, count, index);
             return candles.isEmpty()
                     ? new KisDailyCandleResult(fallback(count), true)
                     : new KisDailyCandleResult(candles, false);
@@ -105,10 +107,10 @@ public class KisDailyCandleClient {
         }
     }
 
-    private List<KisDailyCandle> parseCandles(JsonNode response, int count) {
+    private List<KisDailyCandle> parseCandles(JsonNode response, int count, boolean index) {
         JsonNode output2 = response == null ? null : response.get("output2");
         List<KisDailyCandle> candles = new ArrayList<>();
-        if (output2 == null || !output2.isArray()) {
+        if (response == null || !"0".equals(response.path("rt_cd").asText("0")) || output2 == null || !output2.isArray()) {
             return candles;
         }
         for (JsonNode row : output2) {
@@ -118,10 +120,10 @@ public class KisDailyCandleClient {
             }
             candles.add(new KisDailyCandle(
                     LocalDate.parse(dateStr, YYYYMMDD),
-                    KisJsonNumbers.parseDouble(row, "stck_oprc"),
-                    KisJsonNumbers.parseDouble(row, "stck_hgpr"),
-                    KisJsonNumbers.parseDouble(row, "stck_lwpr"),
-                    KisJsonNumbers.parseDouble(row, "stck_clpr")
+                    KisJsonNumbers.requiredDouble(row, index ? "bstp_nmix_oprc" : "stck_oprc"),
+                    KisJsonNumbers.requiredDouble(row, index ? "bstp_nmix_hgpr" : "stck_hgpr"),
+                    KisJsonNumbers.requiredDouble(row, index ? "bstp_nmix_lwpr" : "stck_lwpr"),
+                    KisJsonNumbers.requiredDouble(row, index ? "bstp_nmix_prpr" : "stck_clpr")
             ));
             if (candles.size() >= count) {
                 break;

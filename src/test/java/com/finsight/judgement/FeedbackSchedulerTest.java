@@ -6,101 +6,91 @@ import static org.mockito.Mockito.*;
 import com.finsight.auth.User;
 import com.finsight.external.AiFeedbackResponse;
 import com.finsight.external.AiServiceClient;
-import com.finsight.external.kis.KisStockQuote;
-import com.finsight.external.kis.KisStockQuoteClient;
+import com.finsight.external.kis.*;
 import com.finsight.news.News;
 import java.time.*;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 class FeedbackSchedulerTest {
     private final JudgementRepository records = mock(JudgementRepository.class);
-    private final KisStockQuoteClient quotes = mock(KisStockQuoteClient.class);
+    private final KisDailyCandleClient candles = mock(KisDailyCandleClient.class);
     private final AiServiceClient ai = mock(AiServiceClient.class);
-    private final com.finsight.external.kis.KisIndexQuoteClient indices = mock(com.finsight.external.kis.KisIndexQuoteClient.class);
-    private final FeedbackScheduler scheduler = new FeedbackScheduler(records, quotes, ai, indices);
-    private final Instant checkTime = Instant.parse("2026-10-06T07:00:00Z");
-    @org.junit.jupiter.api.BeforeEach void fixedClock() {
-        org.springframework.test.util.ReflectionTestUtils.setField(scheduler, "clock", Clock.fixed(checkTime, ZoneId.of("Asia/Seoul")));
+    private final FeedbackScheduler scheduler = new FeedbackScheduler(records, candles, ai);
+    @org.junit.jupiter.api.BeforeEach void clock() {
+        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler, "clock", Clock.fixed(Instant.parse("2026-10-06T07:00:00Z"), ZoneId.of("Asia/Seoul")));
     }
-
-    private Judgement pending(String symbol) {
-        News news = spy(new News("QA 학습용 기사", "https://example.invalid/qa", "SYNTHETIC_QA", Instant.now(), "QA"));
-        when(news.getId()).thenReturn(115L);
-        news.setRelatedSymbol(symbol);
-        Judgement item = spy(new Judgement(mock(User.class), news, JudgementChoice.UP, "QA 테스트 근거"));
-        when(item.getCreatedAt()).thenReturn(Instant.parse("2026-10-05T01:00:00Z"));
+    private Judgement pending(String symbol, String date) {
+        var news = spy(new News("학습용 기사", "https://example.invalid/qa", "SYNTHETIC_QA", Instant.now(), "QA"));
+        when(news.getId()).thenReturn(115L); news.setRelatedSymbol(symbol);
+        var item = spy(new Judgement(mock(User.class), news, JudgementChoice.UP, "근거"));
+        when(item.getCreatedAt()).thenReturn(Instant.parse(date + "T01:00:00Z"));
         when(records.findPendingByOwner(eq(1L), any())).thenReturn(List.of(item));
         return item;
     }
-    @Test void savesQuoteFieldsAndFreeAiFeedback() {
-        Judgement item = pending("005930");
-        when(quotes.getStockQuote("005930")).thenReturn(new KisStockQuote("005930", 100, 1.25, false));
-        when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("예상 UP과 실제 UP을 비교해보세요.")));
+    private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
+    @Test void backlogUsesExactHistoricalClosesAndStoresThemOnce() {
+        var item = pending("005930", "2026-09-28");
+        when(candles.getClosingCandles("005930", LocalDate.parse("2026-09-28"), LocalDate.parse("2026-09-29")))
+            .thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",101.2),bar("2026-10-06",120)), false));
+        when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("UP 예상과 실제 UP")));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
         assertThat(item.getActualDirection()).isEqualTo("UP");
-        assertThat(item.getActualChangePercent()).isEqualTo(1.25);
-        assertThat(item.getFeedbackText()).contains("상승").doesNotContain("UP");
-        assertThat(item.getFeedbackGeneratedAt()).isNotNull();
-        verify(records).save(item);
+        assertThat(item.getActualChangePercent()).isCloseTo(1.2, org.assertj.core.data.Offset.offset(0.000001));
+        assertThat(item.getComparisonDate()).isEqualTo(LocalDate.parse("2026-09-29"));
+        assertThat(item.getJudgementClose()).isEqualByComparingTo("100");
+        assertThat(item.getComparisonClose()).isEqualByComparingTo("101.2");
+        assertThat(item.getFeedbackText()).doesNotContain("UP", "UNKNOWN");
+        assertThat(scheduler.runNow(1L)).isZero();
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
-    @Test void missingAiStillSavesDirectionsAndKoreanFeedback() {
-        for (double change : new double[]{1.0, 0.5, -1.0}) {
-            Judgement item = pending("005930");
-            when(quotes.getStockQuote("005930")).thenReturn(new KisStockQuote("005930", 100, change, false));
-            when(ai.generateFeedback(any())).thenReturn(Optional.empty());
+    @Test void allDirectionsUseClosesWithFreeTemplateWhenAiIsUnavailable() {
+        for (double close : new double[]{101,100.5,99}) {
+            var item = pending("005930", "2026-10-02");
+            when(candles.getClosingCandles("005930", LocalDate.parse("2026-10-02"), LocalDate.parse("2026-10-06")))
+                .thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",close)),false));
             assertThat(scheduler.runNow(1L)).isEqualTo(1);
-            assertThat(item.getActualDirection()).isEqualTo(change > 0.5 ? "UP" : change < -0.5 ? "DOWN" : "NEUTRAL");
-            assertThat(item.getActualChangePercent()).isEqualTo(change);
-            assertThat(item.getFeedbackText()).isNotBlank().doesNotContain("UP", "DOWN", "NEUTRAL");
+            assertThat(item.getActualDirection()).isEqualTo(close>100.5?"UP":close<99.5?"DOWN":"NEUTRAL");
+            assertThat(item.getFeedbackText()).isNotBlank().doesNotContain("UP","DOWN","NEUTRAL");
         }
     }
-    @Test void unavailableQuotesNeverPersistAnOutcome() {
-        for (KisStockQuote quote : List.of(new KisStockQuote("005930", 0, 0, true), new KisStockQuote("005930", 100, Double.NaN, false))) {
-            Judgement item = pending("005930");
-            when(quotes.getStockQuote("005930")).thenReturn(quote);
+    @Test void invalidMissingOrFallbackClosesStayPending() {
+        for (var result : List.of(new KisDailyCandleResult(List.of(),true),
+                new KisDailyCandleResult(List.of(bar("2026-10-02",100)),false),
+                new KisDailyCandleResult(List.of(bar("2026-10-02",0),bar("2026-10-06",100)),false),
+                new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",Double.NaN)),false))) {
+            var item = pending("005930", "2026-10-02");
+            when(candles.getClosingCandles(any(), any(), any())).thenReturn(result);
             assertThat(scheduler.runNow(1L)).isZero();
-            assertThat(item.getActualDirection()).isNull();
-            assertThat(item.getActualChangePercent()).isNull();
-            assertThat(item.getFeedbackGeneratedAt()).isNull();
+            assertThat(item.getActualDirection()).isNull(); assertThat(item.getJudgementClose()).isNull();
         }
-        verify(records, never()).save(any());
-        verifyNoInteractions(ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any()); verifyNoInteractions(ai);
     }
-    @Test void missingSymbolIsUnknownRatherThanIncorrect() {
-        Judgement item = pending(null);
+    @Test void noSymbolIsNotAnIncorrectResult() {
+        var item = pending(null,"2026-10-02");
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
-        assertThat(item.getActualDirection()).isEqualTo("UNKNOWN");
-        assertThat(item.getActualChangePercent()).isNull();
-        assertThat(item.getFeedbackText()).contains("비교하지 않습니다").doesNotContain("달랐습니다");
-        verifyNoInteractions(quotes, ai);
+        assertThat(item.getFeedbackText()).isEqualTo("관련 종목이 없어 결과를 비교하지 않았어요");
+        assertThat(item.getActualDirection()).isEqualTo("UNKNOWN"); verifyNoInteractions(candles, ai);
     }
-    @Test void indexUsesIndexQuotesAndInvalidPriceRemainsPending() {
-        var item = pending("KOSPI");
-        when(indices.getIndexQuote("0001")).thenReturn(new com.finsight.external.kis.KisIndexQuote("0001", 2500, 1.0, false));
-        assertThat(scheduler.runNow(1L)).isEqualTo(1);
-        assertThat(item.getActualDirection()).isEqualTo("UP");
-        verifyNoInteractions(quotes);
-        item = pending("005930");
-        when(quotes.getStockQuote("005930")).thenReturn(new KisStockQuote("005930", 0, 0, false));
-        assertThat(scheduler.runNow(1L)).isZero(); assertThat(item.getFeedbackGeneratedAt()).isNull();
+    @Test void indexAlsoUsesHistoricalIndexCloses() {
+        var item = pending("KOSDAQ","2026-09-28");
+        when(candles.getClosingCandles(any(),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",1000),bar("2026-09-29",990)),false));
+        assertThat(scheduler.runNow(1L)).isEqualTo(1); assertThat(item.getActualDirection()).isEqualTo("DOWN");
+        verify(candles).getClosingCandles("KOSDAQ",LocalDate.parse("2026-09-28"),LocalDate.parse("2026-09-29"));
     }
-    @Test void todayAndOldComparisonDateStayPendingWithoutProviderCalls() {
-        for (var created : List.of(checkTime, Instant.parse("2026-09-22T01:00:00Z"))) {
-            var item = pending("005930"); when(item.getCreatedAt()).thenReturn(created);
-            assertThat(scheduler.runNow(1L)).isZero(); assertThat(item.getActualDirection()).isNull();
-        }
-        verifyNoInteractions(quotes, indices, ai);
+    @Test void todayAndBeforeComparisonCloseNeverCallProvider() {
+        var item = pending("005930","2026-10-06"); assertThat(scheduler.runNow(1L)).isZero();
+        item = pending("005930","2026-10-02");
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock",Clock.fixed(Instant.parse("2026-10-06T06:30:00Z"),ZoneId.of("Asia/Seoul")));
+        assertThat(scheduler.runNow(1L)).isZero(); verifyNoInteractions(candles,ai);
     }
-    @Test void scheduledRunExcludesTodaysJudgements() {
-        when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of());
-        scheduler.generatePendingFeedback();
-        var cutoff = ArgumentCaptor.forClass(Instant.class);
-        verify(records).findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(cutoff.capture());
-        assertThat(cutoff.getValue()).isEqualTo(checkTime.atZone(ZoneId.of("Asia/Seoul")).toLocalDate().atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant());
-        verify(records, never()).findByFeedbackGeneratedAtIsNull();
-        verifyNoInteractions(quotes, ai);
+    @Test void calendarSkipsHolidaysButSeptember28IsOpen() {
+        assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-09-23"))).isEqualTo(LocalDate.parse("2026-09-28"));
+        assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-10-02"))).isEqualTo(LocalDate.parse("2026-10-06"));
+        assertThat(KoreanTradingCalendar.onOrBefore(LocalDate.parse("2026-10-05"))).isEqualTo(LocalDate.parse("2026-10-02"));
+        assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-02-13"))).isEqualTo(LocalDate.parse("2026-02-19"));
+        assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-06-02"))).isEqualTo(LocalDate.parse("2026-06-04"));
     }
 }

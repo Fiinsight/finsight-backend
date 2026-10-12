@@ -26,11 +26,23 @@ public class JudgementService {
         this.newsRepository = newsRepository;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public JudgementFeedbackResponse recordJudgement(User user, JudgementRequest request) {
         News news = newsRepository.findById(request.newsId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "존재하지 않는 뉴스 id 입니다: " + request.newsId()));
 
+        // Lock the news row until commit; prevents concurrent inserts before the deferred unique constraint.
+        newsRepository.lockForJudgement(news.getId());
+        var existing = judgementRepository.findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(user, news.getId());
+        if (existing.isPresent()) {
+            var judgement = existing.get();
+            if (judgement.getActualDirection() != null || judgement.getFeedbackGeneratedAt() != null)
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 결과가 나온 판단이에요");
+            judgement.revise(request.choice(), request.reason());
+            judgementRepository.save(judgement);
+            return new JudgementFeedbackResponse(request.newsId(), request.choice(), "판단을 수정했어요");
+        }
         Judgement judgement = new Judgement(user, news, request.choice(), request.reason());
         judgementRepository.save(judgement);
 
@@ -49,7 +61,7 @@ public class JudgementService {
                         j.getActualDirection(),
                         j.getActualChangePercent(),
                         j.getFeedbackText(),
-                        j.getFeedbackGeneratedAt()
+                        j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose()
                 ))
                 .toList();
     }
@@ -58,7 +70,7 @@ public class JudgementService {
         return judgementRepository.findInRange(user, range.from(), range.to()).stream()
                 .map(j -> new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                         j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(),
-                        j.getActualChangePercent(), j.getFeedbackText(), j.getFeedbackGeneratedAt())).toList();
+                        j.getActualChangePercent(), j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose())).toList();
     }
 
     public String previousRecord(User user, RecordDateRange range) {
@@ -81,7 +93,7 @@ public class JudgementService {
                         j.getActualDirection(),
                         j.getActualChangePercent(),
                         j.getFeedbackText(),
-                        j.getFeedbackGeneratedAt()
+                        j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose()
                 ));
     }
 }

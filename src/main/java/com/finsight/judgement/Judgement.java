@@ -49,6 +49,25 @@ public class Judgement {
     private String feedbackText;
 
     private Instant feedbackGeneratedAt;
+    private java.time.LocalDate comparisonDate;
+    @Column(precision = 24, scale = 8)
+    private java.math.BigDecimal judgementClose;
+    @Column(precision = 24, scale = 8)
+    private java.math.BigDecimal comparisonClose;
+
+    public java.time.LocalDate getComparisonDate() { return comparisonDate; }
+    public java.math.BigDecimal getJudgementClose() { return judgementClose; }
+    public java.math.BigDecimal getComparisonClose() { return comparisonClose; }
+    public void setClosingComparison(java.time.LocalDate date, double before, double after) {
+        comparisonDate = date;
+        judgementClose = java.math.BigDecimal.valueOf(before);
+        comparisonClose = java.math.BigDecimal.valueOf(after);
+    }
+    public void revise(JudgementChoice choice, String reason) {
+        this.choice = choice;
+        this.reasonText = reason;
+        this.createdAt = Instant.now();
+    }
 
     protected Judgement() {
         // JPA

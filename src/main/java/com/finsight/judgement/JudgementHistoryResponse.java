@@ -12,6 +12,9 @@ public record JudgementHistoryResponse(
         String actualDirection,
         Double actualChangePercent,
         String feedbackText,
-        Instant feedbackGeneratedAt
+        Instant feedbackGeneratedAt,
+        java.time.LocalDate comparisonDate,
+        java.math.BigDecimal judgementClose,
+        java.math.BigDecimal comparisonClose
 ) {
 }
