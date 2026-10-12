@@ -27,9 +27,11 @@ public class AuthController {
     }
     @GetMapping("/me")
     public AuthDtos.AuthResponse me(@AuthenticationPrincipal Long userId) { return auth.me(userId); }
+    @DeleteMapping("/me") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAccount(@AuthenticationPrincipal Long userId) { auth.deleteAccount(userId); }
     @GetMapping("/kakao/url")
-    public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String state) {
-        return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(state));
+    public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String redirectUri) {
+        return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(redirectUri));
     }
     @GetMapping("/kakao/status")
     public AuthDtos.KakaoConfigStatus kakaoStatus() {

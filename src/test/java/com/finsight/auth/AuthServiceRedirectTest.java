@@ -22,7 +22,7 @@ class AuthServiceRedirectTest {
     void allowsConfiguredLocalWebRedirect() {
         assertEquals(
                 "http://localhost:8082/auth/kakao?code=abc",
-                auth.kakaoCallbackUri("abc", "http://localhost:8082/auth/kakao", null, null));
+                auth.kakaoCallbackUri("abc", AuthServiceTest.nonce(auth, "http://localhost:8082/auth/kakao"), null, null));
     }
 
     @Test
@@ -41,13 +41,13 @@ class AuthServiceRedirectTest {
 
         assertEquals(
                 "http://172.30.1.47:8082/auth/kakao?code=abc",
-                lanAuth.kakaoCallbackUri("abc", "http://172.30.1.47:8082/auth/kakao", null, null));
+                lanAuth.kakaoCallbackUri("abc", AuthServiceTest.nonce(lanAuth, "http://172.30.1.47:8082/auth/kakao"), null, null));
     }
 
     @Test
     void rejectsUntrustedRedirectAndUsesAppScheme() {
         assertEquals(
-                "finsight://auth/kakao?code=abc",
+                "finsight://auth/kakao?error=invalid_state",
                 auth.kakaoCallbackUri("abc", "https://attacker.example/auth/kakao", null, null));
     }
 
@@ -55,9 +55,9 @@ class AuthServiceRedirectTest {
     void acceptsConfiguredExpoRedirectButRejectsArbitraryExpoRedirect() {
         assertEquals(
                 "exp://172.30.1.47:8081/--/auth/kakao?code=abc",
-                auth.kakaoCallbackUri("abc", "exp://172.30.1.47:8081/--/auth/kakao", null, null));
+                auth.kakaoCallbackUri("abc", AuthServiceTest.nonce(auth, "exp://172.30.1.47:8081/--/auth/kakao"), null, null));
         assertEquals(
-                "finsight://auth/kakao?code=abc",
+                "finsight://auth/kakao?error=invalid_state",
                 auth.kakaoCallbackUri("abc", "exp://attacker.example/--/other", null, null));
     }
 }

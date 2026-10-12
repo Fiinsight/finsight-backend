@@ -12,24 +12,34 @@ class AuthServiceTest {
     void allowsConfiguredWebRedirectOnlyByExactMatch() {
         AuthService service = service("http://localhost:8081/auth/kakao");
 
-        assertThat(service.kakaoCallbackUri("code", "http://localhost:8081/auth/kakao", null, null))
+        assertThat(service.kakaoCallbackUri("code", nonce(service, "http://localhost:8081/auth/kakao"), null, null))
                 .isEqualTo("http://localhost:8081/auth/kakao?code=code");
         assertThat(service.kakaoCallbackUri("code", "http://localhost:8081/auth/kakao/evil", null, null))
-                .isEqualTo("finsight://auth/kakao?code=code");
+                .isEqualTo("finsight://auth/kakao?error=invalid_state");
     }
 
     @Test
     void keepsExpoRedirectSupportWithoutAllowingHttpUrlsByPrefix() {
         AuthService service = service("exp://127.0.0.1:8081/--/auth/kakao");
 
-        assertThat(service.kakaoCallbackUri("code", "exp://127.0.0.1:8081/--/auth/kakao", null, null))
+        assertThat(service.kakaoCallbackUri("code", nonce(service, "exp://127.0.0.1:8081/--/auth/kakao"), null, null))
                 .startsWith("exp://127.0.0.1:8081/--/auth/kakao?code=");
         assertThat(service.kakaoCallbackUri("code", "exp://127.0.0.1:8081/--/auth/kakao.evil", null, null))
-                .startsWith("finsight://auth/kakao?code=");
+                .startsWith("finsight://auth/kakao?error=invalid_state");
         assertThat(service.kakaoCallbackUri("code", "http://localhost:8081/auth/kakao.evil", null, null))
-                .startsWith("finsight://auth/kakao?code=");
+                .startsWith("finsight://auth/kakao?error=invalid_state");
     }
 
+    @Test void stateIsSingleUseAndUntrustedDestinationsAreRejected() {
+        var service = service("http://localhost:8081/auth/kakao");
+        var state = nonce(service, "http://localhost:8081/auth/kakao");
+        assertThat(service.kakaoCallbackUri("code", state, null, null)).startsWith("http://localhost:8081/auth/kakao?code=");
+        assertThat(service.kakaoCallbackUri("code", state, null, null)).endsWith("error=invalid_state");
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> service.kakaoUrl("https://attacker.example"));
+    }
+    static String nonce(AuthService service, String redirect) {
+        return org.springframework.web.util.UriComponentsBuilder.fromUriString(service.kakaoUrl(redirect)).build().getQueryParams().getFirst("state");
+    }
     private AuthService service(String webRedirectUris) {
         JwtService jwt = new JwtService(
                 "VGhpcyBpcyBhIHRlc3Qga2V5IHRoYXQgaXMgbG9uZyBlbm91Z2ggZm9yIEpXVA==", 86400);

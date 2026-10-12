@@ -26,6 +26,17 @@ import java.net.URI;
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(8);
+    private final com.github.benmanes.caffeine.cache.Cache<String, String> oauthStates = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+            .maximumSize(10000).expireAfterWrite(Duration.ofMinutes(5)).build();
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteAccount(Long userId) {
+        User user = users.findById(userId).orElseThrow(this::unauthorized);
+        for (String entity : java.util.List.of("LearningProgress", "ArticleNote", "DailyNote", "Judgement"))
+            entityManager.createQuery("delete from " + entity + " record where record.user.id = :userId").setParameter("userId", userId).executeUpdate();
+        users.delete(user);
+    }
     private final UserRepository users;
     private final JwtService jwt;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -134,8 +145,12 @@ public class AuthService {
         log.info("Kakao login completed: providerId={}, elapsedMs={}", kakaoId, elapsedMs(startedAt));
         return response(user);
     }
-    public String kakaoUrl(String state) {
+    public String kakaoUrl(String redirectUri) {
         requireKakaoConfig();
+        String destination = redirectUri == null || redirectUri.isBlank() ? kakaoAppRedirectUri : redirectUri;
+        if (!isAllowedAppRedirect(destination)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "허용되지 않은 로그인 복귀 주소입니다.");
+        String state = java.util.UUID.randomUUID().toString();
+        oauthStates.put(state, destination);
         String url = "https://kauth.kakao.com/oauth/authorize?client_id=" + encode(kakaoClientId)
                 + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code"
                 + (kakaoScopes.isBlank() ? "" : "&scope=" + encode(kakaoScopes));
@@ -147,7 +162,8 @@ public class AuthService {
         return new AuthDtos.KakaoConfigStatus(!kakaoClientId.isBlank() && !kakaoRedirectUri.isBlank(), kakaoRedirectUri, kakaoAppRedirectUri);
     }
     public String kakaoCallbackUri(String code, String state, String error, String errorDescription) {
-        String destination = isAllowedAppRedirect(state) ? state : kakaoAppRedirectUri;
+        String destination = state == null ? null : oauthStates.asMap().remove(state);
+        if (destination == null) return kakaoAppRedirectUri + "?error=invalid_state";
         String separator = destination.contains("?") ? "&" : "?";
         if (error != null && !error.isBlank()) {
             String result = destination + separator + "error=" + encode(error);
