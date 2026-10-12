@@ -36,6 +36,20 @@ class KakaoErrorResponseTest {
     @MockitoBean
     private AuthRateLimiter authRateLimiter;
 
+    @Test void invalidEmailHasStructuredKoreanMessage() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"abc\",\"password\":\"123456789\",\"nickname\":\"사용자\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("이메일 형식이 올바르지 않아요."))
+                .andExpect(jsonPath("$.errors[0].field").value("email"));
+    }
+    @Test void deleteRequiresAuthenticationAndDeletesOnlySignedInOwner() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/auth/me")).andExpect(status().isForbidden());
+        when(jwtService.isValid("owner-token")).thenReturn(true);
+        when(jwtService.userId("owner-token")).thenReturn(7L);
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/auth/me").header("Authorization", "Bearer owner-token"))
+                .andExpect(status().isNoContent());
+        org.mockito.Mockito.verify(authService).deleteAccount(7L);
+    }
     @Test
     void returnsKakaoProviderErrorInsteadOfMaskingItAsForbidden() throws Exception {
         when(authService.kakao(anyString())).thenThrow(
