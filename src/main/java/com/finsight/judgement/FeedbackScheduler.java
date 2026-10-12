@@ -6,6 +6,8 @@ import com.finsight.external.kis.KisStockQuote;
 import com.finsight.external.kis.KisStockQuoteClient;
 import com.finsight.news.News;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -40,14 +42,14 @@ public class FeedbackScheduler {
     }
 
     // Weekdays, shortly after the KRX market close (~15:30 KST).
-    @Scheduled(cron = "0 40 15 * * MON-FRI")
+    @Scheduled(cron = "0 40 15 * * MON-FRI", zone = "Asia/Seoul")
     public void generatePendingFeedback() {
-        process(judgementRepository.findByFeedbackGeneratedAtIsNull());
+        Instant today = LocalDate.now(ZoneId.of("Asia/Seoul")).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+        process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(today));
     }
 
     /**
-     * Same processing as the scheduled run, but without the "must be a day
-     * old" gate — lets {@code POST /api/judgements/generate-feedback-now}
+     * Same processing as the scheduled run, but without the KST calendar-day gate — lets {@code POST /api/judgements/generate-feedback-now}
      * exercise the real flow on demand instead of waiting for tomorrow's
      * 15:40 cron to prove it actually works.
      */
@@ -82,7 +84,7 @@ public class FeedbackScheduler {
         Double actualChangePercent;
         if (StringUtils.hasText(symbol)) {
             KisStockQuote quote = kisStockQuoteClient.getStockQuote(symbol);
-            if (quote.fallback()) {
+            if (quote.fallback() || !Double.isFinite(quote.changePercent())) {
                 throw new IllegalStateException("실제 시세를 확인하지 못했습니다: " + symbol);
             }
             actualChangePercent = quote.changePercent();
@@ -113,7 +115,7 @@ public class FeedbackScheduler {
 
     private String generateFeedbackText(Judgement judgement, String actualDirection, Double actualChangePercent) {
         News news = judgement.getNews();
-        if (news == null) {
+        if (news == null || "UNKNOWN".equals(actualDirection)) {
             // finsight-ai's FeedbackRequest requires a news_id, so without a
             // linked news row there's nothing meaningful to send it.
             return templatedFeedback(judgement, actualDirection, actualChangePercent);
@@ -128,13 +130,15 @@ public class FeedbackScheduler {
 
         Optional<com.finsight.external.AiFeedbackResponse> aiResponse = aiServiceClient.generateFeedback(request);
         if (aiResponse.isPresent() && StringUtils.hasText(aiResponse.get().feedbackText())) {
-            return aiResponse.get().feedbackText();
+            return aiResponse.get().feedbackText().replaceAll("\\bUP\\b", "상승").replaceAll("\\bDOWN\\b", "하락")
+                    .replaceAll("\\bNEUTRAL\\b", "중립").replaceAll("\\bUNKNOWN\\b", "확인 불가");
         }
 
         return templatedFeedback(judgement, actualDirection, actualChangePercent);
     }
 
     private String templatedFeedback(Judgement judgement, String actualDirection, Double actualChangePercent) {
+        if ("UNKNOWN".equals(actualDirection)) return "관련 종목의 실제 시세를 확인할 수 없어 판단 결과를 비교하지 않습니다. 저장한 판단 근거를 다시 읽어보세요.";
         String predicted = judgement.getChoice().name();
         boolean matched = predicted.equals(actualDirection);
         String changeText = actualChangePercent == null
@@ -144,10 +148,14 @@ public class FeedbackScheduler {
         if (matched) {
             return String.format(
                     "예측하신 방향(%s)이 실제 결과(%s, %s)와 일치했습니다. 판단 근거를 다시 살펴보며 같은 논리를 다음 판단에도 적용해보세요.",
-                    predicted, actualDirection, changeText);
+                    directionLabel(predicted), directionLabel(actualDirection), changeText);
         }
         return String.format(
                 "예측하신 방향(%s)과 실제 결과(%s, %s)가 달랐습니다. 어떤 요인을 놓쳤는지 뉴스 내용을 다시 확인해보세요.",
-                predicted, actualDirection, changeText);
+                directionLabel(predicted), directionLabel(actualDirection), changeText);
     }
+    private String directionLabel(String direction) {
+        return switch (direction) { case "UP" -> "상승"; case "DOWN" -> "하락"; case "NEUTRAL" -> "중립"; default -> "확인 불가"; };
+    }
+
 }
