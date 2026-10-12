@@ -58,11 +58,12 @@ public class KisStockQuoteClient {
                     .timeout(CALL_TIMEOUT)
                     .block();
             JsonNode output = response == null ? null : response.get("output");
-            if (output == null) {
+            if (output == null || (response.hasNonNull("rt_cd") && !"0".equals(response.path("rt_cd").asText()))) {
                 return fallback(stockCode);
             }
-            double currentPrice = KisJsonNumbers.parseDouble(output, "stck_prpr");
-            double changePercent = KisJsonNumbers.parseDouble(output, "prdy_ctrt");
+            double currentPrice = KisJsonNumbers.requiredDouble(output, "stck_prpr");
+            double changePercent = KisJsonNumbers.requiredDouble(output, "prdy_ctrt");
+            if (!Double.isFinite(currentPrice) || currentPrice <= 0 || !Double.isFinite(changePercent)) return fallback(stockCode);
             return new KisStockQuote(stockCode, currentPrice, changePercent, false);
         } catch (Exception e) {
             log.warn("KIS stock quote call failed for {}, using fallback: {}", stockCode, e.getMessage());

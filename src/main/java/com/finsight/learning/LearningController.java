@@ -11,7 +11,10 @@ public class LearningController {
     public record Answer(@NotBlank @Pattern(regexp = "beginner|normal|analyst") String level,
                          @NotBlank @Size(max = 100) String term, @NotNull @Min(0) @Max(2) Integer answerIndex) {}
     private final LearningService service;
-    public LearningController(LearningService service) { this.service = service; }
+    private final LearningProgressService progress;
+    public LearningController(LearningService service, LearningProgressService progress) { this.service = service; this.progress = progress; }
+    @GetMapping("/progress")
+    public LearningProgressService.Progress progress(@AuthenticationPrincipal Long userId) { return progress.get(userId); }
     @GetMapping("/news/{newsId}")
     public LearningService.Lesson lesson(@AuthenticationPrincipal Long userId, @PathVariable Long newsId,
                                          @RequestParam(required = false) String level) { return service.lesson(userId, newsId, level); }

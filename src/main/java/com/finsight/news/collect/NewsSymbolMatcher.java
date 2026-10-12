@@ -1,6 +1,8 @@
 package com.finsight.news.collect;
 
 import java.util.LinkedHashMap;
+import com.finsight.localml.ChartCompanyMatcher;
+import java.util.regex.Pattern;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -51,18 +53,27 @@ public class NewsSymbolMatcher {
             return headline.contains("코스피") ? "KOSPI" : null;
         }
         if (headlineSymbols.size() == 1) return headlineSymbols.iterator().next();
-        if (headline.contains("코스닥")) return "KOSDAQ";
-        if (headline.contains("코스피")) return "KOSPI";
-        if (headlineSymbols.size() > 1 || headline.matches(".*(美|미국|뉴욕|나스닥|S&P).*")) return null;
+        if (headline.contains("코스피") || headline.contains("코스닥"))
+            return headline.contains("코스피") && (!headline.contains("코스닥") || headline.indexOf("코스피") < headline.indexOf("코스닥")) ? "KOSPI" : "KOSDAQ";
+        if (headlineSymbols.size() > 1 || headline.matches(".*(美|미국|뉴욕|나스닥|S&P|인텔|엔비디아|애플|테슬라|AMD|TSMC).*")) return null;
         Set<String> bodySymbols = companies(content == null ? "" : content);
-        if (bodySymbols.size() == 1) return bodySymbols.iterator().next();
+        if (bodySymbols.size() == 1) {
+            String symbol = bodySymbols.iterator().next();
+            var company = ChartCompanyMatcher.get(symbol);
+            long count = company != null ? company.pattern().matcher(content).results().count()
+                    : COMPANY_SYMBOLS.entrySet().stream().filter(entry -> entry.getValue().equals(symbol))
+                        .mapToLong(entry -> Pattern.compile(Pattern.quote(entry.getKey())).matcher(content).results().count()).sum();
+            if (count >= 2) return symbol;
+        }
         return null;
     }
 
     private Set<String> companies(String text) {
         Set<String> symbols = new LinkedHashSet<>();
         for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
-            if (text.contains(entry.getKey())) symbols.add(entry.getValue());
+            boolean mentioned = ChartCompanyMatcher.get(entry.getValue()) != null
+                    ? ChartCompanyMatcher.reason(entry.getValue(), text, "") != null : text.contains(entry.getKey());
+            if (mentioned) symbols.add(entry.getValue());
         }
         return symbols;
     }

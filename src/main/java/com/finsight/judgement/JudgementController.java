@@ -64,9 +64,9 @@ public class JudgementController {
     @PostMapping("/generate-feedback-now")
     @Operation(summary = "피드백 즉시 생성 (수동)",
             description = "원래는 평일 15:40에 자동 실행되지만(하루 지난 판단만 대상), 데모/테스트용으로 " +
-                    "하루가 안 지났어도 피드백이 아직 없는 모든 판단을 즉시 처리합니다.")
-    public String generateFeedbackNow() {
-        int processed = feedbackScheduler.runNow();
+                    "로그인한 본인의 판단 중 비교 시점이 지난 건만 처리합니다.")
+    public String generateFeedbackNow(@AuthenticationPrincipal Long userId) {
+        int processed = feedbackScheduler.runNow(userId);
         return "%d건 처리 완료".formatted(processed);
     }
 }

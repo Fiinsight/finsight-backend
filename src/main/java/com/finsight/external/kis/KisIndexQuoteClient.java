@@ -78,11 +78,12 @@ public class KisIndexQuoteClient {
                     .timeout(CALL_TIMEOUT)
                     .block();
             JsonNode output = response == null ? null : response.get("output");
-            if (output == null) {
+            if (output == null || (response.hasNonNull("rt_cd") && !"0".equals(response.path("rt_cd").asText()))) {
                 return fallback(indexCode);
             }
-            double currentValue = KisJsonNumbers.parseDouble(output, "bstp_nmix_prpr");
-            double changePercent = KisJsonNumbers.parseDouble(output, "bstp_nmix_prdy_ctrt");
+            double currentValue = KisJsonNumbers.requiredDouble(output, "bstp_nmix_prpr");
+            double changePercent = KisJsonNumbers.requiredDouble(output, "bstp_nmix_prdy_ctrt");
+            if (!Double.isFinite(currentValue) || currentValue <= 0 || !Double.isFinite(changePercent)) return fallback(indexCode);
             return new KisIndexQuote(indexCode, currentValue, changePercent, false);
         } catch (Exception e) {
             log.warn("KIS index quote call failed for {}, using fallback: {}", indexCode, e.getMessage());

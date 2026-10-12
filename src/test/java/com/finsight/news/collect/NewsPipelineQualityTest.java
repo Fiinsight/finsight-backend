@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 class NewsPipelineQualityTest {
 
     @Test
+    void storedArticleScoringUsesBodyAndAvoidsNestedKeywordsAndNotices() {
+        var scorer = new NewsRelevanceScorer();
+        assertThat(scorer.scoreTitle("기준금리")).isEqualTo(1);
+        assertThat(scorer.scoreArticle("기업 전망", "반도체 수출 실적")).isGreaterThan(scorer.scoreArticle("기업 전망", ""));
+        assertThat(scorer.scoreArticle("공지 금리 세미나 모집", "금리")).isLessThan(scorer.scoreArticle("금리 전망", "금리"));
+        var classifier = new NewsCategoryClassifier();
+        assertThat(classifier.classify("현대로템, 환율 영향", "방산 수주")).isEqualTo("산업·기술");
+        assertThat(classifier.classify("나스닥, 금리 변화", "채권")).isEqualTo("해외증시");
+        assertThat(classifier.classify("오늘의 동향", "반도체 수출 증가")).isEqualTo("산업·기술");
+    }
+
+    @Test
     void dropsUnrelatedTitlesBeforeArticleExtraction() {
         NewsRelevanceScorer scorer = new NewsRelevanceScorer();
         List<NewsCandidate> ranked = scorer.rank(List.of(
@@ -62,7 +74,18 @@ class NewsPipelineQualityTest {
         assertThat(matcher.match("삼성전자와 SK하이닉스 투자 확대")).isNull();
         assertThat(matcher.match("삼성전기 AI 기판 투자 확대")).isEqualTo("009150");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
-        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isEqualTo("009150");
+        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isNull();
+    }
+
+    @Test
+    void overseasAndIncidentalMentionsDoNotBecomeDomesticTickers() {
+        var matcher = new NewsSymbolMatcher();
+        assertThat(matcher.match("인텔 실적 발표", "삼성전자와 비교했다. 삼성전자 실적도 언급했다.")).isNull();
+        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다.")).isNull();
+        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다. 삼성전자 전망도 개선됐다.")).isEqualTo("005930");
+        assertThat(matcher.match("카카오뱅크 실적 개선")).isNull();
+        assertThat(matcher.match("현대차증권 보고서 발표")).isNull();
+        assertThat(matcher.match("코스피·코스닥 전망", "코스닥 비중 상승")).isEqualTo("KOSPI");
     }
 
     @Test

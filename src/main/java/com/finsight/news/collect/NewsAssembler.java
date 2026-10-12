@@ -41,7 +41,7 @@ public class NewsAssembler {
 
     public News assemble(NewsCandidate candidate, String rawContent) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
-        news.setCategory(newsCategoryClassifier.classify(candidate.title()));
+        news.setCategory(newsCategoryClassifier.classify(candidate.title(), rawContent));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
         applyRewrite(news, candidate, rawContent);
@@ -50,27 +50,21 @@ public class NewsAssembler {
 
     public void reprocess(News news) {
         NewsCandidate candidate = new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0);
-        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         Optional<String> extracted = articleContentExtractor.extract(news.getUrl());
-        if (extracted.isEmpty()) {
-            // Never present an RSS teaser, old summary, or AI rewrite as the
-            // original article when the publisher blocks the fetch.
-            news.setRawContent("");
-            news.setRewrittenBeginner("");
-            news.setRewrittenNormal("");
-            news.setRewrittenAnalyst("");
-            news.setImportanceReason("");
-            news.setKeyTerms(List.of());
+        if (extracted.isEmpty() || extracted.get().isBlank()
+                || !articleContentExtractor.isUsable(news.getTitle(), extracted.get())) {
+            log.warn("Article refresh unavailable; keeping stored content for newsId={}", news.getId());
             return;
         }
         String cleanedContent = extracted.get();
         news.setRawContent(cleanedContent);
+        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), cleanedContent));
         applyRewrite(news, candidate, cleanedContent);
     }
 
     /** Refresh cheap, deterministic metadata without making any AI calls. */
     public void refreshMetadata(News news) {
-        news.setCategory(newsCategoryClassifier.classify(news.getTitle()));
+        news.setCategory(newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()));
         news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         news.setSentimentHint(newsSentimentClassifier.classify(news.getTitle()));
     }

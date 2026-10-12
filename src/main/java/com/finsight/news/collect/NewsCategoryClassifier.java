@@ -10,7 +10,17 @@ public class NewsCategoryClassifier {
 
     private static final String GENERIC_REASON = "경제 지표 및 시장 동향과 관련된 뉴스입니다.";
 
+    public String classify(String title, String content) {
+        String headline = title == null ? "" : title;
+        if (containsAny(headline, "반도체", "AI", "인공지능", "배터리", "바이오", "전기차", "조선", "방산", "현대로템")) return "산업·기술";
+        if (containsAny(headline, "나스닥", "다우", "S&P", "뉴욕", "미국 증시", "일본 증시", "중국 증시")) return "해외증시";
+        String category = classify(headline);
+        if (!"정책·경제".equals(category)) return category;
+        return classify(content == null ? "" : content);
+    }
+
     public String classify(String title) {
+        title = title == null ? "" : title;
         if (containsAny(title, "IPO", "공시", "상장", "유상증자", "무상증자")) {
             return "IPO·공시";
         }
