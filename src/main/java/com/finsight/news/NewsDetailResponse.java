@@ -56,7 +56,13 @@ public record NewsDetailResponse(
 
     public static String excerpt(String text) {
         if (text == null) return null;
-        return text.length() <= 600 ? text : text.substring(0, 600).strip() + "…\n전체 원문은 출처 링크에서 확인하세요.";
+        if (text.length() <= 600) return text;
+        String prefix = text.substring(0, 600);
+        var endings = java.util.regex.Pattern.compile("[.!?。！？](?![0-9])(?:\\s|$)").matcher(prefix);
+        int end = 0;
+        while (endings.find()) end = endings.start() + 1;
+        if (end == 0) end = Math.max(0, prefix.lastIndexOf(' '));
+        return prefix.substring(0, end).strip() + "…";
     }
 
     private static String replaceStaleRewrite(String rewrite, String cleanedContent) {

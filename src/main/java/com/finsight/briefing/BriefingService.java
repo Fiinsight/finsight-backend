@@ -60,6 +60,7 @@ public class BriefingService {
         // ponytail: rank the latest 1000 candidates; use DB scoring if the archive grows beyond this window.
         List<News> ranked = NewsDeduplicator.distinctArticles(newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 1000)).stream()
                 .filter(this::isUsable)
+                .filter(news -> relevanceScorer.scoreArticle(news.getTitle(), news.getRawContent()) > 0)
                 .sorted(Comparator.comparing((News n) -> n.getPublishedAt() != null && !n.getPublishedAt().isBefore(today)).reversed()
                         .thenComparing(Comparator.comparingInt((News n) -> relevanceScorer.scoreArticle(n.getTitle(), n.getRawContent())).reversed())
                         .thenComparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder()))

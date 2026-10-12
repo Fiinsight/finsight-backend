@@ -11,6 +11,15 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class NewsAssemblerTest {
+    @Test void collectsAllLevelsInOneCallAndNeverRewritesStoredArticle() {
+        var ai = mock(AiServiceClient.class); var extractor = mock(ArticleContentExtractor.class);
+        var assembler = new NewsAssembler(ai, new NewsCategoryClassifier(), new NewsSymbolMatcher(), new NewsSentimentClassifier(), extractor);
+        when(ai.rewrite(any())).thenReturn(Optional.of(new com.finsight.external.AiRewriteResponse("기사", "일반", null, java.util.Map.of(), List.of(), "초보예요.", "일반 사실.", "분석 근거.", "REWRITTEN")));
+        var article = assembler.assemble(new NewsCandidate("수출 증가", "https://fixture.test/news", "fixture", Instant.EPOCH, 1), "수출은 12.5% 증가했다.");
+        assertThat(article.getRewrittenBeginner()).isEqualTo("초보예요."); assertThat(article.getRewriteMode()).isEqualTo("REWRITTEN");
+        verify(ai, times(1)).rewrite(new com.finsight.external.AiRewriteRequest("수출 증가", "수출은 12.5% 증가했다.", null, "https://fixture.test/news"));
+        assembler.reprocess(article); verifyNoMoreInteractions(ai); verifyNoInteractions(extractor);
+    }
     @Test
     void failedEmptyOrUnusableRefreshPreservesStoredBodyAndAllReadingLevels() {
         var extractor = mock(ArticleContentExtractor.class);

@@ -1,10 +1,8 @@
 package com.finsight.news.collect;
 
-import java.util.LinkedHashMap;
 import com.finsight.localml.ChartCompanyMatcher;
 import java.util.regex.Pattern;
 import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -17,64 +15,49 @@ import org.springframework.stereotype.Component;
 @Component
 public class NewsSymbolMatcher {
 
-    // Company name -> ticker, checked before the market-wide fallback below.
-    // Covers the same "인기 종목" set the frontend already shows as samples.
-    private static final Map<String, String> COMPANY_SYMBOLS = new LinkedHashMap<>();
-
-    static {
-        COMPANY_SYMBOLS.put("삼성전자", "005930");
-        COMPANY_SYMBOLS.put("삼성전기", "009150");
-        COMPANY_SYMBOLS.put("삼성바이오로직스", "207940");
-        COMPANY_SYMBOLS.put("삼전", "005930");
-        COMPANY_SYMBOLS.put("SK하이닉스", "000660");
-        COMPANY_SYMBOLS.put("SK하닉", "000660");
-        COMPANY_SYMBOLS.put("네이버", "035420");
-        COMPANY_SYMBOLS.put("NAVER", "035420");
-        COMPANY_SYMBOLS.put("카카오", "035720");
-        COMPANY_SYMBOLS.put("LG에너지솔루션", "373220");
-        COMPANY_SYMBOLS.put("현대차", "005380");
-        COMPANY_SYMBOLS.put("현대로템", "064350");
-        COMPANY_SYMBOLS.put("기아", "000270");
-        COMPANY_SYMBOLS.put("삼성바이오로직스", "207940");
-        COMPANY_SYMBOLS.put("LG화학", "051910");
-        COMPANY_SYMBOLS.put("셀트리온", "068270");
-        COMPANY_SYMBOLS.put("POSCO홀딩스", "005490");
-        COMPANY_SYMBOLS.put("포스코홀딩스", "005490");
-    }
-
     public String match(String title) {
         return match(title, "");
     }
 
     public String match(String title, String content) {
         String headline = title == null ? "" : title;
+        String body = content == null ? "" : content;
+        String subject = headline.replaceFirst("^\\s*\\[[^]]+\\]\\s*", "").stripLeading();
+        if (subject.matches("^(고용노동부|기획재정부|금융위(?:원회)?|한은|한국은행|정부|국세청|행정안전부|산업통상자원부)(?:[\\s,·]|는|은|이|가|$).*")) return null;
+        var explicit = Pattern.compile("\\[(\\d{6})\\]").matcher(headline + " " + body);
+        if (explicit.find()) return explicit.group(1);
         Set<String> headlineSymbols = companies(headline);
-        if (headline.contains("삼전닉스") || headline.contains("삼성·SK하닉")) {
-            return headline.contains("코스피") ? "KOSPI" : null;
-        }
-        if (headlineSymbols.size() == 1) return headlineSymbols.iterator().next();
-        if (headline.contains("코스피") || headline.contains("코스닥"))
-            return headline.contains("코스피") && (!headline.contains("코스닥") || headline.indexOf("코스피") < headline.indexOf("코스닥")) ? "KOSPI" : "KOSDAQ";
-        if (headlineSymbols.size() > 1 || headline.matches(".*(美|미국|뉴욕|나스닥|S&P|인텔|엔비디아|애플|테슬라|AMD|TSMC).*")) return null;
+        boolean multiCompany = headline.contains("삼성·SK하닉") || headline.contains("삼전닉스");
+        if (!multiCompany && headlineSymbols.size() == 1) return headlineSymbols.iterator().next();
+        if (headline.contains("코스피")) return "KOSPI";
+        if (headline.contains("코스닥")) return "KOSDAQ";
+        if (multiCompany || headlineSymbols.size() > 1 || headline.matches(".*(환율|금리|물가|美|미국|뉴욕|나스닥|S&P|인텔|엔비디아|애플|테슬라|AMD|TSMC).*")) return null;
         Set<String> bodySymbols = companies(content == null ? "" : content);
         if (bodySymbols.size() == 1) {
             String symbol = bodySymbols.iterator().next();
             var company = ChartCompanyMatcher.get(symbol);
-            long count = company != null ? company.pattern().matcher(content).results().count()
-                    : COMPANY_SYMBOLS.entrySet().stream().filter(entry -> entry.getValue().equals(symbol))
-                        .mapToLong(entry -> Pattern.compile(Pattern.quote(entry.getKey())).matcher(content).results().count()).sum();
+            long count = company != null ? companyPattern(symbol).matcher(body).results().count()
+                    : ChartCompanyMatcher.names().entrySet().stream().filter(entry -> entry.getKey().equals(symbol))
+                        .mapToLong(entry -> Pattern.compile(Pattern.quote(entry.getValue())).matcher(content).results().count()).sum();
             if (count >= 2) return symbol;
         }
         return null;
     }
 
+    private Pattern companyPattern(String symbol) {
+        var company = ChartCompanyMatcher.get(symbol);
+        return Pattern.compile("(?<![가-힣A-Za-z])(?:" + company.pattern().pattern() + ")(?![가-힣A-Za-z])", company.pattern().flags());
+    }
+
     private Set<String> companies(String text) {
         Set<String> symbols = new LinkedHashSet<>();
-        for (Map.Entry<String, String> entry : COMPANY_SYMBOLS.entrySet()) {
-            boolean mentioned = ChartCompanyMatcher.get(entry.getValue()) != null
-                    ? ChartCompanyMatcher.reason(entry.getValue(), text, "") != null : text.contains(entry.getKey());
-            if (mentioned) symbols.add(entry.getValue());
+        for (String symbol : ChartCompanyMatcher.names().keySet()) {
+            if (companyPattern(symbol).matcher(text).find()) symbols.add(symbol);
         }
+        var matched = java.util.List.copyOf(symbols);
+        symbols.removeIf(symbol -> matched.stream().anyMatch(other -> !other.equals(symbol)
+                && com.finsight.stock.StockCatalog.name(other).contains(com.finsight.stock.StockCatalog.name(symbol))
+                && text.contains(com.finsight.stock.StockCatalog.name(other))));
         return symbols;
     }
 }

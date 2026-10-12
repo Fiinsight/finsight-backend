@@ -60,16 +60,32 @@ public class NewsDeduplicator {
     }
 
     public static List<com.finsight.news.News> distinctArticles(List<com.finsight.news.News> ranked) {
-        var urls = new java.util.HashSet<String>();
-        var headlines = new java.util.HashSet<String>();
-        return ranked.stream().filter(item -> {
-            String title = item.getTitle().replaceAll("\\[(속보|종합\\d*)\\]|\\(종합\\d*\\)", "")
-                    .replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
-            String date = item.getPublishedAt() == null ? "" : item.getPublishedAt().atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString();
-            String key = item.getSource() + ":" + date + ":" + title;
-            if (urls.contains(item.getUrl()) || headlines.contains(key)) return false;
-            urls.add(item.getUrl()); headlines.add(key); return true;
-        }).toList();
+        var result = new ArrayList<com.finsight.news.News>();
+        for (var item : ranked) {
+            if (result.stream().noneMatch(previous -> sameEvent(previous, item))) result.add(item);
+        }
+        return List.copyOf(result);
+    }
+
+    private static boolean sameEvent(com.finsight.news.News left, com.finsight.news.News right) {
+        if (left.getUrl() != null && left.getUrl().equals(right.getUrl())) return true;
+        if (left.getPublishedAt() == null || right.getPublishedAt() == null
+                || Math.abs(java.time.Duration.between(left.getPublishedAt(), right.getPublishedAt()).toHours()) > 24) return false;
+        String a = normalizedTitle(left.getTitle()), b = normalizedTitle(right.getTitle());
+        if (a.equals(b)) return true;
+        var first = titleGrams(a); var second = titleGrams(b);
+        var shared = new java.util.HashSet<>(first); shared.retainAll(second);
+        var union = new java.util.HashSet<>(first); union.addAll(second);
+        return shared.size() >= 8 && !union.isEmpty() && (double) shared.size() / union.size() >= 0.6;
+    }
+
+    private static String normalizedTitle(String title) {
+        return title == null ? "" : title.replaceAll("\\[(속보|종합\\d*)\\]|\\(종합\\d*\\)", "").replaceAll("[^0-9A-Za-z가-힣]", "").toLowerCase(java.util.Locale.ROOT);
+    }
+    private static java.util.Set<String> titleGrams(String title) {
+        var grams = new java.util.HashSet<String>();
+        for (int i = 0; i + 2 <= title.length(); i++) grams.add(title.substring(i, i + 2));
+        return grams;
     }
 
     private String sha256(String input) {
