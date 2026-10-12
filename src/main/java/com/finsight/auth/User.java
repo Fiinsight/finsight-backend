@@ -35,6 +35,10 @@ public class User {
     private String learningFocus;
     @Column(length = 100)
     private String dailyGoal;
+    @Column(length = 30)
+    private String learningPainPoint;
+    @Column(length = 30)
+    private String goalType;
     private Instant onboardingCompletedAt;
 
     protected User() {}
@@ -64,6 +68,9 @@ public class User {
     public void setLearningLevel(String learningLevel) { this.learningLevel = learningLevel; }
     public String getLearningPace() { return learningPace; }
     public String getLearningFocus() { return learningFocus; }
+    public String getLearningPainPoint() { return learningPainPoint; }
+    public String getGoalType() { return goalType; }
+    public void setLearningPersonalization(String painPoint, String goalType) { this.learningPainPoint = painPoint; this.goalType = goalType; }
     public String getDailyGoal() { return dailyGoal; }
     public Instant getOnboardingCompletedAt() { return onboardingCompletedAt; }
     public void saveOnboardingProfile(String answersJson, String level, String pace, String focus, String goal, Instant completedAt) {

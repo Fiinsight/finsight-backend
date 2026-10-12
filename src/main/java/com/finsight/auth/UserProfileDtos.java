@@ -20,5 +20,9 @@ public final class UserProfileDtos {
 
     public record OnboardingResponse(List<OnboardingAnswer> answers, String learningLevel,
                                      String learningPace, String learningFocus, String dailyGoal,
-                                     Instant completedAt) {}
+                                     Instant completedAt, String learningPainPoint, String goalType) {
+        public OnboardingResponse(List<OnboardingAnswer> answers, String level, String pace, String focus, String goal, Instant at) {
+            this(answers, level, pace, focus, goal, at, "terms", "read1");
+        }
+    }
 }

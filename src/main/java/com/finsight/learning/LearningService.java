@@ -22,7 +22,8 @@ public class LearningService {
     public record Question(String term, String prompt, List<String> options) {}
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
-    public record AnswerResult(boolean correct, String definition, String message, int correctIndex) {}
+    private record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
+    public record AnswerResult(boolean correct, String definition, String message) {}
     public record Review(Long newsId, String title, String term, String definition, String level, Instant answeredAt) {}
     private static final List<Set<String>> TERM_FIELDS = List.of(
             Set.of("금리", "기준금리", "국채금리", "환율", "원화", "원달러", "물가", "인플레이션", "양적완화"),
@@ -52,17 +53,25 @@ public class LearningService {
         validateLevel(level);
         News article = article(newsId);
         String body = extractor.clean(article.getTitle(), article.getRawContent());
-        var aid = body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
+        String stored = switch (level) {
+            case "normal" -> article.getRewrittenNormal();
+            case "analyst" -> article.getRewrittenAnalyst();
+            default -> article.getRewrittenBeginner();
+        };
+        String mode = "REWRITTEN".equals(article.getRewriteMode()) ? "REWRITTEN" : "EXCERPT";
+        boolean usableStored = article.getRewriteMode() != null && stored != null && !stored.isBlank();
+        var aid = usableStored || body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
                 : ai.learning(new AiRewriteRequest(article.getTitle(), body, level));
         List<Term> matchedTerms = articleTerms(article);
         List<Glossary> glossary = matchedTerms.stream().limit(3)
                 .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
         Term first = matchedTerms.stream().findFirst().orElse(null);
+        GradedQuestion quiz = first == null ? null : question(article, first, level);
         return new Lesson(newsId, level,
-                aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
+                usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
                 aid.map(AiServiceClient.ReadingAid::readingGuide).orElse("아래 용어는 일반 개념 설명이며 기사의 사실과 구분해 읽어주세요."),
-                aid.map(AiServiceClient.ReadingAid::mode).orElse("UNAVAILABLE"), glossary,
-                first == null ? null : question(article, first));
+                usableStored ? mode : aid.isPresent() ? "EXCERPT" : "UNAVAILABLE", glossary,
+                quiz == null ? null : quiz.publicQuestion());
     }
     @Transactional
     public AnswerResult answer(Long userId, Long newsId, String level, String term, int answerIndex) {
@@ -70,15 +79,27 @@ public class LearningService {
         News article = article(newsId);
         Term target = articleTerms(article).stream().findFirst().filter(t -> t.getTerm().equals(term))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 문항이 아닙니다."));
-        Question question = question(article, target);
+        GradedQuestion graded = question(article, target, level);
+        Question question = graded == null ? null : graded.publicQuestion();
         if (question == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "준비된 퀴즈가 없습니다.");
         if (answerIndex < 0 || answerIndex >= question.options().size()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 답변입니다.");
-        boolean correct = question.options().get(answerIndex).equals(target.getShortDefinition());
+        boolean correct = question.options().get(answerIndex).equals(graded.correctAnswer());
         LearningProgress record = progress.findByUser_IdAndNews_IdAndTerm(userId, newsId, term)
                 .orElseGet(() -> new LearningProgress(users.findById(userId).orElseThrow(), article, term));
-        record.answer(level, correct);
+        record.answer(graded.level(), correct);
         progress.save(record);
-        return new AnswerResult(correct, target.getShortDefinition(), correct ? "이 개념을 이해했어요. 복습 목록에서 제외됩니다." : "이 개념을 학습 화면의 복습 목록에 저장했어요.", question.options().indexOf(target.getShortDefinition()));
+        String explanation = "analyst".equals(graded.level()) ? "정답 보기는 기사에 없는 내용이에요. 다른 두 보기의 원문 근거와 비교해보세요. "
+                : "normal".equals(graded.level()) ? "원문 수치와 증가·감소·유지 표현을 확인해보세요. " : "";
+        return new AnswerResult(correct, graded.correctAnswer(), explanation + (correct ? "이 개념을 이해했어요. 복습 목록에서 제외됩니다." : "이 개념을 학습 화면의 복습 목록에 저장했어요."));
+    }
+    @Transactional(readOnly = true)
+    public List<Glossary> dailyTerms() {
+        LinkedHashMap<String,Glossary> selected = new LinkedHashMap<>();
+        for (News article : news.findTop3ByOrderByPublishedAtDesc()) for (Term term : articleTerms(article))
+            selected.putIfAbsent(term.getTerm(), new Glossary(term.getTerm(),term.getShortDefinition()));
+        terms.findAll().stream().filter(term -> term.getShortDefinition()!=null && !term.getShortDefinition().isBlank())
+                .sorted(Comparator.comparing(Term::getTerm)).forEach(term -> selected.putIfAbsent(term.getTerm(), new Glossary(term.getTerm(),term.getShortDefinition())));
+        return selected.values().stream().limit(3).toList();
     }
     @Transactional(readOnly = true)
     public List<Review> reviews(Long userId) {
@@ -95,7 +116,46 @@ public class LearningService {
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();
     }
-    private Question question(News article, Term term) {
+    private GradedQuestion question(News article, Term term, String level) {
+        String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
+        List<String> sentences = Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
+                .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
+        Random seed = new Random(article.getId() ^ term.getTerm().hashCode());
+        if ("normal".equals(level)) {
+            List<Term> matched = articleTerms(article);
+            for (String sentence : sentences) {
+                if (sentence.length()>180 || !sentence.contains(term.getTerm()) || !sentence.matches(".*[0-9].*")) continue;
+                if (matched.stream().anyMatch(other -> !other.getTerm().equals(term.getTerm())
+                        && !term.getTerm().contains(other.getTerm()) && sentence.contains(other.getTerm()))) continue;
+                // Mixed directions or forecast-only statements cannot be graded as observed changes.
+                if (sentence.matches(".*(전망|예상|가능성|예측).*")) continue;
+                boolean up = sentence.matches(".*(증가|상승|늘었|늘어|올랐|올라|인상).*"),
+                        down = sentence.matches(".*(감소|하락|줄었|줄어|내렸|내려|인하).*"),
+                        flat = sentence.matches(".*(동결|변화 없|유지|보합).*" );
+                if ((up?1:0)+(down?1:0)+(flat?1:0) != 1) continue;
+                List<String> options = new ArrayList<>(List.of("증가", "감소", "변화 없음"));
+                Collections.shuffle(options, seed);
+                return new GradedQuestion(new Question(term.getTerm(), "기사에서 ‘" + term.getTerm() + "’가 어떻게 변했나요?\n" + sentence, List.copyOf(options)), "normal", up?"증가":down?"감소":"변화 없음");
+            }
+        }
+        if ("analyst".equals(level) && sentences.size() >= 2) {
+            // Distractors are complete source sentences: do not truncate numbers or qualifiers.
+            List<String> facts = new ArrayList<>(sentences.stream().filter(value -> value.length()<=180
+                    && !value.matches(".*(전망|예상|가능성|예측).*" )).toList());
+            Collections.shuffle(facts, seed);
+            List<String> outside = List.of("기사에서는 다음 거래일의 주가 상승이 확정됐다고 밝혔다.",
+                    "기사에서는 모든 투자자의 수익이 보장된다고 밝혔다.", "기사에서는 향후 시장 변동이 전혀 없다고 밝혔다.");
+            List<String> unsupported = outside.stream().filter(value -> !body.contains(value)).toList();
+            if (facts.size()>=2 && !unsupported.isEmpty()) {
+                String correct = unsupported.get(seed.nextInt(unsupported.size()));
+                List<String> options = new ArrayList<>(List.of(correct, facts.get(0), facts.get(1)));
+                Collections.shuffle(options, seed);
+                return new GradedQuestion(new Question(term.getTerm(), "다음 중 기사에 나온 사실이 아닌 것은?", List.copyOf(options)), "analyst", correct);
+            }
+        }
+        return beginnerQuestion(article, term);
+    }
+    private GradedQuestion beginnerQuestion(News article, Term term) {
         Set<String> field = TERM_FIELDS.stream().filter(group -> group.contains(term.getTerm())).findFirst().orElse(Set.of());
         List<String> distractors = new ArrayList<>(terms.findAll().stream()
                 .filter(t -> field.contains(t.getTerm()) && !t.getTerm().equals(term.getTerm()))
@@ -106,7 +166,7 @@ public class LearningService {
         Collections.shuffle(distractors, seed);
         List<String> options = new ArrayList<>(List.of(term.getShortDefinition(), distractors.get(0), distractors.get(1)));
         Collections.shuffle(options, seed);
-        return new Question(term.getTerm(), "이 기사에 등장하는 ‘" + term.getTerm() + "’의 기본 의미는 무엇인가요?", List.copyOf(options));
+        return new GradedQuestion(new Question(term.getTerm(), "이 기사에 등장하는 ‘" + term.getTerm() + "’의 기본 의미는 무엇인가요?", List.copyOf(options)), "beginner", term.getShortDefinition());
     }
     private void validateLevel(String level) {
         if (!List.of("beginner", "normal", "analyst").contains(level)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 읽기 수준입니다.");

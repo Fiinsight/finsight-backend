@@ -30,6 +30,7 @@ class UserProfileServiceTest {
         assertEquals("short", response.learningPace());
         assertEquals("market", response.learningFocus());
         assertEquals("매일 5분 이어가기", response.dailyGoal());
+        assertEquals("terms",user.getLearningPainPoint()); assertEquals("minutes5",user.getGoalType());
         assertEquals("experience", response.answers().get(0).questionId());
     }
 
@@ -98,6 +99,21 @@ class UserProfileServiceTest {
         org.mockito.Mockito.verify(users, org.mockito.Mockito.never()).findById(8L);
     }
 
+    @Test void derivesLegacyPainAndGoalWithoutMutatingSavedUsers() throws Exception {
+        var users=mock(UserRepository.class); var user=new User("legacy","","",AuthProvider.LOCAL);
+        var mapper=new ObjectMapper(); var service=new UserProfileService(users,mapper);
+        when(users.findById(1L)).thenReturn(Optional.of(user));
+        String[] labels={"용어가 어려워요","정보가 너무 많아요","판단할 근거가 부족해요","기록하고 돌아보기 어려워요"};
+        String[] points={"terms","overload","evidence","reflection"};
+        String[] goals={"뉴스 하나 읽기","기사 메모 남기고 복습하기","투자 판단 돌아보기","매일 5분 이어가기"};
+        String[] types={"read1","memo","reviewJudgement","minutes5"};
+        for(int i=0;i<4;i++) {
+            user.saveOnboardingProfile(mapper.writeValueAsString(List.of(answer("difficulty","어려운 점",labels[i]))),"normal","deep","market",goals[i],null);
+            var result=service.getOnboarding(1L);
+            assertEquals(points[i],result.learningPainPoint()); assertEquals(types[i],result.goalType());
+            assertEquals("normal",result.learningLevel()); assertEquals(null,user.getLearningPainPoint());
+        }
+    }
     private UserProfileDtos.OnboardingAnswer answer(String id, String question, String value) {
         return new UserProfileDtos.OnboardingAnswer(id, question, value);
     }
