@@ -43,6 +43,11 @@ public class News {
     @Column(columnDefinition = "TEXT")
     private String rewrittenAnalyst;
 
+    @Column(length = 16)
+    private String rewriteMode;
+    public String getRewriteMode() { return rewriteMode; }
+    public void setRewriteMode(String mode) { this.rewriteMode = mode; }
+
     @Column(columnDefinition = "TEXT")
     private String importanceReason;
 

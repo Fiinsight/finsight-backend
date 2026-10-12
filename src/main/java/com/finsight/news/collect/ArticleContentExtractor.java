@@ -96,6 +96,8 @@ public class ArticleContentExtractor {
                 .replaceAll("\\([^()\\n]{1,40}=연합뉴스\\)\\s*[가-힣·]{2,12}\\s*기자\\s*=\\s*", "")
                 .replaceAll("사진\\s*=\\s*(?:AFP|AP|EPA|로이터|연합뉴스)(?:/[^\\s]+)?\\s*", "")
                 .replaceAll("[\\w.+-]+@[\\w.-]+", "");
+        String prefix = "^(?:(?:AFP|AP|EPA|로이터|UPI|신화|연합뉴스)(?:\\s*=\\s*)?(?:연합뉴스)?\\s+|\\d{4}\\.\\d{1,2}\\.\\d{1,2}\\s+|\\[공동취재\\]\\s*|\\([^()]{1,20}=연합뉴스\\)\\s*(?:[가-힣]{2,4}\\s*)+기자\\s*=\\s*)";
+        while (java.util.regex.Pattern.compile(prefix).matcher(body.strip()).find()) body = body.strip().replaceFirst(prefix, "");
         body = cutKnownPageChrome(body)
                 .replace("ⓒ 한경닷컴, 무단전재 및 재배포 금지", "")
                 .trim();
@@ -104,7 +106,8 @@ public class ArticleContentExtractor {
         List<String> cleaned = new ArrayList<>();
         for (String part : parts) {
             String item = part.trim().replaceAll("\\s+", " ");
-            if (item.isBlank() || PAGE_CHROME.stream().anyMatch(item::contains)) {
+            while (java.util.regex.Pattern.compile(prefix).matcher(item).find()) item = item.replaceFirst(prefix, "").strip();
+            if (item.length() < 10 || PAGE_CHROME.stream().anyMatch(item::contains)) {
                 continue;
             }
             if (!titleKey.isBlank() && compact(item).equals(titleKey)) {

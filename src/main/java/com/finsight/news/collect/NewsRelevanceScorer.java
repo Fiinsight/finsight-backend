@@ -31,7 +31,7 @@ public class NewsRelevanceScorer {
     }
 
     public int scoreTitle(String title) {
-        return keywordCount(title);
+        return keywordCount(title) + localPenalty(title);
     }
 
     public int scoreArticle(String title, String body) {
@@ -40,7 +40,15 @@ public class NewsRelevanceScorer {
         int score = 3 * keywordCount(headline) + keywordCount(content);
         if (List.of("기준금리", "물가", "코스피", "코스닥", "환율", "고용").stream().anyMatch(headline::contains)) score += 2;
         if (List.of("부고", "인사", "휴관", "행사 안내", "모집", "공지", "협찬").stream().anyMatch(headline::contains)) score -= 8;
-        return score;
+        return score + localPenalty(headline);
+    }
+
+    private int localPenalty(String title) {
+        if (title == null) return 0;
+        boolean local = title.matches(".*(시장|군수|도지사|시청|군청|도청|구청).*" )
+                || title.matches(".*(속초|새만금|수출탑|분쟁조정위).*" );
+        boolean finance = title.matches(".*(코스피|코스닥|증시|주가|상장|실적|영업이익|채권|기준금리).*" );
+        return local && !finance ? -5 : 0;
     }
 
     private int keywordCount(String text) {
