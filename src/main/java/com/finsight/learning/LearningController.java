@@ -14,7 +14,20 @@ public class LearningController {
     private final LearningProgressService progress;
     public LearningController(LearningService service, LearningProgressService progress) { this.service = service; this.progress = progress; }
     @GetMapping("/progress")
-    public LearningProgressService.Progress progress(@AuthenticationPrincipal Long userId) { return progress.get(userId); }
+    public LearningProgressService.Progress progress(@AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue = "") String readDays,
+            @RequestParam(defaultValue = "") String reviewDays) {
+        try {
+            if (readDays.length()>4025 || reviewDays.length()>4025) throw new IllegalArgumentException();
+            List<java.time.LocalDate> dates = readDays.isBlank() ? List.of() : java.util.Arrays.stream(readDays.split(",", -1)).map(java.time.LocalDate::parse).toList();
+            if (dates.size() > 366) throw new IllegalArgumentException();
+            List<java.time.LocalDate> views = reviewDays.isBlank() ? List.of() : java.util.Arrays.stream(reviewDays.split(",", -1)).map(java.time.LocalDate::parse).toList();
+            if (views.size() > 366) throw new IllegalArgumentException();
+            return progress.get(userId, dates, views);
+        } catch (java.time.format.DateTimeParseException | IllegalArgumentException e) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "올바른 읽기 날짜를 보내주세요.");
+        }
+    }
     @GetMapping("/news/{newsId}")
     public LearningService.Lesson lesson(@AuthenticationPrincipal Long userId, @PathVariable Long newsId,
                                          @RequestParam(required = false) String level) { return service.lesson(userId, newsId, level); }
@@ -23,6 +36,8 @@ public class LearningController {
                                                 @Valid @RequestBody Answer request) {
         return service.answer(userId, newsId, request.level(), request.term(), request.answerIndex());
     }
+    @GetMapping("/terms/today")
+    public List<LearningService.Glossary> dailyTerms() { return service.dailyTerms(); }
     @GetMapping("/reviews")
     public List<LearningService.Review> reviews(@AuthenticationPrincipal Long userId) { return service.reviews(userId); }
 }

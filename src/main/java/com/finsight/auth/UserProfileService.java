@@ -41,7 +41,8 @@ public class UserProfileService {
                     : interest.contains("기록") || goal.contains("메모") ? "routine" : "news";
             Instant completedAt = Instant.now();
             user.saveOnboardingProfile(answersJson, level, pace, focus, goal, completedAt);
-            return new UserProfileDtos.OnboardingResponse(answers, level, pace, focus, goal, completedAt);
+            user.setLearningPersonalization(painPoint(answer(answers, "difficulty", "어려운 점")), goalType(goal));
+            return getOnboarding(userId);
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩 저장에 실패했습니다.", e);
         }
@@ -57,6 +58,15 @@ public class UserProfileService {
         return getOnboarding(userId);
     }
 
+    static String painPoint(String value) {
+        return value.contains("정보") ? "overload" : value.contains("근거") ? "evidence"
+                : value.contains("기록") ? "reflection" : "terms";
+    }
+    static String goalType(String value) {
+        if (value == null) return "read1";
+        return value.contains("메모") ? "memo" : value.contains("판단") ? "reviewJudgement"
+                : value.contains("5분") ? "minutes5" : "read1";
+    }
     private String answer(List<UserProfileDtos.OnboardingAnswer> answers, String id, String questionFragment) {
         return answers.stream()
                 .filter(item -> id.equals(item.questionId()) || item.question().contains(questionFragment))
@@ -72,8 +82,11 @@ public class UserProfileService {
             List<UserProfileDtos.OnboardingAnswer> answers = user.getOnboardingAnswersJson() == null
                     ? List.of()
                     : Arrays.asList(mapper.readValue(user.getOnboardingAnswersJson(), UserProfileDtos.OnboardingAnswer[].class));
+            String goal = user.getDailyGoal() == null ? answer(answers, "goal", "습관") : user.getDailyGoal();
             return new UserProfileDtos.OnboardingResponse(answers, user.getLearningLevel(), user.getLearningPace(),
-                    user.getLearningFocus(), user.getDailyGoal(), user.getOnboardingCompletedAt());
+                    user.getLearningFocus(), goal, user.getOnboardingCompletedAt(),
+                    user.getLearningPainPoint() == null ? painPoint(answer(answers, "difficulty", "어려운 점")) : user.getLearningPainPoint(),
+                    user.getGoalType() == null ? goalType(goal) : user.getGoalType());
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "온보딩을 읽지 못했습니다.", e);
         }
