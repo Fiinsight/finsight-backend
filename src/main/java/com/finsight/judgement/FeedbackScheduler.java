@@ -41,8 +41,14 @@ public class FeedbackScheduler {
         this.aiServiceClient = aiServiceClient;
     }
 
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        java.util.concurrent.CompletableFuture.runAsync(this::generatePendingFeedback)
+                .exceptionally(error -> { log.warn("Feedback startup catch-up failed", error); return null; });
+    }
+
     // Weekdays, shortly after the KRX market close (~15:30 KST).
-    @Scheduled(cron = "0 40 15 * * MON-FRI", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 40 15-23 * * MON-FRI", zone = "Asia/Seoul")
     public void generatePendingFeedback() {
         Instant today = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
         process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(today));
@@ -138,7 +144,13 @@ public class FeedbackScheduler {
                 news.getId(),
                 judgement.getChoice().name(),
                 judgement.getReasonText(),
-                actualDirection
+                actualDirection,
+                news.getTitle(),
+                feedbackSummary(news),
+                news.getRelatedSymbol(),
+                "KOSPI".equals(news.getRelatedSymbol()) ? "코스피" : "KOSDAQ".equals(news.getRelatedSymbol()) ? "코스닥" : com.finsight.stock.StockCatalog.name(news.getRelatedSymbol()),
+                actualChangePercent, judgement.getJudgementClose(), judgement.getComparisonClose(), judgement.getComparisonDate(),
+                judgement.getUser() == null || judgement.getUser().getLearningLevel() == null ? "beginner" : judgement.getUser().getLearningLevel()
         );
 
         Optional<com.finsight.external.AiFeedbackResponse> aiResponse = aiServiceClient.generateFeedback(request);
@@ -150,22 +162,33 @@ public class FeedbackScheduler {
         return templatedFeedback(judgement, actualDirection, actualChangePercent);
     }
 
+    private String feedbackSummary(News news) {
+        String cleaned = new com.finsight.news.collect.ArticleContentExtractor().clean(news.getTitle(),
+                StringUtils.hasText(news.getRewrittenNormal()) ? news.getRewrittenNormal() : news.getRawContent());
+        String excerpt = com.finsight.news.NewsDetailResponse.excerpt(cleaned);
+        return excerpt.substring(0, Math.min(600, excerpt.length()));
+    }
+
     private String templatedFeedback(Judgement judgement, String actualDirection, Double actualChangePercent) {
         if ("UNKNOWN".equals(actualDirection)) return "관련 종목이 없어 결과를 비교하지 않았어요";
         String predicted = judgement.getChoice().name();
         boolean matched = predicted.equals(actualDirection);
         String changeText = actualChangePercent == null
                 ? "변동률 정보를 확인하지 못했습니다"
-                : String.format("%.2f%%", actualChangePercent);
+                : String.format(java.util.Locale.ROOT, "%+.2f%%", actualChangePercent);
 
-        if (matched) {
-            return String.format(
-                    "예측하신 방향(%s)이 실제 결과(%s, %s)와 일치했습니다. 판단 근거를 다시 살펴보며 같은 논리를 다음 판단에도 적용해보세요.",
-                    directionLabel(predicted), directionLabel(actualDirection), changeText);
-        }
-        return String.format(
-                "예측하신 방향(%s)과 실제 결과(%s, %s)가 달랐습니다. 어떤 요인을 놓쳤는지 뉴스 내용을 다시 확인해보세요.",
-                directionLabel(predicted), directionLabel(actualDirection), changeText);
+        String symbol = judgement.getNews() == null ? null : judgement.getNews().getRelatedSymbol();
+        String name = "KOSPI".equals(symbol) ? "코스피" : "KOSDAQ".equals(symbol) ? "코스닥" : com.finsight.stock.StockCatalog.name(symbol);
+        String result = String.format("%s %s 종가 기준 %s. 예측(%s)은 실제 결과(%s)와 %s 방향이에요.",
+                name, judgement.getComparisonDate(), changeText, directionLabel(predicted), directionLabel(actualDirection), matched ? "같은" : "다른");
+        result += StringUtils.hasText(judgement.getReasonText()) ? " 남긴 근거 “" + judgement.getReasonText().substring(0, Math.min(200, judgement.getReasonText().length())) + "”와 기사 핵심 “" + feedbackSummary(judgement.getNews()).split("(?<=[.!?])\\s+", 2)[0] + "”를 비교하고 숫자의 기준 시점을 확인해보세요." : " 다음엔 판단 근거를 한 줄 남겨보세요.";
+        if (actualChangePercent != null && Math.abs(actualChangePercent) <= NEUTRAL_BAND_PERCENT + 0.5)
+            result += matched ? " 방향은 맞았지만 변동이 작아 우연일 수 있어요." : " 변동이 작아 방향 차이만으로 근거를 평가하기 어려워요.";
+        if ("KOSPI".equals(symbol) || "KOSDAQ".equals(symbol)) result += " 개별 종목이 아니라 시장 전체 움직임을 비교한 결과예요.";
+        String level = judgement.getUser() == null ? null : judgement.getUser().getLearningLevel();
+        if (level == null || "beginner".equals(level)) result += " 종가는 거래가 끝날 때의 가격이고, 변동률은 두 가격이 달라진 비율이에요.";
+        if ("analyst".equals(level)) result += " 변동률·판단 기준 종가·비교 종가와 중립 범위 ±0.5%를 함께 확인하세요.";
+        return result + " 가격 변화가 이 뉴스 때문에 생겼다고 단정할 수는 없어요.";
     }
     private String directionLabel(String direction) {
         return switch (direction) { case "UP" -> "상승"; case "DOWN" -> "하락"; case "NEUTRAL" -> "중립"; default -> "확인 불가"; };

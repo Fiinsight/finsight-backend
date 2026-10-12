@@ -31,12 +31,26 @@ class FeedbackSchedulerTest {
         return item;
     }
     private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
+    @Test void startupProcessesPastComparisonAndSkipsFutureComparison() {
+        var past = pending(null, "2026-09-28");
+        var future = pending("005930", "2026-10-06");
+        when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of(past, future));
+        scheduler.onApplicationReady();
+        verify(records, timeout(2000)).finalizeOutcome(eq(past.getId()), any(), eq("UNKNOWN"), any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(candles);
+    }
     @Test void backlogUsesExactHistoricalClosesAndStoresThemOnce() {
         var item = pending("005930", "2026-09-28");
         when(candles.getClosingCandles("005930", LocalDate.parse("2026-09-28"), LocalDate.parse("2026-09-29")))
             .thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",101.2),bar("2026-10-06",120)), false));
         when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("UP 예상과 실제 UP")));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        var request = org.mockito.ArgumentCaptor.forClass(com.finsight.external.AiFeedbackRequest.class);
+        verify(ai).generateFeedback(request.capture());
+        assertThat(request.getValue().actualChangePercent()).isCloseTo(1.2, org.assertj.core.data.Offset.offset(0.000001));
+        assertThat(request.getValue().comparisonDate()).isEqualTo(LocalDate.parse("2026-09-29"));
+        assertThat(request.getValue().relatedSymbolName()).isEqualTo("삼성전자");
+        assertThat(request.getValue().judgementClose()).isEqualByComparingTo("100");
         assertThat(item.getActualDirection()).isEqualTo("UP");
         assertThat(item.getActualChangePercent()).isCloseTo(1.2, org.assertj.core.data.Offset.offset(0.000001));
         assertThat(item.getComparisonDate()).isEqualTo(LocalDate.parse("2026-09-29"));

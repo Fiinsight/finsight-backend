@@ -37,4 +37,16 @@ class TermServiceTest {
         assertFalse(request.getValue().context().contains("기자"));
         assertTrue(request.getValue().context().length() <= 2300);
     }
+    @Test void levelIsForwardedAndNoArticleUsesLocalPersonalizationOnly() {
+        var terms=mock(TermRepository.class); var news=mock(NewsRepository.class); var ai=mock(AiServiceClient.class);
+        when(terms.findByTermIgnoreCase("금리")).thenReturn(Optional.of(new Term("금리","이자 비율")));
+        var service=new TermService(terms,news,ai,new ArticleContentExtractor());
+        assertTrue(service.explain(new TermExplainRequest("금리",null,"beginner")).contextExplanation().contains("대여료"));
+        assertTrue(service.explain(new TermExplainRequest("금리",null,"analyst")).marketImpact().contains("정량적"));
+        verifyNoInteractions(ai);
+        var article=mock(News.class); when(article.getTitle()).thenReturn("금리"); when(article.getRawContent()).thenReturn("금리가 2% 상승했다.");
+        when(news.findById(1L)).thenReturn(Optional.of(article)); when(ai.explainTerm(any())).thenReturn(Optional.empty());
+        service.explain(new TermExplainRequest("금리",1L,"analyst"));
+        verify(ai).explainTerm(argThat(request -> request.level().equals("analyst")));
+    }
 }

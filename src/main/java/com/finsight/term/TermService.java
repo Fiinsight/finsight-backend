@@ -35,22 +35,22 @@ public class TermService {
                 .map(Term::getShortDefinition);
 
         if (request.newsId() == null) {
-            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
+            return localExplanation(request, localDefinition);
         }
 
         Optional<News> news = newsRepository.findById(request.newsId());
         if (news.isEmpty()) {
-            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
+            return localExplanation(request, localDefinition);
         }
 
         String context = buildContext(news.get(), request.term());
         Optional<AiTermExplainResponse> aiResponse = aiServiceClient.explainTerm(
-                new AiTermExplainRequest(request.term(), context));
+                new AiTermExplainRequest(request.term(), context, localDefinition.orElse(null), request.level() == null ? "normal" : request.level()));
 
         if (aiResponse.isEmpty()) {
             log.warn("AI term explain unavailable for term={}, newsId={}, returning base definition only",
                     request.term(), request.newsId());
-            return new TermExplainResponse(request.term(), localDefinition.orElse(NO_DEFINITION_FALLBACK), null, null);
+            return localExplanation(request, localDefinition);
         }
 
         // Only ~20 terms are seeded locally, but keyTerms now come from real
@@ -70,6 +70,21 @@ public class TermService {
         );
     }
 
+    private String analogy(String term) {
+        if (term.contains("금리")) return "금리는 물건을 빌릴 때 내는 대여료처럼 돈을 빌리는 비용이에요.";
+        if (term.contains("환율")) return "환율은 서로 다른 나라 돈을 바꾸는 가격표와 같아요.";
+        if (term.contains("물가")) return "물가는 장바구니 물건들의 평균 가격표와 같아요.";
+        if (term.contains("매출")) return "매출은 가게가 판매하고 받은 돈을 모두 더한 것과 같아요.";
+        if (term.contains("코스피") || term.contains("코스닥")) return "지수는 여러 종목의 움직임을 보여주는 시장 온도계와 같아요.";
+        return "용어 설명은 낯선 길의 지도처럼 기사 내용을 이해하는 데 도움을 줘요.";
+    }
+    private TermExplainResponse localExplanation(TermExplainRequest request, Optional<String> definition) {
+        String context = "beginner".equals(request.level())
+                ? analogy(request.term()) : null;
+        String impact = "analyst".equals(request.level())
+                ? "관련 기사 수치가 없어 시점·단위·비교 기준에 따른 정량적 시장 영향을 확인할 수 없습니다." : null;
+        return new TermExplainResponse(request.term(), definition.orElse(NO_DEFINITION_FALLBACK), context, impact);
+    }
     private String buildContext(News news, String term) {
         String body = extractor.clean(news.getTitle(), news.getRawContent());
         int at = body.indexOf(term);
