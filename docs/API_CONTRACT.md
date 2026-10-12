@@ -212,7 +212,7 @@ DB 스키마를 변경하여 종가를 저장할지, 별도 조회로 제공할�
 - 장중(09:00~15:30)·장후 제출 모두 판단일 종가 대비 다음 거래일 종가. 휴장일 판단은 직전 거래일 종가 대비 다음 거래일 종가. KST 15:40 이후 해당 비교일 또는 그 이후에 처리. 일봉에 정확한 기준일/비교일 종가가 없으면 대기. 2026 휴장일 달력 적용; 아직 확인되지 않은 다른 연도는 결과를 추정하지 않고 대기.
 - 종목 일봉과 KOSPI/KOSDAQ 지수 일봉 모두 날짜 지정 조회. 지수 차트 UI 자체는 준비 중 안내 유지.
 - `POST /api/judgements`: 같은 사용자/기사의 가장 최근 미확정 판단은 choice/reason/created_at 수정. 기존 응답 `feedback="판단을 수정했어요"`. 확정 결과가 있으면 **409** `이미 결과가 나온 판단이에요`. 고유 제약은 테스트 계정 정리 승인/실행 후 추가 예정.
-- 차트 `moveInsights[].candidateNews` 최대3건, `relatedNews[]/newsMarkers[]/candidateNews[]` 항목 `relationType=DIRECT|MARKET`. 첫 후보가 대표. 시장 대표는 explanation에 “시장 전체 흐름”. 회사 직접 관련 대표만 도슨트 생성.
+- 차트 `moveInsights[].candidateNews` 최대3건, `relatedNews[]/newsMarkers[]/candidateNews[]` 항목 `relationType=DIRECT|MARKET`. 첫 후보가 대표. 시장 대표는 explanation에 “시장 전체 흐름”. 지점별 DIRECT/MARKET/NONE 도슨트를 제공하며 아래 C1/C2 계약을 따릅니다.
 - 9/28 삼성전자 후보 기간: **9/23 15:30~9/28 15:30 KST**(9/24~27 휴장). 77번 11:23 후보, 91번16:38/100번18:00 제외. 해외59 제외.
 - 기록 응답 추가 필드: `comparisonDate` KST YYYY-MM-DD|null, `judgementClose` number|null, `comparisonClose` number|null. 기존/기간/페이지 모두 같은 DB 필드 사용.
 
@@ -299,3 +299,47 @@ Difficulty: 용어→terms, 정보→overload, 근거→evidence, 기록→refle
 ### Server reading synchronization — proposal only, not implemented
 
 If synchronization is later approved, propose `article_read(user_id FK app_user,news_id FK news,read_date DATE KST,first_read_at TIMESTAMPTZ, PRIMARY KEY(user_id,news_id,read_date))` and an owner-only idempotent POST `/api/news/{id}/read`, called only after verified article content is shown. A `(user_id,read_date)` index supports daily counts/streaks. Do not trust a request user_id; use JWT principal. Existing local records would need an explicitly approved import policy. **No table, endpoint, backfill or reading migration is created in this task.**
+
+
+## C1/C2 · 지점별 차트 도슨트 (2026-10-13)
+
+`GET /api/charts/{symbol}?period=D|W|MINUTE&interval=5&level=beginner|normal|analyst`
+
+- `level` 생략 시 로그인 사용자의 저장된 읽기 수준(비로그인 normal). 기존 시세 캐시 키와 호출 상한은 유지합니다.
+- 모든 `moveInsights[]`에 `docent` 추가. `relation=DIRECT|MARKET|NONE`, `whatHappened`, `possibleReason`, `marketImpact`, `newsId`, `newsTitle`, `source`, `mode=RULE|LLM`.
+- 차트 전체 `docent`는 반환된 지점 중 최대 `|changePercent|` 지점의 **동일 도슨트**입니다. 지점이 없으면 null. `whyItMoved`는 `possibleReason`의 하위호환 별칭입니다.
+- DIRECT/MARKET 결정과 최대 3건 후보 선별은 기존 분류를 재사용합니다. 제목 감성 키워드는 도슨트 계산에만 적용하며 기존 news 레코드를 수정하지 않습니다.
+- MARKET 지수 수치는 기존 `kisDailyCandles` 캐시의 실제 해당일/직전 거래일 종가가 있을 때만 표시합니다. 도슨트를 위한 추가 시세 호출은 없습니다. 주봉·분봉에는 일봉 지수 수치를 붙이지 않습니다.
+- 백엔드 도슨트 캐시: `(symbol, date, period, 대표 newsId, level)`, TTL 14일·최대 5,000건. 기존 캐시 TTL은 그대로입니다. 분봉과 NONE은 백엔드 규칙 설명만 사용합니다.
+
+`POST /ai/chart/docent` (내부 서비스)
+
+```json
+{
+  "symbol": "005930",
+  "symbol_name": "삼성전자",
+  "date": "2026-10-07T00:00:00",
+  "change_percent": 3.25,
+  "period": "D",
+  "level": "beginner",
+  "news": [{
+    "news_id": 1,
+    "title": "삼성전자 호실적 발표",
+    "summary": "영업이익이 전년 동기보다 12.5% 증가했다.",
+    "published_at": "2026-10-07T10:00:00+09:00",
+    "relation": "DIRECT",
+    "source": "보도"
+  }],
+  "index_name": "코스피",
+  "index_change_percent": null
+}
+```
+
+- 날짜는 ISO 날짜 또는 초 단위 시각, change는 유한 숫자, 뉴스 최대 3건·정제 요약 400자. 원문 문장 단위로 자르므로 숫자를 중간에서 잘라 새 수치로 만들지 않습니다.
+- 응답은 위 docent와 같은 camelCase 계약입니다. `whatHappened` 1~2문장, `possibleReason` 1~2문장, `marketImpact` 1문장. 규칙 설명은 기존 쉬운 읽기 리드 정제 함수를 재사용합니다.
+- `DOCENT_WITH_LLM=false` 기본값이며 `USE_REAL_LLM`, `REWRITE_WITH_LLM`과 독립적입니다. `MAX_DAILY_DOCENT_CALLS=30` 기본값(KST 기준, 실패도 1회 집계). 기존 공통 프로세스 LLM 호출 상한도 함께 적용됩니다.
+- 분봉/NONE/한도 소진/LLM 오류/숫자 또는 단정 표현 검증 실패는 RULE로 대체합니다. 실제 요청의 숫자와 원문 이외의 수치, 인과 단정·투자 권유를 허용하지 않습니다.
+- SQLite `DOCENT_LEDGER_PATH`(기본 `data/chart_docent.sqlite3`)에 결과와 호출 예약을 원자적으로 저장합니다. 같은 키는 실패·RULE 포함 재호출하지 않습니다. 캐시 저장 불가 시 LLM 호출 없이 RULE을 반환합니다. 여러 프로세스가 같은 저장 경로를 공유하면 하루 한도도 공유합니다.
+- 컨테이너 재시작/여러 인스턴스에서도 재생성 방지를 유지하려면 해당 파일을 지속 볼륨에 보관해야 합니다. 이미 RULE로 저장된 키는 플래그만 켜도 LLM으로 다시 생성하지 않습니다.
+- cold LLM은 지점당 기존 AI timeout 30초(최대 5지점). 프런트 D/W 요청 timeout은 180초로 늘려 처음 생성 결과를 기다리고, 분봉 90초는 유지합니다. 규칙/캐시 조회는 빠르게 반환됩니다.
+- 실제 유료 호출·기존 기사/DB 재처리·시연 사전 생성은 실행하지 않았습니다. 최초 실생성은 비용이 발생할 수 있고 저장 결과 재사용만 추가 호출이 없습니다.

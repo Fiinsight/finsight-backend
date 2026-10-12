@@ -83,6 +83,16 @@ public class AiServiceClient {
         }
     }
 
+    public Optional<com.finsight.chart.ChartResponse.DocentView> docent(AiDocentRequest request) {
+        try {
+            return Optional.ofNullable(webClient.post().uri("/ai/chart/docent").bodyValue(request)
+                    .retrieve().bodyToMono(com.finsight.chart.ChartResponse.DocentView.class)
+                    .timeout(CALL_TIMEOUT).block());
+        } catch (Exception e) {
+            log.warn("Chart docent unavailable: {}", e.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
     public Optional<AiFeedbackResponse> generateFeedback(AiFeedbackRequest request) {
         try {
             AiFeedbackResponse response = webClient.post()

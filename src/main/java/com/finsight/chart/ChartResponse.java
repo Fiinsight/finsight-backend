@@ -36,17 +36,17 @@ public record ChartResponse(
             String newsSource,
             String explanation,
             double causeScore,
-            List<NewsMarkerView> candidateNews
+            List<NewsMarkerView> candidateNews,
+            DocentView docent
     ) {
     }
 
     public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source, String relationType) {
     }
 
-    // Grounded in the most recently published news actually tagged with this
-    // symbol — reuses that article's already-AI-generated rewrite/importance
-    // text rather than inventing new copy, so this is null (not a fake
-    // placeholder) when no matching news exists yet.
-    public record DocentView(Long newsId, String newsTitle, String source, String whatHappened, String whyItMoved) {
+    public record DocentView(String relation, String whatHappened, String possibleReason, String marketImpact,
+                             Long newsId, String newsTitle, String source, String mode) {
+        @com.fasterxml.jackson.annotation.JsonProperty("whyItMoved")
+        public String whyItMoved() { return possibleReason; }
     }
 }

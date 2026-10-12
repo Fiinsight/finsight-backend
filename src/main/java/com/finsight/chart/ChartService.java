@@ -46,6 +46,9 @@ public class ChartService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.cache.CacheManager cacheManager;
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ChartDocentService docentService;
+
     private com.finsight.external.kis.KisStockQuote cachedQuote(String symbol) {
         if (cacheManager != null) {
             var popular = cacheManager.getCache("popularStockQuotes");
@@ -100,9 +103,10 @@ public class ChartService {
                     .toList();
             double price = quote.currentPrice();
             double changePercent = quote.changePercent();
-            return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), List.of(), null,
+            var moves=result.fallback()?List.<ChartResponse.MoveInsightView>of():findMoveInsights(symbol,result.candles());
+            return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), List.of(), largestDocent(moves),
                     "MINUTE", interval, minuteCandles, result.fallback(),
-                    result.fallback() ? List.of() : findMoveInsights(symbol, result.candles()));
+                    moves);
         }
 
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
@@ -138,14 +142,7 @@ public class ChartService {
         List<ChartResponse.MoveInsightView> moveInsights = candleResult.fallback()
                 ? List.of()
                 : findDailyMoveInsights(symbol, candleViews, matchedNews, periodDivCode);
-        ChartResponse.DocentView docent = moveInsights.stream()
-                .filter(move -> !move.candidateNews().isEmpty() && "DIRECT".equals(move.candidateNews().get(0).relationType()))
-                .map(ChartResponse.MoveInsightView::newsId)
-                .filter(id -> id != null)
-                .findFirst()
-                .flatMap(id -> matchedNews.stream().filter(news -> id.equals(news.getId())).findFirst())
-                .map(this::buildDocent)
-                .orElse(null);
+        ChartResponse.DocentView docent = largestDocent(moveInsights);
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, markers, docent,
                 periodDivCode, null, List.of(), candleResult.fallback(),
@@ -186,8 +183,9 @@ public class ChartService {
             List<News> candidates = candidateNews(symbol, relatedNews, from, to);
             Optional<News> news = candidates.stream().findFirst();
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
-            String explanation = news.map(item -> (relevanceRank(symbol, item) == 1 ? "시장 전체 흐름 · " : "") + buildCauseExplanation(item, change, causeScore))
-                .orElse(collectionStart != null && to.atZone(KST).toLocalDate().isBefore(collectionStart.atZone(KST).toLocalDate()) ? "뉴스 수집(" + collectionStart.atZone(KST).format(java.time.format.DateTimeFormatter.ofPattern("M/d")) + ") 이전 구간이에요" : "이 시점에 수집된 관련 뉴스가 없어요");
+            var docent = ChartDocentService.rule(docentRequest(symbol, current.date().atStartOfDay(), change, period, candidates, "normal"));
+            String explanation = news.isEmpty() && collectionStart != null && to.atZone(KST).toLocalDate().isBefore(collectionStart.atZone(KST).toLocalDate())
+                    ? "뉴스 수집(" + collectionStart.atZone(KST).format(java.time.format.DateTimeFormatter.ofPattern("M/d")) + ") 이전 구간이에요" : docent.possibleReason();
             insights.add(new ChartResponse.MoveInsightView(
                     current.date().atStartOfDay(),
                     Math.round(change * 100.0) / 100.0,
@@ -196,7 +194,8 @@ public class ChartService {
                     news.map(News::getSource).orElse(null),
                     explanation,
                     causeScore,
-                    candidates.stream().map(item -> toMarker(symbol, item)).toList()
+                    candidates.stream().map(item -> toMarker(symbol, item)).toList(),
+                    docent
             ));
             log.info("Move cause assessment: date={}, change={}%, newsId={}, score={}",
                     current.date(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
@@ -240,7 +239,8 @@ public class ChartService {
                 current.timestamp().atZone(KST).toInstant());
             Optional<News> news = candidates.stream().findFirst();
             double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
-            String explanation = news.map(item -> buildCauseExplanation(item, change, causeScore)).orElse(null);
+            var docent = ChartDocentService.rule(docentRequest(symbol, current.timestamp(), change, "MINUTE", candidates, "normal"));
+            String explanation = docent.possibleReason();
             insights.add(new ChartResponse.MoveInsightView(
                     current.timestamp(),
                     Math.round(change * 100.0) / 100.0,
@@ -249,7 +249,8 @@ public class ChartService {
                     news.map(News::getSource).orElse(null),
                     explanation,
                     causeScore,
-                    candidates.stream().map(item -> toMarker(symbol, item)).toList()
+                    candidates.stream().map(item -> toMarker(symbol, item)).toList(),
+                    docent
             ));
             log.info("Move cause assessment: timestamp={}, change={}%, newsId={}, score={}",
                     current.timestamp(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
@@ -260,10 +261,61 @@ public class ChartService {
                 .toList();
     }
 
-    private ChartResponse.DocentView buildDocent(News news) {
-        String whatHappened = news.getRewrittenNormal() != null ? news.getRewrittenNormal() : news.getRawContent();
-        if (whatHappened != null && whatHappened.length() > 600) whatHappened = whatHappened.substring(0, 600) + "…";
-        return new ChartResponse.DocentView(news.getId(), news.getTitle(), news.getSource(), whatHappened, news.getImportanceReason());
+    static ChartResponse.DocentView largestDocent(List<ChartResponse.MoveInsightView> moves) {
+        return moves.stream().max(Comparator.comparingDouble(move -> Math.abs(move.changePercent()))).map(ChartResponse.MoveInsightView::docent).orElse(null);
+    }
+    private com.finsight.external.AiDocentRequest docentRequest(String symbol, LocalDateTime at, double change, String period, List<News> candidates, String level) {
+        String index="KOSDAQ".equals(com.finsight.stock.StockCatalog.market(symbol))?"코스닥":"코스피";
+        Double indexChange=null;
+        if ("D".equals(period) && cacheManager != null) {
+            indexChange = cachedIndexChange(cacheManager.getCache("kisDailyCandles"), "코스닥".equals(index) ? "KOSDAQ" : "KOSPI", at.toLocalDate());
+        }
+        var news=candidates.stream().limit(3).map(item -> {
+            String body=articleContentExtractor.clean(item.getTitle(),item.getRawContent());
+            String summary=docentSummary(body);
+            return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relevanceRank(symbol,item)>1?"DIRECT":"MARKET",item.getSource());
+        }).toList();
+        return new com.finsight.external.AiDocentRequest(symbol,com.finsight.stock.StockCatalog.name(symbol),at.toString().length()==16?at.toString()+":00":at.toString(),change,period,news,level,index,indexChange);
+    }
+    static Double cachedIndexChange(org.springframework.cache.Cache cache, String symbol, LocalDate day) {
+        if (cache == null) return null;
+        List<KisDailyCandleResult> results = new ArrayList<>();
+        var recent = cache.get(symbol + ":30:D");
+        if (recent != null && recent.get() instanceof KisDailyCandleResult data) results.add(data);
+        Object nativeCache = cache.getNativeCache();
+        java.util.Map<?, ?> entries = nativeCache instanceof com.github.benmanes.caffeine.cache.Cache<?, ?> caffeine
+                ? caffeine.asMap() : nativeCache instanceof java.util.Map<?, ?> map ? map : java.util.Map.of();
+        entries.forEach((key, value) -> {
+            if (key instanceof String text && text.startsWith("close:" + symbol + ":") && value instanceof KisDailyCandleResult data) results.add(data);
+        });
+        for (var data : results) {
+            if (data.fallback()) continue;
+            var sorted = data.candles().stream().sorted(Comparator.comparing(KisDailyCandle::date)).toList();
+            for (int i = 1; i < sorted.size(); i++) {
+                if (sorted.get(i).date().equals(day) && sorted.get(i - 1).date().equals(com.finsight.judgement.KoreanTradingCalendar.previous(day)) && sorted.get(i - 1).close() > 0)
+                    return Math.round((sorted.get(i).close() / sorted.get(i - 1).close() - 1) * 10000.0) / 100.0;
+            }
+        }
+        return null;
+    }
+    static String docentSummary(String body) {
+        if (body.length() <= 400) return body;
+        StringBuilder summary = new StringBuilder();
+        for (String sentence : body.split("(?<=[.!?])\\s+|\\n+")) {
+            if (summary.length() + sentence.length() + 1 > 400) break;
+            if (!summary.isEmpty()) summary.append(' ');
+            summary.append(sentence);
+        }
+        return summary.toString();
+    }
+    public ChartResponse withDocents(ChartResponse chart,String level) {
+        if (docentService==null) return chart;
+        var moves=chart.moveInsights().stream().map(move -> {
+            var articles=move.candidateNews().stream().map(marker -> newsRepository.findById(marker.newsId()).orElse(null)).filter(java.util.Objects::nonNull).toList();
+            var docent=docentService.get(docentRequest(chart.symbol(),move.timestamp(),move.changePercent(),chart.period(),articles,level));
+            return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),move.newsId(),move.newsTitle(),move.newsSource(),docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
+        }).toList();
+        return new ChartResponse(chart.symbol(),chart.price(),chart.changePercent(),chart.candles(),chart.newsMarkers(),chart.relatedNews(),largestDocent(moves),chart.period(),chart.intervalMinutes(),chart.minuteCandles(),chart.fallback(),moves);
     }
 
     static List<News> deduplicateRelatedNews(List<News> news) {
@@ -308,42 +360,26 @@ public class ChartService {
         return standardDeviation > 0.0 && Math.abs(changePercent) >= VOLATILITY_MULTIPLIER * standardDeviation;
     }
 
-    private String buildCauseExplanation(News news, double changePercent, double causeScore) {
-        SentimentHint sentiment = news.getSentimentHint();
-        boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
-                || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
-        if (directionMatches) {
-            if (news.getRelatedSymbol() != null && news.getRelatedSymbol().startsWith("KOS")) {
-                return "시장 방향과 변동 시점이 겹치는 관련 뉴스입니다. 개별 종목의 직접 원인으로 단정하지 않습니다.";
-            }
-            return "주가 방향과 시점이 겹친 기사: " + news.getTitle()
-                    + ". 근거: " + firstNonBlank(news.getImportanceReason(), "뉴스 방향과 주가 방향이 일치합니다.")
-                    + " 가격 변동의 직접 원인으로 단정하지 않습니다.";
-        }
-        if (sentiment == SentimentHint.NEUTRAL) {
-            return "관련 뉴스는 확인됐지만 방향성 근거가 부족해 원인으로 단정하지 않습니다.";
-        }
-        return "관련 뉴스는 확인됐지만 뉴스 방향과 주가 방향이 달라 직접 원인으로 보기 어렵습니다.";
+    static SentimentHint effectiveSentiment(News news) {
+        var title=ChartDocentService.titleSentiment(news.getTitle());
+        return news.getSentimentHint()==null || news.getSentimentHint()==SentimentHint.NEUTRAL ? (title==null?SentimentHint.NEUTRAL:title) : news.getSentimentHint();
     }
-
     private double causeScore(News news, double changePercent) {
-        if (news.getSentimentHint() == null) {
+        SentimentHint sentiment = effectiveSentiment(news);
+        if (sentiment == null) {
             return 0.0;
         }
         boolean marketNews = news.getRelatedSymbol() != null && news.getRelatedSymbol().startsWith("KOS");
-        boolean directionMatches = (changePercent > 0 && news.getSentimentHint() == SentimentHint.POSITIVE)
-                || (changePercent < 0 && news.getSentimentHint() == SentimentHint.NEGATIVE);
+        boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
+                || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
         if (directionMatches) {
             return marketNews ? 0.6 : 0.8;
         }
-        return news.getSentimentHint() == SentimentHint.NEUTRAL
+        return sentiment == SentimentHint.NEUTRAL
                 ? (marketNews ? 0.3 : 0.4)
                 : 0.1;
     }
 
-    private String firstNonBlank(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value;
-    }
 
     // % change vs the previous trading day's close — this was previously
     // missing from the response entirely, so the frontend always defaulted
