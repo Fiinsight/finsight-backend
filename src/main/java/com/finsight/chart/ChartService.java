@@ -277,7 +277,7 @@ public class ChartService {
         }).toList();
         return new com.finsight.external.AiDocentRequest(symbol,com.finsight.stock.StockCatalog.name(symbol),at.toString().length()==16?at.toString()+":00":at.toString(),change,period,news,level,index,indexChange);
     }
-    static Double cachedIndexChange(org.springframework.cache.Cache cache, String symbol, LocalDate day) {
+    public static Double cachedIndexChange(org.springframework.cache.Cache cache, String symbol, LocalDate day) {
         if (cache == null) return null;
         List<KisDailyCandleResult> results = new ArrayList<>();
         var recent = cache.get(symbol + ":30:D");

@@ -343,3 +343,43 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 - 컨테이너 재시작/여러 인스턴스에서도 재생성 방지를 유지하려면 해당 파일을 지속 볼륨에 보관해야 합니다. 이미 RULE로 저장된 키는 플래그만 켜도 LLM으로 다시 생성하지 않습니다.
 - cold LLM은 지점당 기존 AI timeout 30초(최대 5지점). 프런트 D/W 요청 timeout은 180초로 늘려 처음 생성 결과를 기다리고, 분봉 90초는 유지합니다. 규칙/캐시 조회는 빠르게 반환됩니다.
 - 실제 유료 호출·기존 기사/DB 재처리·시연 사전 생성은 실행하지 않았습니다. 최초 실생성은 비용이 발생할 수 있고 저장 결과 재사용만 추가 호출이 없습니다.
+
+
+## 구조화된 판단 결과 (2026-10-13)
+
+`POST /ai/feedback/judgement`는 기존 B 요청 정보와 선택적 `index_name`, `index_change_percent`(동일 비교 구간, 유한 숫자)를 사용합니다. 지수 대비 수치는 기존 일봉 캐시에 실제 두 종가가 있을 때만 추가하며 외부 시세 호출을 늘리지 않습니다.
+
+```json
+{
+  "verdict": "CORRECT",
+  "headline": "정확한 판단이에요!",
+  "summary": "삼성전자 2026-10-07 종가 기준 +1.76%. 예측과 실제 결과가 같은 방향이에요.",
+  "reasons": [
+    {"title": "기사 근거", "detail": "기사 리드 사실을 인용해 가격 변화와 함께 확인해보세요."},
+    {"title": "판단 근거", "detail": "남긴 판단 근거를 인용해 비교 시점을 확인해보세요."},
+    {"title": "실제 시장", "detail": "실제 종가·변동률·제공된 지수 비교 자료를 확인해보세요."}
+  ],
+  "nextTip": "같은 비교 시점의 기사와 시장 흐름을 함께 확인해보세요."
+}
+```
+
+- `verdict=CORRECT|WRONG|PARTIAL`: 방향 불일치 WRONG, 일치라도 `|actualChangePercent| ≤ 1.0%`(기존 중립 ±0.5%에 0.5%p 근접 범위)이면 PARTIAL. 실제 방향 UNKNOWN은 비교 불가이며 verdict=null로 유지하고 정확/오답 판정하지 않습니다.
+- 근거 2~3개(규칙 모드는 3개), 제목 8자 내외·최대 16자, detail/nextTip 각각 한 문장. 기사 리드/사용자 첫 근거/실제 데이터에 근거하며 수치는 원문과 요청 자료 밖에서 생성하지 않습니다.
+- 무근거: 근거 남기기 안내를 포함하고 headline/본문에서 칭찬하지 않습니다. CORRECT 화면도 “예측 방향이 같았어요”로 표시합니다. 뉴스 인과관계와 미래 전망을 단정하지 않습니다.
+- 규칙 기본, 기존 USE_REAL_LLM 플래그와 호출 상한 유지. LLM JSON 구조/판정/인용/숫자/무근거 칭찬 검증 실패 시 규칙 대체. 유료 호출 추가·실제 실행 없음.
+- 구형 백엔드 호환용 `feedback`, `is_aligned`, `next_learning_point` 별칭 유지. `feedback`은 구조화된 내용의 평문이며, 신규 `summary`가 judgement.feedback_text에 저장됩니다.
+
+### 저장 / 조회
+
+- V9 migration은 nullable `feedback_reasons JSONB`, `feedback_headline VARCHAR(255)` 두 컬럼만 추가합니다. `feedback_reasons`는 `{verdict, reasons:[{title,detail}], nextTip}`를 저장해 추가 컬럼 없이 메타데이터를 보존합니다.
+- 기존 레코드 UPDATE/재생성 없음. 기존 NULL은 history/detail에서 reasons/headline/verdict/nextTip=null, feedbackText는 기존 문단입니다.
+- 기존 조건부 확정 쿼리에 summary·headline·JSONB를 함께 저장합니다. 동시 판정/수정된 판단에 대한 덮어쓰기 방지를 유지합니다. 스케줄러는 사용자 수준의 지연 로딩 오류를 막기 위해 뉴스와 사용자를 함께 읽습니다.
+- `GET /api/judgements/{id}` 추가: 인증된 본인 기록만 반환하며 다른 사용자/없는 id는 404입니다.
+- `/api/judgements/history`, `/history/page`, `/{id}`는 기존 필드에 `headline`, `verdict`, `reasons`(객체 배열 또는 null), `nextTip`을 추가합니다. `reasonText`는 사용자가 입력한 근거, `feedbackText`는 summary, `feedbackGeneratedAt`은 결과 도착 버전입니다.
+- 프런트 내부의 기존 `reasons: string[]`는 사용자 근거로 유지하며 AI 근거는 `feedbackReasons`로 분리합니다. 레거시 null은 기존 feedbackText 문단 표시로 대체합니다.
+- 대기/비교 불가/이전 방식은 정확한 판단으로 표시하지 않습니다. 날짜/가격 데이터가 없으면 만들어 넣지 않습니다. 저장된 두 종가만 있는 경우 실제 저장 기준값의 비교 차트를 표시합니다.
+- “결과 도착”은 사용자별 로컬 확인 기록(id→feedbackGeneratedAt, 구형 데이터는 comparisonDate)으로 표시합니다. 대기/비교 불가/비교일 없는 옛 기록은 뱃지 대상에서 제외합니다. 상세 확인 시 사라지며 기기별 상태입니다. 화면 활성 상태에서 기존 60초 캐시 기준으로 결과를 확인합니다.
+
+### 적용 제한
+
+이 작업에서 DB에 migration을 실행하거나 기존 결과를 재생성하지 않았습니다. 기존 migration 디렉터리에 `V4__add_level_specific_importance_reasons.sql`, `V4__add_onboarding_profile.sql` 두 파일이 같은 버전으로 존재합니다. 운영 Flyway 이력을 확인하지 않고 기존 migration의 버전/체크섬을 바꾸지 않았으며, 운영 적용 전 이 충돌을 확인해야 합니다.

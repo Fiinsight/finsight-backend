@@ -19,7 +19,7 @@ class FeedbackSchedulerTest {
     private final AiServiceClient ai = mock(AiServiceClient.class);
     private final FeedbackScheduler scheduler = new FeedbackScheduler(records, candles, ai);
     @org.junit.jupiter.api.BeforeEach void clock() {
-        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
+        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
         org.springframework.test.util.ReflectionTestUtils.setField(scheduler, "clock", Clock.fixed(Instant.parse("2026-10-06T07:00:00Z"), ZoneId.of("Asia/Seoul")));
     }
     private Judgement pending(String symbol, String date) {
@@ -36,7 +36,7 @@ class FeedbackSchedulerTest {
         var future = pending("005930", "2026-10-06");
         when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of(past, future));
         scheduler.onApplicationReady();
-        verify(records, timeout(2000)).finalizeOutcome(eq(past.getId()), any(), eq("UNKNOWN"), any(), any(), any(), any(), any(), any());
+        verify(records, timeout(2000)).finalizeOutcome(eq(past.getId()), any(), eq("UNKNOWN"), any(), any(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(candles);
     }
     @Test void backlogUsesExactHistoricalClosesAndStoresThemOnce() {
@@ -58,7 +58,7 @@ class FeedbackSchedulerTest {
         assertThat(item.getComparisonClose()).isEqualByComparingTo("101.2");
         assertThat(item.getFeedbackText()).doesNotContain("UP", "UNKNOWN");
         assertThat(scheduler.runNow(1L)).isZero();
-        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
     @Test void allDirectionsUseClosesWithFreeTemplateWhenAiIsUnavailable() {
         for (double close : new double[]{101,100.5,99}) {
@@ -80,7 +80,7 @@ class FeedbackSchedulerTest {
             assertThat(scheduler.runNow(1L)).isZero();
             assertThat(item.getActualDirection()).isNull(); assertThat(item.getJudgementClose()).isNull();
         }
-        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any()); verifyNoInteractions(ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any()); verifyNoInteractions(ai);
     }
     @Test void noSymbolIsNotAnIncorrectResult() {
         var item = pending(null,"2026-10-02");
@@ -107,4 +107,28 @@ class FeedbackSchedulerTest {
         assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-02-13"))).isEqualTo(LocalDate.parse("2026-02-19"));
         assertThat(KoreanTradingCalendar.next(LocalDate.parse("2026-06-02"))).isEqualTo(LocalDate.parse("2026-06-04"));
     }
+    @Test void structuredAiReasonsAreSavedInTheSameConditionalUpdate() {
+        var item = pending("005930", "2026-10-02");
+        when(candles.getClosingCandles(any(), any(), any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",101.2)), false));
+        var reasons = List.of(new AiFeedbackResponse.Reason("기사 근거", "기사에 나온 사실이에요."),new AiFeedbackResponse.Reason("실제 시장", "종가는 +1.20% 움직였어요."));
+        when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("CORRECT", "정확한 판단이에요!", "삼성전자 종가 기준 +1.20%.", reasons, "같은 기준을 확인해요.")));
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        var content = org.mockito.ArgumentCaptor.forClass(Judgement.FeedbackContent.class);
+        verify(records).finalizeOutcome(any(),any(),any(),any(),eq("삼성전자 종가 기준 +1.20%."),any(),any(),any(),any(),eq("정확한 판단이에요!"),content.capture());
+        assertThat(content.getValue().reasons()).isEqualTo(reasons);
+        assertThat(content.getValue().nextTip()).isEqualTo("같은 기준을 확인해요.");
+        assertThat(item.getFeedbackContent()).isEqualTo(content.getValue());
+    }
+    @Test void noReasonNeverPraisesAndSmallAlignedResultIsPartial() {
+        var item = pending("005930", "2026-10-02");
+        when(item.getReasonText()).thenReturn("  ");
+        when(candles.getClosingCandles(any(),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",100.7)),false));
+        when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("잘 연결한 정확한 판단이에요")));
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        assertThat(item.getFeedbackContent().verdict()).isEqualTo("PARTIAL");
+        assertThat(item.getFeedbackContent().reasons()).hasSize(3);
+        assertThat(item.getFeedbackHeadline()).doesNotContain("정확한 판단");
+        assertThat(item.getFeedbackText()).doesNotContain("잘 연결", "정확한 판단").contains("한 줄 남겨보세요");
+    }
+
 }

@@ -14,29 +14,32 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @Query("UPDATE Judgement j SET j.actualDirection=:direction, j.actualChangePercent=:change, j.feedbackText=:feedback, "
-        + "j.feedbackGeneratedAt=:generated, j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after "
+        + "j.feedbackGeneratedAt=:generated, j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after, j.feedbackHeadline=:headline, j.feedbackContent=:content "
         + "WHERE j.id=:id AND j.createdAt=:judgedAt AND j.actualDirection IS NULL AND j.feedbackGeneratedAt IS NULL")
     int finalizeOutcome(Long id, Instant judgedAt, String direction, Double change, String feedback, Instant generated,
-        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after);
+        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, Judgement.FeedbackContent content);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     java.util.Optional<Judgement> findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(User user, Long newsId);
+
+    @EntityGraph(attributePaths = "news")
+    java.util.Optional<Judgement> findByIdAndUser(Long id, User user);
 
     // JOIN FETCH pulls `news` in the same query — without it, `open-in-view:
     // false` means the Hibernate session is closed by the time the caller
     // touches the lazy `news` proxy, throwing LazyInitializationException
     // (this is the same class of bug fixed in findAllByOrderByCreatedAtDesc
     // below — FeedbackScheduler.processOne() also calls judgement.getNews()).
-    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.feedbackGeneratedAt IS NULL AND j.createdAt < :cutoff")
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news LEFT JOIN FETCH j.user WHERE j.feedbackGeneratedAt IS NULL AND j.createdAt < :cutoff")
     List<Judgement> findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(Instant cutoff);
 
-    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.user.id=:userId AND j.feedbackGeneratedAt IS NULL AND j.createdAt < :cutoff")
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news LEFT JOIN FETCH j.user WHERE j.user.id=:userId AND j.feedbackGeneratedAt IS NULL AND j.createdAt < :cutoff")
     List<Judgement> findPendingByOwner(Long userId, Instant cutoff);
 
     // Same as above but without the 1-day-old gate — used by the manual
     // "run now" endpoint so the feedback flow can be tested/demoed without
     // waiting for a real trading day to pass.
-    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.feedbackGeneratedAt IS NULL")
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news LEFT JOIN FETCH j.user WHERE j.feedbackGeneratedAt IS NULL")
     List<Judgement> findByFeedbackGeneratedAtIsNull();
 
     @Query("SELECT j FROM Judgement j JOIN FETCH j.news ORDER BY j.createdAt DESC")

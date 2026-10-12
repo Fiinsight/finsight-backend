@@ -48,6 +48,16 @@ public class Judgement {
     @Column(columnDefinition = "TEXT")
     private String feedbackText;
 
+    @Column(name = "feedback_headline")
+    private String feedbackHeadline;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "feedback_reasons", columnDefinition = "jsonb")
+    private FeedbackContent feedbackContent;
+    public record FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip) {}
+    public String getFeedbackHeadline() { return feedbackHeadline; }
+    public FeedbackContent getFeedbackContent() { return feedbackContent; }
+    public void setStructuredFeedback(String headline, FeedbackContent content) { feedbackHeadline = headline; feedbackContent = content; }
+
     private Instant feedbackGeneratedAt;
     private java.time.LocalDate comparisonDate;
     @Column(precision = 24, scale = 8)

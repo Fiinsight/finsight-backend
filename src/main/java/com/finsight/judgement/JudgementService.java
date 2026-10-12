@@ -49,28 +49,25 @@ public class JudgementService {
         return new JudgementFeedbackResponse(request.newsId(), request.choice(), ACK_FEEDBACK_TEXT);
     }
 
+    private JudgementHistoryResponse history(Judgement j) {
+        var content = j.getFeedbackContent();
+        return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
+                j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
+                j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
+                j.getFeedbackHeadline(), content == null ? null : content.verdict(), content == null ? null : content.reasons(), content == null ? null : content.nextTip());
+    }
+
+    public JudgementHistoryResponse getDetail(User user, Long id) {
+        return history(judgementRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "판단 기록을 찾을 수 없어요")));
+    }
+
     public List<JudgementHistoryResponse> getHistory(User user) {
-        return judgementRepository.findAllByUserOrderByCreatedAtDesc(user).stream()
-                .map(j -> new JudgementHistoryResponse(
-                        j.getId(),
-                        j.getNews().getId(),
-                        j.getNews().getTitle(),
-                        j.getChoice(),
-                        j.getReasonText(),
-                        j.getCreatedAt(),
-                        j.getActualDirection(),
-                        j.getActualChangePercent(),
-                        j.getFeedbackText(),
-                        j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose()
-                ))
-                .toList();
+        return judgementRepository.findAllByUserOrderByCreatedAtDesc(user).stream().map(this::history).toList();
     }
 
     public List<JudgementHistoryResponse> getHistory(User user, RecordDateRange range) {
-        return judgementRepository.findInRange(user, range.from(), range.to()).stream()
-                .map(j -> new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
-                        j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(),
-                        j.getActualChangePercent(), j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose())).toList();
+        return judgementRepository.findInRange(user, range.from(), range.to()).stream().map(this::history).toList();
     }
 
     public String previousRecord(User user, RecordDateRange range) {
@@ -83,17 +80,6 @@ public class JudgementService {
         int safeSize = Math.min(Math.max(size, 1), 50);
         return judgementRepository.findAllByUserOrderByCreatedAtDesc(user,
                         PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt")))
-                .map(j -> new JudgementHistoryResponse(
-                        j.getId(),
-                        j.getNews().getId(),
-                        j.getNews().getTitle(),
-                        j.getChoice(),
-                        j.getReasonText(),
-                        j.getCreatedAt(),
-                        j.getActualDirection(),
-                        j.getActualChangePercent(),
-                        j.getFeedbackText(),
-                        j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose()
-                ));
+                .map(this::history);
     }
 }
