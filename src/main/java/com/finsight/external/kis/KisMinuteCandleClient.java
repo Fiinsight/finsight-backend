@@ -29,6 +29,7 @@ public class KisMinuteCandleClient {
     private static final Logger log = LoggerFactory.getLogger(KisMinuteCandleClient.class);
     private static final String PATH = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice";
     private static final String TR_ID = "FHKST03010200";
+    private static final int MAX_PAGES = 14;
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration CACHE_TTL = Duration.ofMinutes(1);
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -67,48 +68,67 @@ public class KisMinuteCandleClient {
     }
 
     private KisMinuteCandleResult fetchCandles(String stockCode, int interval, int safeCount) {
+        Map<LocalDateTime, KisMinuteCandle> collected = new java.util.TreeMap<>();
         try {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) {
                 return new KisMinuteCandleResult(fallback(interval, safeCount), true);
             }
-            String requestTime = requestTime();
-            JsonNode response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder.path(PATH)
-                            .queryParam("FID_ETC_CLS_CODE", "")
-                            .queryParam("FID_COND_MRKT_DIV_CODE", "J")
-                            .queryParam("FID_INPUT_ISCD", stockCode)
-                            .queryParam("FID_INPUT_HOUR_1", requestTime)
-                            .queryParam("FID_PW_DATA_INCU_YN", "Y")
-                            .build())
-                    .headers(headers -> KisApiHeaders.apply(headers, token.get(), TR_ID, appKey, appSecret))
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-                    .timeout(CALL_TIMEOUT)
-                    .block();
-            if (response == null || !"0".equals(response.path("rt_cd").asText())) {
-                log.warn("KIS minute candle API rejected request for {} ({}m): {} {}",
-                        stockCode,
-                        interval,
-                        response == null ? "no response" : response.path("msg_cd").asText(""),
-                        response == null ? "" : response.path("msg1").asText(""));
-                return new KisMinuteCandleResult(fallback(interval, safeCount), true);
+            String cursor = requestTime();
+            LocalDate tradingDate = null;
+            for (int page = 0; page < MAX_PAGES; page++) {
+            final String requestTime = cursor;
+                JsonNode response = webClient.get()
+                        .uri(uriBuilder -> uriBuilder.path(PATH)
+                                .queryParam("FID_ETC_CLS_CODE", "")
+                                .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                                .queryParam("FID_INPUT_ISCD", stockCode)
+                                .queryParam("FID_INPUT_HOUR_1", requestTime)
+                                .queryParam("FID_PW_DATA_INCU_YN", "Y")
+                                .build())
+                        .headers(headers -> KisApiHeaders.apply(headers, token.get(), TR_ID, appKey, appSecret))
+                        .retrieve()
+                        .bodyToMono(JsonNode.class)
+                        .timeout(CALL_TIMEOUT)
+                        .block();
+                if (response == null || !"0".equals(response.path("rt_cd").asText())) {
+                    break;
+                }
+                List<KisMinuteCandle> rows = parseCandles(response, 1, Integer.MAX_VALUE);
+                if (rows.isEmpty()) break;
+                if (tradingDate == null) tradingDate = rows.getLast().timestamp().toLocalDate();
+                final LocalDate session = tradingDate;
+                var sessionRows = rows.stream().filter(row -> row.timestamp().toLocalDate().equals(session)
+                        && !row.timestamp().toLocalTime().isBefore(MARKET_OPEN)).toList();
+                if (sessionRows.isEmpty()) break;
+                int before = collected.size();
+                sessionRows.forEach(row -> collected.putIfAbsent(row.timestamp(), row));
+                LocalTime earliest = sessionRows.getFirst().timestamp().toLocalTime();
+                // Continue through the oldest bucket so its OHLC is not truncated at a page boundary.
+                if (collected.size() == before || !earliest.isAfter(MARKET_OPEN)
+                        || collected.size() >= safeCount * interval + interval) break;
+                String nextCursor = earliest.minusSeconds(1).format(TIME);
+                if (nextCursor.compareTo(cursor) >= 0) break;
+                cursor = nextCursor;
             }
-            List<KisMinuteCandle> candles = parseCandles(response, interval, safeCount);
-            return candles.isEmpty()
-                    ? new KisMinuteCandleResult(fallback(interval, safeCount), true)
-                    : new KisMinuteCandleResult(candles, false);
         } catch (WebClientResponseException e) {
             if (e.getResponseBodyAsString().contains("EGW00201")) {
-                log.warn("KIS minute candle rate limit reached for {} ({}m), using fallback", stockCode, interval);
+                log.warn("KIS minute candle rate limit reached for {} ({}m), returning collected candles", stockCode, interval);
             } else {
-                log.warn("KIS minute candle HTTP {} for {}, using fallback: {}", e.getStatusCode().value(), stockCode, e.getMessage());
+                log.warn("KIS minute candle HTTP {} for {}, returning collected candles: {}", e.getStatusCode().value(), stockCode, e.getMessage());
             }
-            return new KisMinuteCandleResult(fallback(interval, safeCount), true);
         } catch (Exception e) {
-            log.warn("KIS minute candle call failed for {} ({}m), using fallback: {}", stockCode, interval, e.getMessage());
-            return new KisMinuteCandleResult(fallback(interval, safeCount), true);
+            log.warn("KIS minute candle call failed for {} ({}m), returning collected candles: {}", stockCode, interval, e.getMessage());
         }
+        List<KisMinuteCandle> rows = new ArrayList<>(collected.values());
+        Map<LocalDateTime, List<KisMinuteCandle>> buckets = new java.util.TreeMap<>();
+        for (var row : rows) {
+            var time = row.timestamp();
+            var bucket = time.withMinute(time.getMinute() / interval * interval).withSecond(0).withNano(0);
+            buckets.computeIfAbsent(bucket, ignored -> new ArrayList<>()).add(row);
+        }
+        var result = buckets.entrySet().stream().map(entry -> aggregate(entry.getKey(), entry.getValue())).toList();
+        return new KisMinuteCandleResult(result.subList(Math.max(0, result.size() - safeCount), result.size()), result.isEmpty());
     }
 
     private String requestTime() {

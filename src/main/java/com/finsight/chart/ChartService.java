@@ -43,6 +43,23 @@ public class ChartService {
     private final NewsRepository newsRepository;
     private final ArticleContentExtractor articleContentExtractor;
     private final NewsSymbolMatcher newsSymbolMatcher;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.cache.CacheManager cacheManager;
+
+    private com.finsight.external.kis.KisStockQuote cachedQuote(String symbol) {
+        if (cacheManager != null) {
+            var popular = cacheManager.getCache("popularStockQuotes");
+            var all = popular == null ? null : popular.get("all");
+            if (all != null && all.get() instanceof List<?> stocks) {
+                for (var item : stocks) if (item instanceof com.finsight.stock.PopularStockView stock && symbol.equals(stock.symbol()))
+                    return new com.finsight.external.kis.KisStockQuote(symbol, stock.price(), stock.changePercent(), stock.fallback());
+            }
+            var quotes = cacheManager.getCache("kisStockQuotes");
+            var quote = quotes == null ? null : quotes.get(symbol, com.finsight.external.kis.KisStockQuote.class);
+            if (quote != null) return quote;
+        }
+        return new com.finsight.external.kis.KisStockQuote(symbol, 0, 0, true);
+    }
 
     public ChartService(KisDailyCandleClient kisDailyCandleClient,
                         KisMinuteCandleClient kisMinuteCandleClient,
@@ -56,6 +73,11 @@ public class ChartService {
         this.newsSymbolMatcher = newsSymbolMatcher;
     }
 
+    public ChartResponse withCurrentQuote(ChartResponse chart) {
+        var quote = cachedQuote(chart.symbol());
+        return new ChartResponse(chart.symbol(), quote.currentPrice(), quote.changePercent(), chart.candles(), chart.newsMarkers(), chart.relatedNews(), chart.docent(), chart.period(), chart.intervalMinutes(), chart.minuteCandles(), chart.fallback(), chart.moveInsights());
+    }
+
     public ChartResponse getChart(String symbol) {
         return getChart(symbol, "D", 5);
     }
@@ -67,16 +89,17 @@ public class ChartService {
         return getChart(symbol, period, 5);
     }
 
-    @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period + ' : ' + #intervalMinutes", sync = true)
+    @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", sync = true)
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
+        var quote = cachedQuote(symbol);
         if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {
             int interval = intervalMinutes == 1 || intervalMinutes == 5 || intervalMinutes == 15 ? intervalMinutes : 5;
             KisMinuteCandleResult result = kisMinuteCandleClient.getCandlesWithStatus(symbol, interval, 120);
             List<ChartResponse.MinuteCandleView> minuteCandles = result.candles().stream()
                     .map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close()))
                     .toList();
-            double price = minuteCandles.isEmpty() ? 0.0 : minuteCandles.get(minuteCandles.size() - 1).close();
-            double changePercent = computeMinuteChangePercent(minuteCandles);
+            double price = quote.currentPrice();
+            double changePercent = quote.changePercent();
             return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), List.of(), null,
                     "MINUTE", interval, minuteCandles, result.fallback(),
                     result.fallback() ? List.of() : findMoveInsights(symbol, result.candles()));
@@ -92,8 +115,8 @@ public class ChartService {
                 .map(c -> new CandleView(c.date(), c.open(), c.high(), c.low(), c.close()))
                 .toList();
 
-        double price = candleViews.isEmpty() ? 0.0 : candleViews.get(candleViews.size() - 1).close();
-        double changePercent = computeChangePercent(candleViews);
+        double price = quote.currentPrice();
+        double changePercent = quote.changePercent();
 
         List<News> matchedNews;
         if (candleViews.isEmpty()) {
@@ -107,8 +130,7 @@ public class ChartService {
             matchedNews = deduplicateRelatedNews(findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
                     .filter(news -> relevanceRank(symbol, news) > 0)
-                    .sorted(Comparator.comparingInt((News news) -> relevanceRank(symbol, news)).reversed()
-                            .thenComparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .sorted(Comparator.comparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                     .toList());
         }
 
@@ -262,7 +284,7 @@ public class ChartService {
                 result.add(item);
             }
         }
-        return result;
+        return com.finsight.news.collect.NewsDeduplicator.distinctArticles(result);
     }
 
     private static String normalize(String value) {
@@ -363,13 +385,17 @@ public class ChartService {
     }
 
     static int relevanceRank(String symbol, News news) {
-        var company = com.finsight.localml.ChartCompanyMatcher.get(symbol);
         String title = news.getTitle() == null ? "" : news.getTitle();
-        if (company != null && company.pattern().matcher(title).find()) return 3;
-        if (title.matches(".*(美|미국|뉴욕|나스닥|S&P|해외).*")) return 0;
-        if (company != null && company.pattern().matcher(com.finsight.localml.ChartCompanyMatcher.cleanBody(news.getRawContent())).results().count() >= 2) return 2;
-        if (company == null && symbol.equals(new NewsSymbolMatcher().match(title, news.getRawContent()))) return 3;
-        return title.matches(".*(코스피|코스닥|국내 증시|한국 증시).*" ) ? 1 : 0;
+        String raw = com.finsight.localml.ChartCompanyMatcher.cleanBody(news.getRawContent());
+        String lead = raw.substring(0, Math.min(300, raw.length()));
+        String name = com.finsight.stock.StockCatalog.name(symbol);
+        if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol) || lead.contains(symbol)
+                || !name.equals(symbol) && (title.contains(name) || lead.contains(name))) return 3;
+        String market = com.finsight.stock.StockCatalog.market(symbol);
+        String index = "KOSDAQ".equals(market) ? "코스닥" : "KOSPI".equals(market) ? "코스피" : null;
+        String other = "코스피".equals(index) ? "코스닥" : "코스피";
+        if (index == null || title.contains(other) && title.matches(".*(IPO|ETF|상장|상장심사|분배금).*")) return 0;
+        return title.contains(index) ? 1 : 0;
     }
 
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to) {

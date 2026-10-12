@@ -30,6 +30,6 @@ public class ChartController {
         if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(period.toUpperCase(java.util.Locale.ROOT))) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
         }
-        return chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval);
+        return chartService.withCurrentQuote(chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval));
     }
 }
