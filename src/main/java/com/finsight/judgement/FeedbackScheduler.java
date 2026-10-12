@@ -206,7 +206,7 @@ public class FeedbackScheduler {
         String result = String.format("%s %s 종가 기준 %s. 예측(%s)은 실제 결과(%s)와 %s 방향이에요.",
                 name, judgement.getComparisonDate(), changeText, directionLabel(predicted), directionLabel(actualDirection), matched ? "같은" : "다른");
         result += StringUtils.hasText(judgement.getReasonText()) ? " 남긴 근거 “" + judgement.getReasonText().substring(0, Math.min(200, judgement.getReasonText().length())) + "”와 기사 핵심 “" + feedbackSummary(judgement.getNews()).split("(?<=[.!?])\\s+", 2)[0] + "”를 비교하고 숫자의 기준 시점을 확인해보세요." : " 다음엔 판단 근거를 한 줄 남겨보세요.";
-        if (actualChangePercent != null && Math.abs(actualChangePercent) <= NEUTRAL_BAND_PERCENT + 0.5)
+        if (actualChangePercent != null && Math.abs(actualChangePercent) <= NEUTRAL_BAND_PERCENT + 0.5 + 1e-9)
             result += matched ? " 방향은 맞았지만 변동이 작아 우연일 수 있어요." : " 변동이 작아 방향 차이만으로 근거를 평가하기 어려워요.";
         if ("KOSPI".equals(symbol) || "KOSDAQ".equals(symbol)) result += " 개별 종목이 아니라 시장 전체 움직임을 비교한 결과예요.";
         String level = judgement.getUser() == null ? null : judgement.getUser().getLearningLevel();
@@ -218,7 +218,7 @@ public class FeedbackScheduler {
         String summary = templatedFeedback(judgement, direction, percent);
         if ("UNKNOWN".equals(direction)) return new com.finsight.external.AiFeedbackResponse(summary);
         boolean aligned = judgement.getChoice().name().equals(direction);
-        String verdict = aligned && percent != null && Math.abs(percent) <= NEUTRAL_BAND_PERCENT + 0.5 ? "PARTIAL" : aligned ? "CORRECT" : "WRONG";
+        String verdict = aligned && percent != null && Math.abs(percent) <= NEUTRAL_BAND_PERCENT + 0.5 + 1e-9 ? "PARTIAL" : aligned ? "CORRECT" : "WRONG";
         boolean hasReason = StringUtils.hasText(judgement.getReasonText());
         String headline = "PARTIAL".equals(verdict) ? "방향은 맞았지만 변동이 작았어요" : "WRONG".equals(verdict) ? "다르게 움직였어요" : hasReason ? "정확한 판단이에요!" : "예측 방향이 같았어요";
         String core = feedbackSummary(judgement.getNews()).split("(?<=[.!?])\\s+", 2)[0];
