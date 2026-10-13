@@ -40,6 +40,14 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// Standalone read-only catalog; deliberately does not boot Spring or run collection/feedback jobs.
+tasks.register('demoQuizCatalog', JavaExec) {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.finsight.learning.DemoQuizCatalog'
+    standardInput = System.in
+}
+
 // Spring Boot doesn't read .env files on its own — without this, keys sitting
 // in .env (ECOS_API_KEY, DART_API_KEY, ...) are silently never seen by the
 // app unless something exports them into the shell first. Load .env into the
@@ -56,3 +64,9 @@ tasks.named('bootRun') {
         }
     }
 }
+
+tasks.register('testDemoPersonas', Exec) {
+    workingDir 'scripts/seed_demo_personas'
+    commandLine 'python3', '-m', 'unittest', '-v', 'test_seed.py'
+}
+tasks.named('test') { dependsOn 'testDemoPersonas' }

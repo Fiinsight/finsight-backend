@@ -22,7 +22,7 @@ public class LearningService {
     public record Question(String term, String prompt, List<String> options) {}
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
-    private record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
+    record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
     public record AnswerResult(boolean correct, String definition, String message) {}
     public record Review(Long newsId, String title, String term, String definition, String level, Instant answeredAt) {}
     private static final List<Set<String>> TERM_FIELDS = List.of(
@@ -121,14 +121,14 @@ public class LearningService {
                         p.getLevel(), p.getAnsweredAt())).toList();
     }
     private News article(Long id) { return news.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다.")); }
-    private List<Term> articleTerms(News article) {
+    List<Term> articleTerms(News article) {
         String content = article.getTitle() + " " + Objects.toString(article.getRawContent(), "");
         return terms.findAll().stream().filter(t -> content.contains(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
                 .sorted(Comparator.comparingInt((Term t) -> article.getTitle().contains(t.getTerm()) ? 0 : 1)
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();
     }
-    private GradedQuestion question(News article, Term term, String level) {
+    GradedQuestion question(News article, Term term, String level) {
         String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
         List<String> sentences = Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
                 .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
