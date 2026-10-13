@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class NewsCollectionRewriteTest {
-    @Test void onlyTenRewriteSlotsIncludeQuotaRetriesAndOtherArticlesRemainExcerpts() {
+    @Test void everyNewArticleAllowsRewritingWithoutQuotaRetriesReducingEligibility() {
         var fetch=mock(RssFeedFetcher.class);var dedup=mock(NewsDeduplicator.class);var rank=mock(NewsRelevanceScorer.class);
         var extractor=mock(ArticleContentExtractor.class);var ai=mock(AiServiceClient.class);var repo=mock(NewsRepository.class);
         var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),extractor);
@@ -22,8 +22,7 @@ class NewsCollectionRewriteTest {
         when(ai.rewrite(any())).thenReturn(Optional.of(new AiRewriteResponse("기사","일반",null,Map.of(),List.of(),"초보예요.","일반 사실.","분석 근거.","EXCERPT")));
         assertThat(scheduler.runOnce().saved()).isEqualTo(15);
         var requests=org.mockito.ArgumentCaptor.forClass(AiRewriteRequest.class);verify(ai,times(16)).rewrite(requests.capture());
-        assertThat(requests.getAllValues().stream().filter(AiRewriteRequest::allowLlm).count()).isEqualTo(10);
-        assertThat(requests.getAllValues().getLast().allowLlm()).isFalse();
+        assertThat(requests.getAllValues()).allMatch(AiRewriteRequest::allowLlm);
         assertThat(retry.isRewriteRetryPending()).isFalse();verify(extractor,never()).extract(retry.getUrl());
     }
     @Test void simultaneousCollectionRunsRemainSequential() throws Exception {

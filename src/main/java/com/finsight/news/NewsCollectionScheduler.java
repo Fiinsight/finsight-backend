@@ -29,7 +29,6 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
-    private static final int MAX_REWRITES_PER_COLLECTION = 10;
     private static final int TOP_CANDIDATE_COUNT = 220;
     private static final int TARGET_SAVED_COUNT = 220;
     private static final int MAX_EXTRACTION_ATTEMPTS = 220;
@@ -92,13 +91,11 @@ public class NewsCollectionScheduler {
         List<NewsCandidate> unseen = newsDeduplicator.filterUnseen(fetched);
         List<NewsCandidate> topCandidates = newsRelevanceScorer.rank(unseen, TOP_CANDIDATE_COUNT);
 
-        int retryAttempts = 0;
         for (News retry : newsRepository.findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc()) {
-            retryAttempts++;
             try { newsAssembler.retryRewrite(retry); newsRepository.save(retry); }
             catch (Exception error) { log.warn("Rewrite retry deferred for newsId={}", retry.getId()); }
         }
-        int saved = extractAndSave(topCandidates, MAX_REWRITES_PER_COLLECTION - retryAttempts);
+        int saved = extractAndSave(topCandidates);
 
         log.info("News collection finished: fetched={}, unseen={}, topCandidates={}, saved={}",
                 fetched.size(), unseen.size(), topCandidates.size(), saved);
@@ -106,7 +103,7 @@ public class NewsCollectionScheduler {
         return new NewsCollectionResult(fetched.size(), unseen.size(), topCandidates.size(), saved);
     }
 
-    private int extractAndSave(List<NewsCandidate> candidates, int rewriteSlots) {
+    private int extractAndSave(List<NewsCandidate> candidates) {
         int savedCount = 0;
         int attempts = 0;
         for (NewsCandidate candidate : candidates) {
@@ -120,7 +117,7 @@ public class NewsCollectionScheduler {
                 continue;
             }
             try {
-                newsRepository.save(newsAssembler.assemble(candidate, body.get(), attempts <= rewriteSlots));
+                newsRepository.save(newsAssembler.assemble(candidate, body.get()));
                 savedCount++;
             } catch (Exception e) {
                 log.warn("Failed to save collected news for {}, skipping: {}", candidate.url(), e.getMessage());
