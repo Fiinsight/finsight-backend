@@ -15,6 +15,13 @@ public class StockCatalog {
     public static Map<String, Stock> entries() { return STOCKS; }
     public static String name(String code) { var stock = STOCKS.get(code); return stock == null ? code : stock.name(); }
     public static String market(String code) { var stock = STOCKS.get(code); return stock == null ? null : stock.market(); }
+    public static java.util.List<String> aliases(String code) {
+        return switch (code) {
+            case "005930" -> java.util.List.of("삼성전자", "삼전");
+            case "000660" -> java.util.List.of("SK하이닉스", "하이닉스", "닉스", "하닉");
+            default -> java.util.List.of(name(code));
+        };
+    }
     private static Map<String, Stock> load() {
         var result = new LinkedHashMap<String, Stock>();
         try (var reader = new BufferedReader(new InputStreamReader(StockCatalog.class.getResourceAsStream("/stocks/krx-listed.csv"), StandardCharsets.UTF_8))) {

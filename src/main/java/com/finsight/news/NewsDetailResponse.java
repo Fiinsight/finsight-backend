@@ -70,6 +70,6 @@ public record NewsDetailResponse(
             return null;
         }
         return rewrite.contains("Google 검색") || rewrite.contains("더 자주 볼 수 있습니다")
-                ? cleanedContent : rewrite;
+                ? cleanedContent : ArticleContentExtractor.stripPhotoNoise(rewrite);
     }
 }

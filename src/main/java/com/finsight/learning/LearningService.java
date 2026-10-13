@@ -63,6 +63,7 @@ public class LearningService {
             case "analyst" -> article.getRewrittenAnalyst();
             default -> article.getRewrittenBeginner();
         };
+        stored = ArticleContentExtractor.stripPhotoNoise(stored);
         String mode = "REWRITTEN".equals(article.getRewriteMode()) ? "REWRITTEN" : "EXCERPT";
         boolean usableStored = article.getRewriteMode() != null && stored != null && !stored.isBlank();
         var aid = usableStored || body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
