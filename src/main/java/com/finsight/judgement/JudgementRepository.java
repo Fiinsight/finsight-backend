@@ -17,7 +17,7 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
         + "j.feedbackGeneratedAt=:generated, j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after, j.feedbackHeadline=:headline, j.feedbackContent=:content "
         + "WHERE j.id=:id AND j.createdAt=:judgedAt AND j.actualDirection IS NULL AND j.feedbackGeneratedAt IS NULL")
     int finalizeOutcome(Long id, Instant judgedAt, String direction, Double change, String feedback, Instant generated,
-        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, Judgement.FeedbackContent content);
+        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, com.fasterxml.jackson.databind.JsonNode content);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     java.util.Optional<Judgement> findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(User user, Long newsId);

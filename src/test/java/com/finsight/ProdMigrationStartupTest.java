@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Explicitly opt in against a disposable, loopback-only CI database. */
 @EnabledIfEnvironmentVariable(named = "FINSIGHT_MIGRATION_TEST", matches = "true")
 @ActiveProfiles("prod")
+@org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "finsight.news.collection.enabled=false",
         "finsight.auth.jwt-secret=bWlncmF0aW9uLXRlc3Qtb25seS1zZWNyZXQtYXQtbGVhc3QtMzItYnl0ZXM=",
@@ -32,6 +33,10 @@ class ProdMigrationStartupTest {
         registry.add("spring.datasource.password", () -> "migration-ci-only");
     }
 
+    @Autowired org.springframework.test.web.servlet.MockMvc mvc;
+    @Autowired com.finsight.auth.UserRepository users;
+    @Autowired com.finsight.auth.JwtService jwt;
+    @Autowired com.finsight.judgement.JudgementRepository judgementRows;
     @Autowired Flyway flyway;
     @Autowired Environment environment;
     @Autowired JdbcTemplate jdbc;
@@ -39,6 +44,34 @@ class ProdMigrationStartupTest {
     @Autowired com.finsight.learning.LearningRecommendationService recommendations;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.finsight.external.AiServiceClient ai;
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void mixedLegacyRowsKeepHistoryPageAndDetailAvailable() throws Exception {
+        Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('legacy-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long news=jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('원문 사실','https://example.test/legacy-ci',now()) RETURNING id",Long.class);
+        Long legacy=null;
+        for(String payload : java.util.Arrays.asList("[\"이전 근거\",\"두번째 근거\"]","{\"verdict\":\"WRONG\",\"reasons\":[]}","42","\"깨진 형식\"",null)) {
+            Long id=jdbc.queryForObject("INSERT INTO judgement(user_id,news_id,choice,created_at,feedback_reasons) VALUES(?,?,'UP',now(),?::jsonb) RETURNING id",Long.class,owner,news,payload);
+            if(legacy==null) legacy=id;
+        }
+        String token=jwt.issue(users.findById(owner).orElseThrow());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/history/page").header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.totalElements").value(5))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.content.length()").value(5));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/history").header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(5));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/"+legacy).header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.reasons[0].title").value("근거"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.reasons[0].detail").value("이전 근거"));
+        var row=judgementRows.findById(legacy).orElseThrow();
+        var content=new com.finsight.judgement.Judgement.FeedbackContent("CORRECT",java.util.List.of(new com.finsight.external.AiFeedbackResponse.Reason("기사","원문 사실")),"비교 기준 확인");
+        assertThat(judgementRows.finalizeOutcome(legacy,row.getCreatedAt(),"UP",1.2,"결과",java.time.Instant.now(),java.time.LocalDate.parse("2026-10-07"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(101.2),"결과",com.finsight.judgement.Judgement.feedbackJson(content))).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT jsonb_typeof(feedback_reasons) FROM judgement WHERE id=?",String.class,legacy)).isEqualTo("object");
+    }
 
     @Test
     void emptyPostgresMigratesAndProdHibernateValidates() {

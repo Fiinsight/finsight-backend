@@ -113,11 +113,11 @@ class FeedbackSchedulerTest {
         var reasons = List.of(new AiFeedbackResponse.Reason("기사 근거", "기사에 나온 사실이에요."),new AiFeedbackResponse.Reason("실제 시장", "종가는 +1.20% 움직였어요."));
         when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("CORRECT", "정확한 판단이에요!", "삼성전자 종가 기준 +1.20%.", reasons, "같은 기준을 확인해요.")));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
-        var content = org.mockito.ArgumentCaptor.forClass(Judgement.FeedbackContent.class);
+        var content = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
         verify(records).finalizeOutcome(any(),any(),any(),any(),eq("삼성전자 종가 기준 +1.20%."),any(),any(),any(),any(),eq("정확한 판단이에요!"),content.capture());
-        assertThat(content.getValue().reasons()).isEqualTo(reasons);
-        assertThat(content.getValue().nextTip()).isEqualTo("같은 기준을 확인해요.");
-        assertThat(item.getFeedbackContent()).isEqualTo(content.getValue());
+        assertThat(content.getValue().path("reasons").size()).isEqualTo(reasons.size());
+        assertThat(content.getValue().path("nextTip").asText()).isEqualTo("같은 기준을 확인해요.");
+        assertThat(Judgement.feedbackJson(item.getFeedbackContent())).isEqualTo(content.getValue());
     }
     @Test void noReasonNeverPraisesAndSmallAlignedResultIsPartial() {
         var item = pending("005930", "2026-10-02");
