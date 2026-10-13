@@ -8,7 +8,7 @@ import org.springframework.web.server.ResponseStatusException;
 class LearningControllerTest {
  @Test void localDatesAreBoundedAndOnlyForwardedForAuthenticatedOwner() {
   var service=mock(LearningService.class); var progress=mock(LearningProgressService.class);
-  var controller=new LearningController(service,progress);
+  var controller=new LearningController(service,progress,mock(LearningRecommendationService.class));
   controller.progress(7L,"2026-10-12","2026-10-11");
   verify(progress).get(7L,List.of(LocalDate.of(2026,10,12)),List.of(LocalDate.of(2026,10,11)));
   for(String invalid:List.of("2026-02-30","garbage","2026-10-12,","x".repeat(4026),"2026-10-12,".repeat(366)+"2026-10-12")) {

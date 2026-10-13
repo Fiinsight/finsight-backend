@@ -12,7 +12,21 @@ public class LearningController {
                          @NotBlank @Size(max = 100) String term, @NotNull @Min(0) @Max(2) Integer answerIndex) {}
     private final LearningService service;
     private final LearningProgressService progress;
-    public LearningController(LearningService service, LearningProgressService progress) { this.service = service; this.progress = progress; }
+    private final LearningRecommendationService recommendations;
+    public LearningController(LearningService service, LearningProgressService progress, LearningRecommendationService recommendations) { this.service = service; this.progress = progress; this.recommendations = recommendations; }
+    @GetMapping("/recommendations")
+    public LearningRecommendationService.Response recommendations(@AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue="") String readNewsIds) {
+        if (userId==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        try {
+            if(readNewsIds.length()>4000) throw new IllegalArgumentException();
+            var ids=readNewsIds.isBlank()?List.<Long>of():java.util.Arrays.stream(readNewsIds.split(",",-1)).map(Long::parseLong).distinct().toList();
+            if(ids.size()>200 || ids.stream().anyMatch(id->id<=0)) throw new IllegalArgumentException();
+            return recommendations.get(userId,ids);
+        } catch(IllegalArgumentException invalid) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"올바른 읽은 기사 목록을 보내주세요.");
+        }
+    }
     @GetMapping("/progress")
     public LearningProgressService.Progress progress(@AuthenticationPrincipal Long userId,
             @RequestParam(defaultValue = "") String readDays,
