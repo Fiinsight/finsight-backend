@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class JudgementService {
 
     private static final String ACK_FEEDBACK_TEXT =
-            "판단이 기록되었습니다. 다음날 결과를 확인해보세요.";
+            "판단이 기록되었습니다. 다음 거래일 장 마감 후 결과를 확인해보세요.";
 
     private final JudgementRepository judgementRepository;
     private final NewsRepository newsRepository;
@@ -41,12 +41,25 @@ public class JudgementService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 결과가 나온 판단이에요");
             judgement.revise(request.choice(), request.reason());
             judgementRepository.save(judgement);
-            return new JudgementFeedbackResponse(request.newsId(), request.choice(), "판단을 수정했어요");
+            return acknowledgment(judgement, "판단을 수정했어요");
         }
         Judgement judgement = new Judgement(user, news, request.choice(), request.reason());
         judgementRepository.save(judgement);
 
-        return new JudgementFeedbackResponse(request.newsId(), request.choice(), ACK_FEEDBACK_TEXT);
+        return acknowledgment(judgement, ACK_FEEDBACK_TEXT);
+    }
+
+    static java.time.LocalDate expectedResultDate(java.time.Instant judgedAt) {
+        try { return KoreanTradingCalendar.next(judgedAt.atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate()); }
+        catch (IllegalArgumentException unsupportedCalendar) { return null; }
+    }
+    static java.time.Instant expectedResultAt(java.time.Instant judgedAt) {
+        var date=expectedResultDate(judgedAt);
+        return date==null?null:date.atTime(15,40).atZone(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+    }
+    private JudgementFeedbackResponse acknowledgment(Judgement judgement, String message) {
+        return new JudgementFeedbackResponse(judgement.getNews().getId(),judgement.getChoice(),message,
+            judgement.getId(),expectedResultDate(judgement.getCreatedAt()),expectedResultAt(judgement.getCreatedAt()));
     }
 
     private JudgementHistoryResponse history(Judgement j) {
@@ -54,7 +67,16 @@ public class JudgementService {
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
                 j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
-                j.getFeedbackHeadline(), content == null ? null : content.verdict(), content == null ? null : content.reasons(), content == null ? null : content.nextTip());
+                j.getFeedbackHeadline(), content == null ? null : content.verdict(), content == null ? null : content.reasons(), content == null ? null : content.nextTip(),
+                j.getNews().getRelatedSymbol(), symbolName(j.getNews().getRelatedSymbol()),
+                j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
+                j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null);
+    }
+
+    private String symbolName(String symbol) {
+        if ("KOSPI".equals(symbol)) return "코스피";
+        if ("KOSDAQ".equals(symbol)) return "코스닥";
+        return symbol==null?null:com.finsight.stock.StockCatalog.name(symbol);
     }
 
     public JudgementHistoryResponse getDetail(User user, Long id) {
