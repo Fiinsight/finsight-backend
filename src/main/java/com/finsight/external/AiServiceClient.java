@@ -93,6 +93,15 @@ public class AiServiceClient {
             return Optional.empty();
         }
     }
+    public Optional<AiRecommendationResponse> recommendations(AiRecommendationRequest request) {
+        try {
+            return Optional.ofNullable(webClient.post().uri("/ai/news/recommendations").bodyValue(request)
+                    .retrieve().bodyToMono(AiRecommendationResponse.class).timeout(CALL_TIMEOUT).block());
+        } catch (Exception unavailable) {
+            log.debug("Local news recommendation unavailable: {}", unavailable.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
     public Optional<AiFeedbackResponse> generateFeedback(AiFeedbackRequest request) {
         try {
             AiFeedbackResponse response = webClient.post()

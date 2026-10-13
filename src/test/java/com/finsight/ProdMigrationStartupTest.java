@@ -36,6 +36,9 @@ class ProdMigrationStartupTest {
     @Autowired Environment environment;
     @Autowired JdbcTemplate jdbc;
     @Autowired com.finsight.learning.TermMasteryService mastery;
+    @Autowired com.finsight.learning.LearningRecommendationService recommendations;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.finsight.external.AiServiceClient ai;
 
     @Test
     void emptyPostgresMigratesAndProdHibernateValidates() {
@@ -64,5 +67,24 @@ class ProdMigrationStartupTest {
         assertThat(mastery.backfillMissing()).isEqualTo(1);
         assertThat(mastery.backfillMissing()).isZero();
         assertThat(mastery.list(user).stream().filter(item -> item.term().equals("금리")).findFirst().orElseThrow().pKnown()).isEqualTo(row.pKnown());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void recentActionWeightsAndExclusionsWorkOnPostgres() {
+        Long user = jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('recommendation-ci@test','LOCAL',now()) RETURNING id", Long.class);
+        Long source = jdbc.queryForObject("INSERT INTO news(title,url,raw_content,key_terms,published_at,created_at) VALUES('환율 변화','https://example.test/rec-source','원화 환율이 변하면서 수출 기업의 매출 기준을 확인했다.','환율',now(),now()) RETURNING id",Long.class);
+        Long candidate = jdbc.queryForObject("INSERT INTO news(title,url,raw_content,key_terms,published_at,created_at) VALUES('수출 기업 원화 매출','https://example.test/rec-candidate','수출 기업의 원화 매출 기준을 확인하는 내용이다.','환율',now(),now()) RETURNING id",Long.class);
+        jdbc.update("INSERT INTO learning_progress(user_id,news_id,term,level,correct,answered_at) VALUES(?,?,'환율','beginner',false,now())",user,source);
+        jdbc.update("INSERT INTO article_note(user_id,news_id,content,created_at,updated_at) VALUES(?,?,'확인',now(),now())",user,source);
+        jdbc.update("INSERT INTO judgement(user_id,news_id,choice,created_at) VALUES(?,?,'UP',now())",user,source);
+        org.mockito.Mockito.clearInvocations(ai);
+        var response = recommendations.get(user,java.util.List.of(source));
+        var sent = org.mockito.ArgumentCaptor.forClass(com.finsight.external.AiRecommendationRequest.class);
+        org.mockito.Mockito.verify(ai).recommendations(sent.capture());
+        assertThat(sent.getValue().behaviors().getFirst().weight()).isCloseTo(2.7,org.assertj.core.data.Offset.offset(1e-12));
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().getFirst().newsId()).isEqualTo(candidate);
+        assertThat(response.items().getFirst().reasonNewsId()).isEqualTo(source);
     }
 }

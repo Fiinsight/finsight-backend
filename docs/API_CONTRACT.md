@@ -395,3 +395,11 @@ POST 답변은 실제 채점 수준으로 term_mastery를 같은 트랜잭션에
 V12: news.sentiment_confidence nullable double precision(0~1). 기존 행/감성값 백필 없음. AI feedback 요청 및 chart.docent 관련 뉴스에 sentiment_hint/sentiment_confidence를 선택 필드로 전달합니다. 0.6 미만 또는 NEUTRAL은 감성 방향을 근거로 쓰지 않습니다. 값이 없는 도슨트는 기존 제목 규칙을 유지합니다. confidence로 DIRECT/MARKET 관계나 실제 결과를 바꾸지 않습니다. 피드백은 기사 감성의 한계를 근거 문장에 표시하며 실제 가격 원인을 단정하지 않습니다.
 
 감성 배치는 별도 ML 환경에서 수동 실행합니다. 기본 읽기 전용 변경 건수 확인, 명시적 --apply만 갱신하며 원래 값이 변경된 행은 건너뜁니다. 수집/요청/스케줄러에서 배치를 실행하지 않습니다. 운영 DB에 migration/배치를 적용하지 않았습니다.
+
+## ML2 · 학습 기사 추천
+
+인증 GET `/api/learning/recommendations?readNewsIds=1,2` → `{items:[{newsId,title,category,summary,reason,reasonNewsId,reasonTitle,basis,score}],basis}`. items 최대 3개. readNewsIds는 기기 저장소의 최근 30일 읽기 id(서버 저장 안 함), 최대 200개/4000자/양수 id만 허용합니다. 저장 행동은 인증 사용자 id로만 조회합니다.
+
+최근 30일 퀴즈 오답 1.0/메모 0.8/판단 0.6/읽기 0.3 가중 관심 벡터를 사용합니다. 최근 후보 최대 300개에서 행동/읽은 기사와 제목 중복을 제외합니다. reasonNewsId/title은 해당 사용자 행동 기사로 서버에서 재검증합니다. basis는 LOCAL_SENTENCE_TRANSFORMER, RULE_INTEREST 또는 RULE_RECENT이며 cold start의 reasonNewsId/title은 null입니다. 인덱스·ML 의존성·AI가 없으면 규칙 fallback을 반환합니다. 홈 핵심 3개 선별 불변.
+
+AI POST `/ai/news/recommendations`: `{behaviors:[{news_id,weight}],candidate_ids,excluded_ids}` → `{results:[{news_id,score,reason_news_id,reason_title}],basis}`. 행동 500개/후보 300개/제외 5000개 상한. 무료 파일 인덱스는 수동/크론에서만 증분 생성하며 DB 읽기 전용입니다. 모델 다운로드는 앱/CI에서 실행하지 않습니다. `/v1/search` News A의 basis 필드는 임베딩/기존 규칙을 구분하고 기존 문서·날짜·종목 필터를 유지합니다. 새 테이블·기존 데이터 재생성 없음.
