@@ -24,8 +24,16 @@ public record AiFeedbackRequest(
         @JsonProperty("index_name") String indexName,
         @JsonProperty("index_change_percent") Double indexChangePercent,
         @JsonProperty("sentiment_hint") String sentimentHint,
-        @JsonProperty("sentiment_confidence") Double sentimentConfidence
+        @JsonProperty("sentiment_confidence") Double sentimentConfidence,
+        @JsonProperty("concept_term") String conceptTerm,
+        @JsonProperty("concept_definition") String conceptDefinition,
+        @JsonProperty("judgement_id") Long judgementId
 ) {
+    public AiFeedbackRequest(Long newsId,String choice,String reason,String direction,String title,String summary,
+            String symbol,String name,Double percent,java.math.BigDecimal before,java.math.BigDecimal after,java.time.LocalDate date,
+            String level,String indexName,Double indexChangePercent,String sentimentHint,Double sentimentConfidence) {
+        this(newsId,choice,reason,direction,title,summary,symbol,name,percent,before,after,date,level,indexName,indexChangePercent,sentimentHint,sentimentConfidence,null,null,null);
+    }
     public AiFeedbackRequest(Long newsId, String choice, String reason, String direction, String title, String summary,
             String symbol, String name, Double percent, java.math.BigDecimal before, java.math.BigDecimal after, java.time.LocalDate date, String level,
             String indexName, Double indexChangePercent) {

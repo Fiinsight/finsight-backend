@@ -18,7 +18,10 @@ public final class FeedbackContentDeserializer extends JsonDeserializer<Judgemen
                 }
                 return new Judgement.FeedbackContent(null, java.util.List.copyOf(reasons), null);
             }
-            if (!node.isObject() || !textOrNull(node.get("verdict")) || !textOrNull(node.get("nextTip"))) return null;
+            if (!node.isObject() || !textOrNull(node.get("verdict")) || !textOrNull(node.get("nextTip"))
+                    || !textOrNull(node.get("indexName")) || !textOrNull(node.get("conceptTerm")) || !textOrNull(node.get("conceptDefinition"))) return null;
+            var index = node.get("indexChangePercent");
+            if (index != null && !index.isNull() && (!index.isNumber() || !Double.isFinite(index.doubleValue()))) return null;
             var values = node.get("reasons");
             if (values != null && !values.isNull()) {
                 if (!values.isArray()) return null;
@@ -27,7 +30,8 @@ public final class FeedbackContentDeserializer extends JsonDeserializer<Judgemen
                     reasons.add(new AiFeedbackResponse.Reason(value.get("title").textValue(), value.get("detail").textValue()));
                 }
             }
-            return new Judgement.FeedbackContent(text(node.get("verdict")), values == null || values.isNull() ? null : java.util.List.copyOf(reasons), text(node.get("nextTip")));
+            return new Judgement.FeedbackContent(text(node.get("verdict")), values == null || values.isNull() ? null : java.util.List.copyOf(reasons), text(node.get("nextTip")),
+                    text(node.get("indexName")), index == null || index.isNull() ? null : index.doubleValue(), text(node.get("conceptTerm")), text(node.get("conceptDefinition")));
         } catch (Exception invalid) { return null; }
     }
     private static boolean textOrNull(JsonNode value) { return value == null || value.isNull() || value.isTextual(); }

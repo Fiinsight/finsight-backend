@@ -158,6 +158,14 @@ public class LearningService {
                         p.getLevel(), p.getAnsweredAt())).toList();
     }
     private News article(Long id) { return news.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다.")); }
+    @Transactional(readOnly = true)
+    public Glossary feedbackConcept(Long userId, News article, String level) {
+        Map<String,Double> known = new HashMap<>();
+        mastery.list(userId).forEach(row -> known.put(row.term(),row.effectivePKnown()));
+        return articleTerms(article).stream().filter(term -> term.getKind() == Term.Kind.CONCEPT && question(article,term,level) != null)
+                .min(Comparator.comparingDouble((Term term) -> known.getOrDefault(term.getTerm(),KnowledgeTracing.P_INIT)).thenComparing(Term::getTerm))
+                .map(term -> new Glossary(term.getTerm(),term.getShortDefinition())).orElse(null);
+    }
     List<Term> articleTerms(News article) {
         String content = article.getTitle() + " " + Objects.toString(article.getRawContent(), "");
         return terms.findAll().stream().filter(t -> content.contains(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())

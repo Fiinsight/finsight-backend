@@ -31,6 +31,8 @@ public class JudgementService {
         News news = newsRepository.findById(request.newsId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "존재하지 않는 뉴스 id 입니다: " + request.newsId()));
+        var target = JudgementTargetResolver.resolve(news);
+        if (target.symbol() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사는 판단할 대상이 없어요");
 
         // Lock the news row until commit; prevents concurrent inserts before the deferred unique constraint.
         newsRepository.lockForJudgement(news.getId());
@@ -40,10 +42,12 @@ public class JudgementService {
             if (judgement.getActualDirection() != null || judgement.getFeedbackGeneratedAt() != null)
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 결과가 나온 판단이에요");
             judgement.revise(request.choice(), request.reason());
+            judgement.setTargetSymbol(target.symbol());
             judgementRepository.save(judgement);
             return acknowledgment(judgement, "판단을 수정했어요");
         }
         Judgement judgement = new Judgement(user, news, request.choice(), request.reason());
+        judgement.setTargetSymbol(target.symbol());
         judgementRepository.save(judgement);
 
         return acknowledgment(judgement, ACK_FEEDBACK_TEXT);
@@ -64,13 +68,17 @@ public class JudgementService {
 
     private JudgementHistoryResponse history(Judgement j) {
         var content = j.getFeedbackContent();
+        var symbol = j.getTargetSymbol() == null ? j.getNews().getRelatedSymbol() : j.getTargetSymbol();
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
                 j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
                 j.getFeedbackHeadline(), content == null ? null : content.verdict(), content == null ? null : content.reasons(), content == null ? null : content.nextTip(),
-                j.getNews().getRelatedSymbol(), symbolName(j.getNews().getRelatedSymbol()),
+                symbol, symbolName(symbol),
                 j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
-                j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null);
+                j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
+                content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
+                content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(),
+                "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null);
     }
 
     private String symbolName(String symbol) {

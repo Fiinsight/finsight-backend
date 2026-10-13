@@ -19,6 +19,8 @@ public class StockCatalog {
         return switch (code) {
             case "005930" -> java.util.List.of("삼성전자", "삼전");
             case "000660" -> java.util.List.of("SK하이닉스", "하이닉스", "닉스", "하닉");
+            case "047050" -> java.util.List.of("포스코인터내셔널", "포스코인터");
+            case "003670" -> java.util.List.of("포스코퓨처엠", "포스코퓨처");
             default -> java.util.List.of(name(code));
         };
     }

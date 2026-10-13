@@ -48,6 +48,13 @@ tasks.register('demoQuizCatalog', JavaExec) {
     standardInput = System.in
 }
 
+tasks.register('judgementRegradePlan', JavaExec) {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.finsight.judgement.JudgementRegradePlan'
+    standardInput = System.in
+}
+
 // Spring Boot doesn't read .env files on its own — without this, keys sitting
 // in .env (ECOS_API_KEY, DART_API_KEY, ...) are silently never seen by the
 // app unless something exports them into the shell first. Load .env into the
@@ -76,3 +83,9 @@ tasks.register('testRewriteBackfill', Exec) {
     commandLine 'python3', '-m', 'unittest', '-v', 'test_backfill_rewrites.py'
 }
 tasks.named('test') { dependsOn 'testRewriteBackfill' }
+
+tasks.register('testJudgementRegrade', Exec) {
+    workingDir 'scripts'
+    commandLine 'python3', '-m', 'unittest', '-v', 'test_regrade_judgements.py'
+}
+tasks.named('test') { dependsOn 'testJudgementRegrade' }
