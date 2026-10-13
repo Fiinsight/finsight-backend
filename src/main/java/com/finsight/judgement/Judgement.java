@@ -52,11 +52,29 @@ public class Judgement {
     private String feedbackHeadline;
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "feedback_reasons", columnDefinition = "jsonb")
-    private FeedbackContent feedbackContent;
+    private com.fasterxml.jackson.databind.JsonNode feedbackContent;
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = FeedbackContentDeserializer.class)
     public record FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip) {}
+    private static final com.fasterxml.jackson.databind.ObjectMapper FEEDBACK_JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(Judgement.class);
+    @jakarta.persistence.Transient private boolean feedbackParsed;
+    @jakarta.persistence.Transient private FeedbackContent parsedFeedback;
     public String getFeedbackHeadline() { return feedbackHeadline; }
-    public FeedbackContent getFeedbackContent() { return feedbackContent; }
-    public void setStructuredFeedback(String headline, FeedbackContent content) { feedbackHeadline = headline; feedbackContent = content; }
+    public FeedbackContent getFeedbackContent() {
+        if (!feedbackParsed) {
+            feedbackParsed = true;
+            if (feedbackContent != null) {
+                try { parsedFeedback = FEEDBACK_JSON.treeToValue(feedbackContent, FeedbackContent.class); }
+                catch (Exception invalid) { parsedFeedback = null; }
+                if (parsedFeedback == null) LOG.warn("Invalid feedback_reasons ignored for judgement id={}", id);
+            }
+        }
+        return parsedFeedback;
+    }
+    public static com.fasterxml.jackson.databind.JsonNode feedbackJson(FeedbackContent content) { return content == null ? null : FEEDBACK_JSON.valueToTree(content); }
+    public void setStructuredFeedback(String headline, FeedbackContent content) {
+        feedbackHeadline = headline; feedbackContent = feedbackJson(content); parsedFeedback = content; feedbackParsed = true;
+    }
 
     private Instant feedbackGeneratedAt;
     private java.time.LocalDate comparisonDate;

@@ -117,7 +117,7 @@ public class FeedbackScheduler {
         var content = feedback.verdict() == null ? null : new Judgement.FeedbackContent(feedback.verdict(), feedback.reasons(), feedback.nextTip());
         // Atomic conditional update: concurrent scheduler/manual runs or a revised judgement cannot overwrite an outcome.
         int updated = judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), actualDirection,
-            actualChangePercent, feedbackText, clock.instant(), judgement.getComparisonDate(), judgement.getJudgementClose(), judgement.getComparisonClose(), feedback.headline(), content);
+            actualChangePercent, feedbackText, clock.instant(), judgement.getComparisonDate(), judgement.getJudgementClose(), judgement.getComparisonClose(), feedback.headline(), Judgement.feedbackJson(content));
         if (updated != 1) return false;
 
         judgement.setActualDirection(actualDirection);
