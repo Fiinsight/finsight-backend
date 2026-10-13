@@ -40,11 +40,12 @@ public class LearningService {
     private final UserProfileService profiles;
     private final AiServiceClient ai;
     private final ArticleContentExtractor extractor;
+    private final TermMasteryService mastery;
     public LearningService(NewsRepository news, UserRepository users, TermRepository terms,
                            LearningProgressRepository progress, UserProfileService profiles,
-                           AiServiceClient ai, ArticleContentExtractor extractor) {
+                           AiServiceClient ai, ArticleContentExtractor extractor, TermMasteryService mastery) {
         this.news = news; this.users = users; this.terms = terms; this.progress = progress;
-        this.profiles = profiles; this.ai = ai; this.extractor = extractor;
+        this.profiles = profiles; this.ai = ai; this.extractor = extractor; this.mastery = mastery;
     }
     @Transactional(readOnly = true)
     public Lesson lesson(Long userId, Long newsId, String requestedLevel) {
@@ -65,7 +66,11 @@ public class LearningService {
         List<Term> matchedTerms = articleTerms(article);
         List<Glossary> glossary = matchedTerms.stream().limit(3)
                 .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
-        Term first = matchedTerms.stream().findFirst().orElse(null);
+        Map<String,Double> probabilities = new HashMap<>();
+        mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.pKnown()));
+        String quizLevel = level;
+        String selected = KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel) != null).map(Term::getTerm).toList(), probabilities);
+        Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
         GradedQuestion quiz = first == null ? null : question(article, first, level);
         return new Lesson(newsId, level,
                 usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
@@ -77,7 +82,7 @@ public class LearningService {
     public AnswerResult answer(Long userId, Long newsId, String level, String term, int answerIndex) {
         validateLevel(level);
         News article = article(newsId);
-        Term target = articleTerms(article).stream().findFirst().filter(t -> t.getTerm().equals(term))
+        Term target = articleTerms(article).stream().filter(t -> t.getTerm().equals(term)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 문항이 아닙니다."));
         GradedQuestion graded = question(article, target, level);
         Question question = graded == null ? null : graded.publicQuestion();
@@ -88,9 +93,10 @@ public class LearningService {
                 .orElseGet(() -> new LearningProgress(users.findById(userId).orElseThrow(), article, term));
         record.answer(graded.level(), correct);
         progress.save(record);
+        mastery.answer(userId, term, graded.level(), correct);
         String explanation = "analyst".equals(graded.level()) ? "정답 보기는 기사에 없는 내용이에요. 다른 두 보기의 원문 근거와 비교해보세요. "
                 : "normal".equals(graded.level()) ? "원문 수치와 증가·감소·유지 표현을 확인해보세요. " : "";
-        return new AnswerResult(correct, graded.correctAnswer(), explanation + (correct ? "이 개념을 이해했어요. 복습 목록에서 제외됩니다." : "이 개념을 학습 화면의 복습 목록에 저장했어요."));
+        return new AnswerResult(correct, graded.correctAnswer(), explanation + (correct ? "이 개념의 숙련도 추정에 반영했어요." : "이 개념을 복습하며 다시 확인해보세요."));
     }
     @Transactional(readOnly = true)
     public List<Glossary> dailyTerms() {
@@ -103,7 +109,13 @@ public class LearningService {
     }
     @Transactional(readOnly = true)
     public List<Review> reviews(Long userId) {
-        return progress.findTop50ByUser_IdAndCorrectFalseOrderByAnsweredAtDesc(userId).stream()
+        Map<String,Double> probabilities = new HashMap<>();
+        mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
+        LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
+        progress.findByUser_IdOrderByAnsweredAtDesc(userId).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
+        return latest.values().stream().sorted(Comparator
+                .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
+                .thenComparing(LearningProgress::getTerm)).limit(50)
                 .map(p -> new Review(p.getNews().getId(), p.getNews().getTitle(), p.getTerm(),
                         terms.findByTermIgnoreCase(p.getTerm()).map(Term::getShortDefinition).orElse("정의를 확인할 수 없습니다."),
                         p.getLevel(), p.getAnsweredAt())).toList();
