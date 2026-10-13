@@ -29,12 +29,15 @@ public class NewsCollectionScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(NewsCollectionScheduler.class);
 
+    private static final int MAX_REWRITES_PER_COLLECTION = 10;
     private static final int TOP_CANDIDATE_COUNT = 220;
     private static final int TARGET_SAVED_COUNT = 220;
     private static final int MAX_EXTRACTION_ATTEMPTS = 220;
 
     @Value("${finsight.news.collection.enabled:true}")
     private boolean collectionEnabled = true;
+    @Value("${finsight.news.collection.on-startup:true}")
+    private boolean collectionOnStartup = true;
 
     private final RssFeedFetcher rssFeedFetcher;
     private final NewsDeduplicator newsDeduplicator;
@@ -69,7 +72,7 @@ public class NewsCollectionScheduler {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void collectNewsOnStartup() {
-        if (!collectionEnabled) return;
+        if (!collectionEnabled || !collectionOnStartup) return;
         CompletableFuture.runAsync(this::runOnce)
                 .exceptionally(error -> {
                     log.warn("Startup news collection failed: {}", error.getMessage());
@@ -82,14 +85,20 @@ public class NewsCollectionScheduler {
      * it through each stage — used by both the cron trigger and the manual
      * "collect now" endpoint ({@link NewsCollectionController}).
      */
-    public NewsCollectionResult runOnce() {
+    public synchronized NewsCollectionResult runOnce() {
         log.info("News collection started at {}", Instant.now());
 
         List<NewsCandidate> fetched = rssFeedFetcher.fetchAll();
         List<NewsCandidate> unseen = newsDeduplicator.filterUnseen(fetched);
         List<NewsCandidate> topCandidates = newsRelevanceScorer.rank(unseen, TOP_CANDIDATE_COUNT);
 
-        int saved = extractAndSave(topCandidates);
+        int retryAttempts = 0;
+        for (News retry : newsRepository.findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc()) {
+            retryAttempts++;
+            try { newsAssembler.retryRewrite(retry); newsRepository.save(retry); }
+            catch (Exception error) { log.warn("Rewrite retry deferred for newsId={}", retry.getId()); }
+        }
+        int saved = extractAndSave(topCandidates, MAX_REWRITES_PER_COLLECTION - retryAttempts);
 
         log.info("News collection finished: fetched={}, unseen={}, topCandidates={}, saved={}",
                 fetched.size(), unseen.size(), topCandidates.size(), saved);
@@ -97,7 +106,7 @@ public class NewsCollectionScheduler {
         return new NewsCollectionResult(fetched.size(), unseen.size(), topCandidates.size(), saved);
     }
 
-    private int extractAndSave(List<NewsCandidate> candidates) {
+    private int extractAndSave(List<NewsCandidate> candidates, int rewriteSlots) {
         int savedCount = 0;
         int attempts = 0;
         for (NewsCandidate candidate : candidates) {
@@ -111,7 +120,7 @@ public class NewsCollectionScheduler {
                 continue;
             }
             try {
-                newsRepository.save(newsAssembler.assemble(candidate, body.get()));
+                newsRepository.save(newsAssembler.assemble(candidate, body.get(), attempts <= rewriteSlots));
                 savedCount++;
             } catch (Exception e) {
                 log.warn("Failed to save collected news for {}, skipping: {}", candidate.url(), e.getMessage());

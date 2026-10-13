@@ -34,6 +34,9 @@ public class FeedbackScheduler {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.cache.CacheManager cacheManager;
 
+    @org.springframework.beans.factory.annotation.Value("${finsight.feedback.on-startup:true}")
+    private boolean feedbackOnStartup = true;
+
     private java.time.Clock clock = java.time.Clock.system(ZoneId.of("Asia/Seoul"));
 
     public FeedbackScheduler(JudgementRepository judgementRepository,
@@ -46,6 +49,7 @@ public class FeedbackScheduler {
 
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void onApplicationReady() {
+        if (!feedbackOnStartup) return;
         java.util.concurrent.CompletableFuture.runAsync(this::generatePendingFeedback)
                 .exceptionally(error -> { log.warn("Feedback startup catch-up failed", error); return null; });
     }

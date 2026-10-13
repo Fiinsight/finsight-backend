@@ -14,6 +14,8 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT MIN(n.publishedAt) FROM News n WHERE n.source NOT LIKE 'SYNTHETIC%' AND LENGTH(n.rawContent)>0")
     Instant collectionStart();
 
+    List<News> findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc();
+
     boolean existsByUrl(String url);
 
     List<News> findTop3ByOrderByPublishedAtDesc();
