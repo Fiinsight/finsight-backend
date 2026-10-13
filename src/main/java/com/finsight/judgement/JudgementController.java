@@ -39,6 +39,12 @@ public class JudgementController {
         return judgementService.recordJudgement(user(userId), request);
     }
 
+    @GetMapping("/{id}")
+    public JudgementHistoryResponse detail(@AuthenticationPrincipal Long userId,
+            @org.springframework.web.bind.annotation.PathVariable Long id) {
+        return judgementService.getDetail(user(userId), id);
+    }
+
     @GetMapping("/history")
     @Operation(summary = "판단 이력 조회", description = "과거 판단과 (있다면) 실제 결과/피드백을 최신순으로 반환합니다.")
     public ResponseEntity<List<JudgementHistoryResponse>> history(@AuthenticationPrincipal Long userId,

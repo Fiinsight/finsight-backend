@@ -1,7 +1,11 @@
 package com.finsight.external;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import java.util.List;
 
-/** Response body returned by the AI service's POST /ai/feedback/judgement endpoint. */
-public record AiFeedbackResponse(@JsonProperty("feedback") String feedbackText) {
+public record AiFeedbackResponse(String verdict, String headline,
+        @JsonAlias({"feedback", "feedbackText"}) String summary, List<Reason> reasons, String nextTip) {
+    public record Reason(String title, String detail) {}
+    public String feedbackText() { return summary; }
+    public AiFeedbackResponse(String feedbackText) { this(null, null, feedbackText, null, null); }
 }

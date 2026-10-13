@@ -15,6 +15,7 @@ public record JudgementHistoryResponse(
         Instant feedbackGeneratedAt,
         java.time.LocalDate comparisonDate,
         java.math.BigDecimal judgementClose,
-        java.math.BigDecimal comparisonClose
+        java.math.BigDecimal comparisonClose,
+        String headline, String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip
 ) {
 }

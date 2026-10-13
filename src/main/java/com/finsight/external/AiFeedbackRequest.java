@@ -20,8 +20,14 @@ public record AiFeedbackRequest(
         @JsonProperty("judgement_close") java.math.BigDecimal judgementClose,
         @JsonProperty("comparison_close") java.math.BigDecimal comparisonClose,
         @JsonProperty("comparison_date") java.time.LocalDate comparisonDate,
-        String level
+        String level,
+        @JsonProperty("index_name") String indexName,
+        @JsonProperty("index_change_percent") Double indexChangePercent
 ) {
+    public AiFeedbackRequest(Long newsId, String choice, String reason, String direction, String title, String summary,
+            String symbol, String name, Double percent, java.math.BigDecimal before, java.math.BigDecimal after, java.time.LocalDate date, String level) {
+        this(newsId,choice,reason,direction,title,summary,symbol,name,percent,before,after,date,level,null,null);
+    }
     public AiFeedbackRequest(Long newsId, String choice, String reason, String direction, String title, String summary,
             String symbol, String name, Double percent, java.math.BigDecimal before, java.math.BigDecimal after, java.time.LocalDate date) {
         this(newsId,choice,reason,direction,title,summary,symbol,name,percent,before,after,date,"normal");
