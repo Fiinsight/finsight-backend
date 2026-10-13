@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LearningRecommendationService {
     public record Recommendation(Long newsId, String title, String category, String summary, String reason, Long reasonNewsId, String reasonTitle, String basis, Double score) {}
     public record Response(List<Recommendation> items, String basis) {}
+    record Activity(String type, String term) {}
     private final JdbcTemplate jdbc;
     private final NewsRepository news;
     private final AiServiceClient ai;
@@ -26,13 +27,17 @@ public class LearningRecommendationService {
     public Response get(Long userId, List<Long> readIds) {
         Instant now=clock.instant(), since=now.minus(Duration.ofDays(30));
         var activities=jdbc.queryForList("""
-                SELECT news_id,sum(weight) AS weight FROM (
-                    SELECT news_id,1.0 AS weight FROM learning_progress WHERE user_id=? AND NOT correct AND answered_at>=? AND answered_at<=?
-                    UNION ALL SELECT news_id,0.8 AS weight FROM article_note WHERE user_id=? AND updated_at>=? AND updated_at<=?
-                    UNION ALL SELECT news_id,0.6 AS weight FROM judgement WHERE user_id=? AND created_at>=? AND created_at<=?
+                SELECT news_id,sum(weight) AS weight,
+                    (array_agg(activity_type ORDER BY weight DESC,activity_at DESC,term))[1] AS activity_type,
+                    (array_agg(term ORDER BY weight DESC,activity_at DESC,term))[1] AS term FROM (
+                    SELECT news_id,1.0 AS weight,'QUIZ' AS activity_type,term,answered_at AS activity_at FROM learning_progress WHERE user_id=? AND NOT correct AND answered_at>=? AND answered_at<=?
+                    UNION ALL SELECT news_id,0.8 AS weight,'MEMO',NULL,updated_at FROM article_note WHERE user_id=? AND updated_at>=? AND updated_at<=?
+                    UNION ALL SELECT news_id,0.6 AS weight,'JUDGEMENT',NULL,created_at FROM judgement WHERE user_id=? AND created_at>=? AND created_at<=?
                 ) activity GROUP BY news_id ORDER BY weight DESC,news_id LIMIT 500
                 """,userId,java.sql.Timestamp.from(since),java.sql.Timestamp.from(now),userId,java.sql.Timestamp.from(since),java.sql.Timestamp.from(now),userId,java.sql.Timestamp.from(since),java.sql.Timestamp.from(now));
         Map<Long,Double> weights=new LinkedHashMap<>();
+        Map<Long,Activity> reasons=new HashMap<>();
+        activities.forEach(row -> reasons.put(((Number)row.get("news_id")).longValue(),new Activity(Objects.toString(row.get("activity_type"),"READ"),Objects.toString(row.get("term"),""))));
         activities.forEach(row -> weights.put(((Number)row.get("news_id")).longValue(),Math.min(1000,((Number)row.get("weight")).doubleValue())));
         readIds.forEach(id -> weights.merge(id,.3,(left,right)->Math.min(1000,left+right)));
         Set<Long> excluded=new HashSet<>(jdbc.queryForList("""
@@ -58,7 +63,7 @@ public class LearningRecommendationService {
                     if (item==null || item.score()==null || !Double.isFinite(item.score()) || item.score()<=0 || item.score()>1.000001) continue;
                     News article=byId.get(item.newsId()), reason=observations.get(item.reasonNewsId());
                     if (article==null || reason==null || excluded.contains(article.getId()) || duplicate(article,selected,observations.values())) continue;
-                    selected.add(view(article,reason,"LOCAL_SENTENCE_TRANSFORMER",item.score()));
+                    selected.add(view(article,reason,reasons.get(reason.getId()),"LOCAL_SENTENCE_TRANSFORMER",item.score()));
                     if(selected.size()==3) break;
                 }
                 if(!selected.isEmpty()) return new Response(selected,"LOCAL_SENTENCE_TRANSFORMER");
@@ -81,17 +86,27 @@ public class LearningRecommendationService {
         ranked.sort(Comparator.comparingDouble(Ranked::score).reversed().thenComparing(row->row.article().getPublishedAt(),Comparator.reverseOrder()).thenComparing(row->row.article().getId()));
         List<Recommendation> selected=new ArrayList<>();
         for(var row:ranked) {
-            if(duplicate(row.article(),selected,observations.values())) continue;
-            selected.add(view(row.article(),row.reason(),row.reason()==null?"RULE_RECENT":"RULE_INTEREST",row.score()));
+            if(row.reason()==null || duplicate(row.article(),selected,observations.values())) continue;
+            selected.add(view(row.article(),row.reason(),reasons.get(row.reason().getId()),"RULE_INTEREST",row.score()));
             if(selected.size()==3) break;
         }
         return new Response(selected,selected.stream().anyMatch(item->"RULE_INTEREST".equals(item.basis()))?"RULE_INTEREST":"RULE_RECENT");
     }
-    private Recommendation view(News article, News reason, String basis, double score) {
+    private Recommendation view(News article, News reason, Activity activity, String basis, double score) {
         String body=extractor.clean(article.getTitle(),article.getRawContent());
         String summary=body==null?"":body.split("(?<=[.!?])\\s+|\\n+",2)[0];
         return new Recommendation(article.getId(),article.getTitle(),article.getCategory(),summary.substring(0,Math.min(400,summary.length())),
-                reason==null?"최근 수집된 기사예요.":"‘"+reason.getTitle()+"’에서 남긴 학습 활동과 비슷한 주제예요.",reason==null?null:reason.getId(),reason==null?null:reason.getTitle(),basis,score);
+                reasonText(reason,activity),reason.getId(),reason.getTitle(),basis,score);
+    }
+    static String reasonText(News reason, Activity activity) {
+        String title=Objects.toString(reason.getTitle(),"");
+        if(title.length()>15) title=title.substring(0,15)+"…";
+        return switch(activity==null?"READ":activity.type()) {
+            case "QUIZ" -> "'"+activity.term()+"' 퀴즈를 틀린 기사와 비슷해요";
+            case "MEMO" -> "메모한 '"+title+"'와 비슷해요";
+            case "JUDGEMENT" -> "판단한 '"+title+"'와 비슷해요";
+            default -> "읽은 '"+title+"'와 비슷해요";
+        };
     }
     private boolean duplicate(News article,List<Recommendation> selected,Collection<News> observed) {
         return selected.stream().anyMatch(previous->sameEvent(article.getTitle(),previous.title())) || observed.stream().anyMatch(previous->sameEvent(article.getTitle(),previous.getTitle()));

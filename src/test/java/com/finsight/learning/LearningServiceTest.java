@@ -46,16 +46,44 @@ class LearningServiceTest {
         var right = service.answer(1L,115L,"beginner","환율",correct);
         var wrong = service.answer(1L,115L,"beginner","환율",(correct+1)%3);
         assertTrue(right.correct()); assertFalse(wrong.correct());
+        assertEquals("정답이에요!",right.message()); assertEquals("아쉬워요",wrong.message());
         assertEquals(target.getShortDefinition(), right.definition()); assertEquals(target.getShortDefinition(), wrong.definition());
+        assertEquals(target.getShortDefinition(),right.termDefinition());
         assertFalse(java.util.Arrays.stream(LearningService.AnswerResult.class.getRecordComponents()).anyMatch(field -> field.getName().equals("correctIndex")));
         verify(progress,times(2)).findByUser_IdAndNews_IdAndTerm(1L,115L,"환율");
         verify(mastery).answer(1L,"환율","beginner",true); verify(mastery).answer(1L,"환율","beginner",false);
         when(article.getRawContent()).thenReturn("환율과 금리가 변했다.");
         when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.9,.9,5,java.time.Instant.now(),"beginner"), new TermMasteryService.Mastery("금리",.55,.55,2,java.time.Instant.now(),"beginner")));
         assertEquals("금리",service.lesson(1L,115L,"beginner").question().term());
+        assertEquals("환율",service.lesson(1L,115L,"beginner","환율").question().term());
+        assertThrows(ResponseStatusException.class, () -> service.lesson(1L,115L,"beginner","다른용어"));
         service.reviews(2L); verify(progress).findByUser_IdOrderByAnsweredAtDesc(2L);
         assertThrows(ResponseStatusException.class, () -> service.answer(1L,115L,"normal","다른용어",0));
         assertThrows(ResponseStatusException.class, () -> service.lesson(1L,115L,"invalid"));
+    }
+
+    @Test void reviewsIncludeLastWrongOrLowEffectiveMasteryButExcludeConfidentCorrectAnswers() {
+        var progress=mock(LearningProgressRepository.class); var mastery=mock(TermMasteryService.class);
+        var service=new LearningService(mock(NewsRepository.class),mock(UserRepository.class),mock(TermRepository.class),progress,
+                mock(UserProfileService.class),mock(AiServiceClient.class),mock(ArticleContentExtractor.class),mastery);
+        var article=mock(News.class); when(article.getId()).thenReturn(1L);
+        var user=mock(User.class);
+        var latestWrong=new LearningProgress(user,article,"금리");latestWrong.answer("beginner",false);
+        var lowCorrect=new LearningProgress(user,article,"환율");lowCorrect.answer("beginner",true);
+        var highCorrect=new LearningProgress(user,article,"매출");highCorrect.answer("beginner",true);
+        var earlierWrong=new LearningProgress(user,article,"매출");earlierWrong.answer("beginner",false);
+        when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(List.of(latestWrong,lowCorrect,highCorrect,earlierWrong));
+        when(mastery.list(7L)).thenReturn(List.of(
+                new TermMasteryService.Mastery("금리",.9,.9,3,java.time.Instant.now(),"beginner"),
+                new TermMasteryService.Mastery("환율",.9,.599,3,java.time.Instant.now(),"beginner"),
+                new TermMasteryService.Mastery("매출",.6,.6,3,java.time.Instant.now(),"beginner")));
+        assertEquals(List.of("환율","금리"),service.reviews(7L).stream().map(LearningService.Review::term).toList());
+        when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(List.of(highCorrect,earlierWrong));
+        assertTrue(service.reviews(7L).isEmpty());
+        var many=new ArrayList<LearningProgress>();
+        for(int i=0;i<12;i++){var row=new LearningProgress(user,article,"개념"+i);row.answer("beginner",false);many.add(row);}
+        when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(many);
+        assertEquals(10,service.reviews(7L).size());
     }
 
     @Test void differentLevelsUseSourceFactsAndFallbackIsSavedAsBeginner() {
@@ -72,7 +100,8 @@ class LearningServiceTest {
         assertTrue(service.lesson(1L,1L,"beginner").question().prompt().contains("기본 의미"));
         var normal=service.lesson(1L,1L,"normal").question(); assertTrue(normal.prompt().contains("어떻게 변했나요"));
         assertEquals(normal,service.lesson(1L,1L,"normal").question());
-        assertTrue(service.answer(1L,1L,"normal","환율",normal.options().indexOf("증가")).correct());
+        var normalAnswer=service.answer(1L,1L,"normal","환율",normal.options().indexOf("증가"));
+        assertTrue(normalAnswer.correct()); assertEquals("증가",normalAnswer.definition()); assertEquals("통화 교환 비율",normalAnswer.termDefinition());
         var analyst=service.lesson(1L,1L,"analyst").question(); assertTrue(analyst.prompt().contains("사실이 아닌"));
         assertEquals(analyst,service.lesson(1L,1L,"analyst").question());
         int outside=-1; for(int i=0;i<3;i++) if(!article.getRawContent().contains(analyst.options().get(i))) outside=i;

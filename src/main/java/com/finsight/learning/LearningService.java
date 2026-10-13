@@ -23,7 +23,7 @@ public class LearningService {
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
     record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
-    public record AnswerResult(boolean correct, String definition, String message) {}
+    public record AnswerResult(boolean correct, String definition, String message, String termDefinition) {}
     public record Review(Long newsId, String title, String term, String definition, String level, Instant answeredAt) {}
     private static final List<Set<String>> TERM_FIELDS = List.of(
             Set.of("금리", "기준금리", "국채금리", "환율", "원화", "원달러", "물가", "인플레이션", "양적완화"),
@@ -49,6 +49,10 @@ public class LearningService {
     }
     @Transactional(readOnly = true)
     public Lesson lesson(Long userId, Long newsId, String requestedLevel) {
+        return lesson(userId, newsId, requestedLevel, null);
+    }
+    @Transactional(readOnly = true)
+    public Lesson lesson(Long userId, Long newsId, String requestedLevel, String requestedTerm) {
         String level = requestedLevel == null ? profiles.getOnboarding(userId).learningLevel() : requestedLevel;
         if (level == null) level = "beginner";
         validateLevel(level);
@@ -69,9 +73,10 @@ public class LearningService {
         Map<String,Double> probabilities = new HashMap<>();
         mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.pKnown()));
         String quizLevel = level;
-        String selected = KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel) != null).map(Term::getTerm).toList(), probabilities);
+        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel) != null).map(Term::getTerm).toList(), probabilities);
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
         GradedQuestion quiz = first == null ? null : question(article, first, level);
+        if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
         return new Lesson(newsId, level,
                 usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
                 aid.map(AiServiceClient.ReadingAid::readingGuide).orElse("아래 용어는 일반 개념 설명이며 기사의 사실과 구분해 읽어주세요."),
@@ -94,9 +99,7 @@ public class LearningService {
         record.answer(graded.level(), correct);
         progress.save(record);
         mastery.answer(userId, term, graded.level(), correct);
-        String explanation = "analyst".equals(graded.level()) ? "정답 보기는 기사에 없는 내용이에요. 다른 두 보기의 원문 근거와 비교해보세요. "
-                : "normal".equals(graded.level()) ? "원문 수치와 증가·감소·유지 표현을 확인해보세요. " : "";
-        return new AnswerResult(correct, graded.correctAnswer(), explanation + (correct ? "이 개념의 숙련도 추정에 반영했어요." : "이 개념을 복습하며 다시 확인해보세요."));
+        return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition());
     }
     @Transactional(readOnly = true)
     public List<Glossary> dailyTerms() {
@@ -113,9 +116,11 @@ public class LearningService {
         mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
         LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
         progress.findByUser_IdOrderByAnsweredAtDesc(userId).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
-        return latest.values().stream().sorted(Comparator
+        return latest.values().stream()
+                .filter(row -> !row.isCorrect() || probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT) < 0.6)
+                .sorted(Comparator
                 .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
-                .thenComparing(LearningProgress::getTerm)).limit(50)
+                .thenComparing(LearningProgress::getTerm)).limit(10)
                 .map(p -> new Review(p.getNews().getId(), p.getNews().getTitle(), p.getTerm(),
                         terms.findByTermIgnoreCase(p.getTerm()).map(Term::getShortDefinition).orElse("정의를 확인할 수 없습니다."),
                         p.getLevel(), p.getAnsweredAt())).toList();
