@@ -383,3 +383,9 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 ### 적용 제한
 
 운영 DB에 migration/repair/baseline/수동 SQL을 실행하거나 기존 결과를 재생성하지 않았습니다. 사용자 지정 방침대로 `V4__add_onboarding_profile.sql`은 이름·내용을 유지하고 뒤 파일만 `V4_1__add_level_specific_importance_reasons.sql`로 이름 변경했습니다(기존 SQL 내용 불변). V10은 이전 migration에서 누락된 기존 JPA의 learning_progress/daily_note 테이블을 IF NOT EXISTS로 생성합니다. 빈 PostgreSQL 16에서 prod 프로필로 V1~V10 migrate 및 ddl-auto=validate 기동을 검증합니다. 실제 운영 Flyway 이력은 확인 전이며, 기본 방침과 다르면 배포 전에 조정해야 합니다.
+
+## ML1 · BKT 숙련도
+
+`GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level}`이며 각 목록은 최대 3개입니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
+
+POST 답변은 실제 채점 수준으로 term_mastery를 같은 트랜잭션에서 갱신합니다. 복습은 용어별 최근 기사 하나를 망각 가중 확률 오름차순으로 반환합니다. levelSuggestion은 현재 수준의 서로 다른 용어 5개에서 pKnown≥0.85일 때 다음 수준을 제안하며 자동 변경하지 않습니다. 백필은 자동 실행하지 않습니다. 상세 모델·대상 건수: `docs/ml-personalization.md`.

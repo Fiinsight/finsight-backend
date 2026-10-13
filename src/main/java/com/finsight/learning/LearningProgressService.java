@@ -14,15 +14,16 @@ public class LearningProgressService {
     public record Week(LocalDate from, LocalDate to, int answeredCount, int correctCount, Double accuracy) {}
     public record WeakArea(String category, int decidedCount, int hitCount, List<Long> recentNewsIds, int sampleSize) {}
     public record Progress(Counts today, Week week, int activityStreakDays, List<Long> completedNewsIds,
-                           int totalDecidedCount, List<WeakArea> weakAreas, Goal goal, String levelSuggestion) {}
+                           int totalDecidedCount, List<WeakArea> weakAreas, Goal goal, String levelSuggestion, TermMasteryService.Overview mastery) {}
     public record Goal(String type, boolean achievedToday, int streakDays) {}
     private final JdbcTemplate jdbc;
     private final NewsCategoryClassifier categories;
     private final com.finsight.auth.UserProfileService profiles;
     private final com.finsight.news.collect.NewsSymbolMatcher symbols;
+    private final TermMasteryService mastery;
     private Clock clock = Clock.system(ZoneId.of("Asia/Seoul"));
-    public LearningProgressService(JdbcTemplate jdbc, NewsCategoryClassifier categories, com.finsight.auth.UserProfileService profiles, com.finsight.news.collect.NewsSymbolMatcher symbols) {
-        this.jdbc = jdbc; this.categories = categories; this.profiles = profiles; this.symbols = symbols;
+    public LearningProgressService(JdbcTemplate jdbc, NewsCategoryClassifier categories, com.finsight.auth.UserProfileService profiles, com.finsight.news.collect.NewsSymbolMatcher symbols, TermMasteryService mastery) {
+        this.jdbc = jdbc; this.categories = categories; this.profiles = profiles; this.symbols = symbols; this.mastery = mastery;
     }
     @Transactional(readOnly = true)
     public Progress get(Long userId) { return get(userId, List.of()); }
@@ -78,26 +79,17 @@ public class LearningProgressService {
             for (var row : days) if (((Number)row.get("count")).intValue() >= ("minutes5".equals(type) ? 3 : 1)) achieved.add(((java.sql.Date)row.get("day")).toLocalDate());
         }
         if ("reviewJudgement".equals(type)) reviewDays.stream().filter(date -> !date.isAfter(today)).forEach(achieved::add);
+        var concepts = mastery.list(userId);
         return new Progress(new Counts(todayCount,todayCorrect,accuracy(todayCount,todayCorrect)),
                 new Week(monday,monday.plusDays(7),weekCount,weekCorrect,accuracy(weekCount,weekCorrect)),
                 streak,List.copyOf(completed),decisions.size(),weak,
-                new Goal(type,achieved.contains(today),streak(achieved,today)), suggestion(records,profile.learningLevel() == null ? "beginner" : profile.learningLevel()));
+                new Goal(type,achieved.contains(today),streak(achieved,today)), TermMasteryService.suggestion(concepts,profile.learningLevel() == null ? "beginner" : profile.learningLevel()), TermMasteryService.overview(concepts));
     }
     static int streak(Set<LocalDate> days, LocalDate today) {
         LocalDate day = days.contains(today) ? today : today.minusDays(1);
         int count = 0;
         while (days.contains(day)) { count++; day = day.minusDays(1); }
         return count;
-    }
-    static String suggestion(List<Map<String,Object>> rows, String level) {
-        if (!List.of("beginner","normal").contains(Objects.toString(level,""))) return null;
-        // One stored answer per user/news/term; guard duplicates for callers and fixtures too.
-        Map<String,Map<String,Object>> latest = new LinkedHashMap<>();
-        for (var row : rows) latest.putIfAbsent(row.get("news_id") + ":" + row.get("term"), row);
-        var current = latest.values().stream().filter(row -> Objects.equals(level,row.get("level"))).toList();
-        long correct = current.stream().filter(row -> Boolean.TRUE.equals(row.get("correct"))).count();
-        long terms = current.stream().map(row -> row.get("term")).filter(Objects::nonNull).distinct().count();
-        return current.size()>=10 && terms>=5 && (double)correct/current.size()>=0.8 ? ("beginner".equals(level)?"normal":"analyst") : null;
     }
     private Double accuracy(int count,int correct) { return count==0?null:(double)correct/count; }
 }

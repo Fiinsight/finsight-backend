@@ -26,7 +26,8 @@ class LearningServiceTest {
         when(extractor.clean(any(), any())).thenReturn("환율은 변했다.");
         when(ai.learning(any())).thenReturn(Optional.empty());
         when(profile.getOnboarding(1L)).thenReturn(new UserProfileDtos.OnboardingResponse(List.of(), "analyst", "deep", "news", "", null));
-        var service = new LearningService(news, users, terms, progress, profile, ai, extractor);
+        var mastery = mock(TermMasteryService.class);
+        var service = new LearningService(news, users, terms, progress, profile, ai, extractor, mastery);
         var lesson = service.lesson(1L,115L,null);
         when(article.getRewriteMode()).thenReturn("REWRITTEN"); when(article.getRewrittenBeginner()).thenReturn("저장된 실제 리라이팅이에요.");
         clearInvocations(ai);
@@ -48,7 +49,11 @@ class LearningServiceTest {
         assertEquals(target.getShortDefinition(), right.definition()); assertEquals(target.getShortDefinition(), wrong.definition());
         assertFalse(java.util.Arrays.stream(LearningService.AnswerResult.class.getRecordComponents()).anyMatch(field -> field.getName().equals("correctIndex")));
         verify(progress,times(2)).findByUser_IdAndNews_IdAndTerm(1L,115L,"환율");
-        service.reviews(2L); verify(progress).findTop50ByUser_IdAndCorrectFalseOrderByAnsweredAtDesc(2L);
+        verify(mastery).answer(1L,"환율","beginner",true); verify(mastery).answer(1L,"환율","beginner",false);
+        when(article.getRawContent()).thenReturn("환율과 금리가 변했다.");
+        when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.9,.9,5,java.time.Instant.now(),"beginner"), new TermMasteryService.Mastery("금리",.55,.55,2,java.time.Instant.now(),"beginner")));
+        assertEquals("금리",service.lesson(1L,115L,"beginner").question().term());
+        service.reviews(2L); verify(progress).findByUser_IdOrderByAnsweredAtDesc(2L);
         assertThrows(ResponseStatusException.class, () -> service.answer(1L,115L,"normal","다른용어",0));
         assertThrows(ResponseStatusException.class, () -> service.lesson(1L,115L,"invalid"));
     }
@@ -62,7 +67,8 @@ class LearningServiceTest {
         when(extractor.clean(any(),any())).thenAnswer(call -> article.getRawContent());
         when(terms.findAll()).thenReturn(List.of(new Term("환율","통화 교환 비율"),new Term("금리","이자 비율"),new Term("물가","평균 가격")));
         when(ai.learning(any())).thenReturn(Optional.empty()); when(users.findById(1L)).thenReturn(Optional.of(new User("x","","",AuthProvider.LOCAL)));
-        var service=new LearningService(news,users,terms,progress,profiles,ai,extractor);
+        var mastery=mock(TermMasteryService.class);
+        var service=new LearningService(news,users,terms,progress,profiles,ai,extractor,mastery);
         assertTrue(service.lesson(1L,1L,"beginner").question().prompt().contains("기본 의미"));
         var normal=service.lesson(1L,1L,"normal").question(); assertTrue(normal.prompt().contains("어떻게 변했나요"));
         assertEquals(normal,service.lesson(1L,1L,"normal").question());
@@ -80,6 +86,9 @@ class LearningServiceTest {
         service.answer(1L,1L,"normal","환율",fallback.options().indexOf("통화 교환 비율"));
         var saved=org.mockito.ArgumentCaptor.forClass(LearningProgress.class); verify(progress,times(3)).save(saved.capture());
         assertEquals(List.of("normal","analyst","beginner"),saved.getAllValues().stream().map(LearningProgress::getLevel).toList());
+        verify(mastery).answer(1L,"환율","normal",true);
+        verify(mastery).answer(1L,"환율","analyst",true);
+        verify(mastery).answer(1L,"환율","beginner",true);
         verify(ai,never()).generateFeedback(any());
     }
 }

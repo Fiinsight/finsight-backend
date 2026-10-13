@@ -1,0 +1,88 @@
+package com.finsight.learning;
+
+import java.time.*;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class TermMasteryService {
+    public record Mastery(String term, double pKnown, double effectivePKnown, int attempts, Instant lastAnsweredAt, String level) {}
+    public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts) {}
+    public record BackfillCount(long concepts, long savedAnswers) {}
+    private final JdbcTemplate jdbc;
+    private Clock clock = Clock.system(ZoneId.of("Asia/Seoul"));
+    public TermMasteryService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+
+    @Transactional(readOnly = true)
+    public List<Mastery> list(Long userId) {
+        Instant now = clock.instant();
+        return jdbc.query("""
+                SELECT m.*, q.level FROM term_mastery m
+                LEFT JOIN LATERAL (SELECT level FROM learning_progress
+                    WHERE user_id=m.user_id AND term=m.term ORDER BY answered_at DESC, id DESC LIMIT 1) q ON true
+                WHERE m.user_id=? ORDER BY m.term
+                """, (rs, index) -> {
+            Instant at = rs.getTimestamp("last_answered_at") == null ? null : rs.getTimestamp("last_answered_at").toInstant();
+            long days = at == null ? 0 : ChronoUnit.DAYS.between(at.atZone(clock.getZone()).toLocalDate(), now.atZone(clock.getZone()).toLocalDate());
+            double p = rs.getDouble("p_known");
+            return new Mastery(rs.getString("term"), p, KnowledgeTracing.decay(p, days), rs.getInt("attempts"), at, rs.getString("level"));
+        }, userId);
+    }
+
+    @Transactional
+    public void answer(Long userId, String term, String level, boolean correct) {
+        jdbc.update("INSERT INTO term_mastery(user_id,term,p_known,attempts) VALUES(?,?,?,0) ON CONFLICT DO NOTHING", userId, term, KnowledgeTracing.P_INIT);
+        Double prior = jdbc.queryForObject("SELECT p_known FROM term_mastery WHERE user_id=? AND term=? FOR UPDATE", Double.class, userId, term);
+        jdbc.update("UPDATE term_mastery SET p_known=?,attempts=attempts+1,last_answered_at=? WHERE user_id=? AND term=?",
+                KnowledgeTracing.update(prior, correct, level), java.sql.Timestamp.from(clock.instant()), userId, term);
+    }
+
+    public static Overview overview(List<Mastery> rows) {
+        Comparator<Mastery> byProbability = Comparator.comparingDouble(Mastery::effectivePKnown).thenComparing(Mastery::term);
+        return new Overview(rows.stream().sorted(byProbability.reversed()).limit(3).toList(), rows.stream().sorted(byProbability).limit(3).toList(), rows.stream().mapToInt(Mastery::attempts).sum());
+    }
+
+    public static String suggestion(List<Mastery> rows, String level) {
+        if (!List.of("beginner", "normal").contains(Objects.toString(level, ""))) return null;
+        return rows.stream().filter(row -> level.equals(row.level()) && row.pKnown() >= 0.85).map(Mastery::term).distinct().count() >= 5
+                ? "beginner".equals(level) ? "normal" : "analyst" : null;
+    }
+
+    @Transactional(readOnly = true)
+    public BackfillCount backfillCount() {
+        Long concepts = jdbc.queryForObject("""
+                SELECT count(*) FROM (SELECT DISTINCT p.user_id,p.term FROM learning_progress p
+                WHERE NOT EXISTS (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)) missing
+                """, Long.class);
+        Long answers = jdbc.queryForObject("""
+                SELECT count(*) FROM learning_progress p WHERE NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
+                """, Long.class);
+        return new BackfillCount(concepts, answers);
+    }
+
+    /** Manual maintenance only. Replays saved latest answers, never overwrites an existing mastery. */
+    @Transactional
+    public int backfillMissing() {
+        record Key(Long userId, String term) {}
+        record State(double p, int attempts, Instant at) {}
+        Map<Key, State> states = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT p.* FROM learning_progress p WHERE NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
+                ORDER BY p.answered_at,p.id
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
+            var key = new Key(rs.getLong("user_id"), rs.getString("term"));
+            var prior = states.getOrDefault(key, new State(KnowledgeTracing.P_INIT, 0, null));
+            states.put(key, new State(KnowledgeTracing.update(prior.p(), rs.getBoolean("correct"), rs.getString("level")), prior.attempts() + 1, rs.getTimestamp("answered_at").toInstant()));
+        });
+        int inserted = 0;
+        for (var entry : states.entrySet()) inserted += jdbc.update("""
+                INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING
+                """, entry.getKey().userId(), entry.getKey().term(), entry.getValue().p(), entry.getValue().attempts(), java.sql.Timestamp.from(entry.getValue().at()));
+        return inserted;
+    }
+}

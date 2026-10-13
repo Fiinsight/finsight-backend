@@ -12,7 +12,7 @@ class LearningProgressServiceTest {
   var db=mock(JdbcTemplate.class);var profiles=mock(com.finsight.auth.UserProfileService.class);
   when(profiles.getOnboarding(anyLong())).thenReturn(new com.finsight.auth.UserProfileDtos.OnboardingResponse(List.of(),"beginner","short","news","뉴스 하나 읽기",null));
   var symbols=mock(com.finsight.news.collect.NewsSymbolMatcher.class); when(symbols.match(any(),any())).thenReturn("KOSPI");
-  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,symbols);
+  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,symbols, mock(TermMasteryService.class));
   var now=Instant.parse("2026-10-04T15:10:00Z"); // Monday 00:10 KST
   org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(now,ZoneId.of("Asia/Seoul")));
   var quiz=Map.<String,Object>of("news_id",115L,"correct",false,"answered_at",java.sql.Timestamp.from(now));
@@ -49,24 +49,9 @@ class LearningProgressServiceTest {
   assertTrue(readGoal.goal().achievedToday()); assertEquals(2,readGoal.goal().streakDays());
   verify(db,atLeastOnce()).queryForList(contains("JOIN news"),eq(2L),any(),any());
  }
- @Test void suggestionsRequireCurrentLevelTenQuestionsFiveTermsAndEightyPercent() {
-  var rows=new ArrayList<Map<String,Object>>();
-  for(long i=0;i<10;i++) rows.add(Map.of("news_id",i,"term","term"+(i%5),"level","beginner","correct",i<8));
-  assertEquals("normal",LearningProgressService.suggestion(rows,"beginner"));
-  assertNull(LearningProgressService.suggestion(rows,"normal"));
-  assertNull(LearningProgressService.suggestion(rows,"analyst"));
-  assertNull(LearningProgressService.suggestion(rows.subList(0,9),"beginner"));
-  rows.set(7,Map.of("news_id",7L,"term","term2","level","beginner","correct",false));
-  assertNull(LearningProgressService.suggestion(rows,"beginner"));
-  var fewTerms=new ArrayList<Map<String,Object>>();
-  for(long i=0;i<10;i++) fewTerms.add(Map.of("news_id",i,"term","term"+(i%4),"level","beginner","correct",true));
-  assertNull(LearningProgressService.suggestion(fewTerms,"beginner"));
-  var duplicate=new ArrayList<>(rows); duplicate.addAll(rows);
-  assertNull(LearningProgressService.suggestion(duplicate,"beginner"));
- }
  @Test void savedActivitiesDriveEachGoalWithoutReadPersistence() {
   var db=mock(JdbcTemplate.class); var profiles=mock(com.finsight.auth.UserProfileService.class);
-  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,new com.finsight.news.collect.NewsSymbolMatcher());
+  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,new com.finsight.news.collect.NewsSymbolMatcher(), mock(TermMasteryService.class));
   var date=LocalDate.of(2026,10,12); var now=date.atStartOfDay(ZoneId.of("Asia/Seoul")).plusHours(12).toInstant();
   org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(now,ZoneId.of("Asia/Seoul")));
   for(String type:List.of("memo","reviewJudgement","minutes5")) {
