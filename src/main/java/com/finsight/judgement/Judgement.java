@@ -43,6 +43,11 @@ public class Judgement {
 
     private String actualDirection;
 
+    @Column(length = 16)
+    private String targetSymbol;
+    public String getTargetSymbol() { return targetSymbol; }
+    public void setTargetSymbol(String symbol) { targetSymbol = symbol; }
+
     private Double actualChangePercent;
 
     @Column(columnDefinition = "TEXT")
@@ -54,7 +59,12 @@ public class Judgement {
     @Column(name = "feedback_reasons", columnDefinition = "jsonb")
     private com.fasterxml.jackson.databind.JsonNode feedbackContent;
     @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = FeedbackContentDeserializer.class)
-    public record FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip) {}
+    public record FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip,
+            String indexName, Double indexChangePercent, String conceptTerm, String conceptDefinition) {
+        public FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip) {
+            this(verdict,reasons,nextTip,null,null,null,null);
+        }
+    }
     private static final com.fasterxml.jackson.databind.ObjectMapper FEEDBACK_JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(Judgement.class);
     @jakarta.persistence.Transient private boolean feedbackParsed;

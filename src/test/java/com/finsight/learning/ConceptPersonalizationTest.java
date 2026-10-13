@@ -98,4 +98,13 @@ class ConceptPersonalizationTest {
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.5,3,true),known("환율",.499,3,true),known("매출",.9,8,false)));
         assertEquals(List.of("환율","매출"),learning.reviews(1L).stream().map(LearningService.Review::term).toList());
     }
+    @org.junit.jupiter.api.Test void feedbackChoosesLowestMasteryConceptAndNeverATopic() {
+        var dictionary=org.mockito.Mockito.mock(com.finsight.term.TermRepository.class);
+        org.mockito.Mockito.when(dictionary.findAll()).thenReturn(java.util.List.of(new com.finsight.term.Term("금리","돈을 빌리는 비용"),new com.finsight.term.Term("환율","통화 교환 비율"),new com.finsight.term.Term("물가","상품의 평균 가격"),new com.finsight.term.Term("반도체","산업 주제"),new com.finsight.term.Term("매출","판매 금액")));
+        var mastery=org.mockito.Mockito.mock(TermMasteryService.class);
+        org.mockito.Mockito.when(mastery.list(1L)).thenReturn(java.util.List.of(new TermMasteryService.Mastery("금리",.2,.2,3,java.time.Instant.now(),"beginner",false),new TermMasteryService.Mastery("환율",.9,.9,5,java.time.Instant.now(),"beginner",true)));
+        var article=org.mockito.Mockito.spy(new com.finsight.news.News("금리·환율과 반도체 매출","https://example.test","test",java.time.Instant.now(),"금리와 환율이 달라졌다. 매출은 증가했다."));org.mockito.Mockito.when(article.getId()).thenReturn(1L);
+        var service=new LearningService(null,null,dictionary,null,null,null,new com.finsight.news.collect.ArticleContentExtractor(),mastery,null);
+        org.assertj.core.api.Assertions.assertThat(service.feedbackConcept(1L,article,"beginner").term()).isEqualTo("금리");
+    }
 }

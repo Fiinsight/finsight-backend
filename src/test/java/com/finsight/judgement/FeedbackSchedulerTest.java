@@ -20,12 +20,14 @@ class FeedbackSchedulerTest {
     private final FeedbackScheduler scheduler = new FeedbackScheduler(records, candles, ai);
     @org.junit.jupiter.api.BeforeEach void clock() {
         when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
+        when(candles.getClosingCandles(eq("KOSPI"),any(),any())).thenAnswer(inv -> new KisDailyCandleResult(List.of(bar(inv.getArgument(1).toString(),100),bar(inv.getArgument(2).toString(),100.2)),false));
         org.springframework.test.util.ReflectionTestUtils.setField(scheduler, "clock", Clock.fixed(Instant.parse("2026-10-06T07:00:00Z"), ZoneId.of("Asia/Seoul")));
     }
     private Judgement pending(String symbol, String date) {
         var news = spy(new News("학습용 기사", "https://example.invalid/qa", "SYNTHETIC_QA", Instant.now(), "QA"));
         when(news.getId()).thenReturn(115L); news.setRelatedSymbol(symbol);
         var item = spy(new Judgement(mock(User.class), news, JudgementChoice.UP, "근거"));
+        item.setTargetSymbol(symbol);
         when(item.getCreatedAt()).thenReturn(Instant.parse(date + "T01:00:00Z"));
         when(records.findPendingByOwner(eq(1L), any())).thenReturn(List.of(item));
         return item;
@@ -35,8 +37,8 @@ class FeedbackSchedulerTest {
         var past = pending(null, "2026-09-28");
         var future = pending("005930", "2026-10-06");
         when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of(past, future));
-        scheduler.onApplicationReady();
-        verify(records, timeout(2000)).finalizeOutcome(eq(past.getId()), any(), eq("UNKNOWN"), any(), any(), any(), any(), any(), any(), any(), any());
+        scheduler.generatePendingFeedback();
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
         verifyNoInteractions(candles);
     }
     @Test void backlogUsesExactHistoricalClosesAndStoresThemOnce() {
@@ -84,9 +86,9 @@ class FeedbackSchedulerTest {
     }
     @Test void noSymbolIsNotAnIncorrectResult() {
         var item = pending(null,"2026-10-02");
-        assertThat(scheduler.runNow(1L)).isEqualTo(1);
-        assertThat(item.getFeedbackText()).isEqualTo("관련 종목이 없어 결과를 비교하지 않았어요");
-        assertThat(item.getActualDirection()).isEqualTo("UNKNOWN"); verifyNoInteractions(candles, ai);
+        assertThat(scheduler.runNow(1L)).isZero();
+        assertThat(item.getFeedbackText()).isNull();
+        assertThat(item.getActualDirection()).isNull(); verifyNoInteractions(candles, ai);
     }
     @Test void indexAlsoUsesHistoricalIndexCloses() {
         var item = pending("KOSDAQ","2026-09-28");
@@ -110,14 +112,30 @@ class FeedbackSchedulerTest {
     @Test void structuredAiReasonsAreSavedInTheSameConditionalUpdate() {
         var item = pending("005930", "2026-10-02");
         when(candles.getClosingCandles(any(), any(), any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",101.2)), false));
-        var reasons = List.of(new AiFeedbackResponse.Reason("기사 근거", "기사에 나온 사실이에요."),new AiFeedbackResponse.Reason("실제 시장", "종가는 +1.20% 움직였어요."));
-        when(ai.generateFeedback(any())).thenReturn(Optional.of(new AiFeedbackResponse("CORRECT", "정확한 판단이에요!", "삼성전자 종가 기준 +1.20%.", reasons, "같은 기준을 확인해요.")));
+        when(ai.generateFeedback(any())).thenAnswer(inv -> Optional.of(JudgementFeedbackRules.generate(inv.getArgument(0))));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
         var content = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
-        verify(records).finalizeOutcome(any(),any(),any(),any(),eq("삼성전자 종가 기준 +1.20%."),any(),any(),any(),any(),eq("정확한 판단이에요!"),content.capture());
-        assertThat(content.getValue().path("reasons").size()).isEqualTo(reasons.size());
-        assertThat(content.getValue().path("nextTip").asText()).isEqualTo("같은 기준을 확인해요.");
+        verify(records).finalizeOutcome(any(),any(),any(),any(),contains("삼성전자 2026-10-06 종가 기준 +1.20%."),any(),any(),any(),any(),eq("정확한 판단이에요!"),content.capture());
+        assertThat(content.getValue().path("reasons").size()).isEqualTo(3);
+        assertThat(content.getValue().path("indexName").asText()).isEqualTo("코스피");
+        assertThat(content.getValue().path("nextTip").asText()).isNotBlank();
         assertThat(Judgement.feedbackJson(item.getFeedbackContent())).isEqualTo(content.getValue());
+    }
+    @Test void existingRangeCachesAvoidAllNewKisCalls() {
+        var item = pending("005930","2026-10-02");
+        var cache = new org.springframework.cache.concurrent.ConcurrentMapCache("kisDailyCandles");
+        cache.put("005930:120:D",new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",96)),false));
+        cache.put("KOSPI:120:D",new KisDailyCandleResult(List.of(bar("2026-10-02",1000),bar("2026-10-06",963)),false));
+        var manager = mock(org.springframework.cache.CacheManager.class);when(manager.getCache("kisDailyCandles")).thenReturn(cache);
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"cacheManager",manager);
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);verifyNoInteractions(candles);
+        assertThat(item.getFeedbackContent().indexChangePercent()).isCloseTo(-3.7,org.assertj.core.data.Offset.offset(.000001));
+    }
+    @Test void missingBenchmarkKeepsStockJudgementPending() {
+        pending("005930","2026-10-02");
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",96)),false));
+        when(candles.getClosingCandles(eq("KOSPI"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(),true));
+        assertThat(scheduler.runNow(1L)).isZero();verifyNoInteractions(ai);
     }
     @Test void noReasonNeverPraisesAndSmallAlignedResultIsPartial() {
         var item = pending("005930", "2026-10-02");

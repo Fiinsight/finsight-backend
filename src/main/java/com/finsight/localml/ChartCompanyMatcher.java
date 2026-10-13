@@ -56,7 +56,9 @@ public final class ChartCompanyMatcher {
         Company alias = COMPANIES.get(symbol);
         if (alias != null) return alias;
         var stock = com.finsight.stock.StockCatalog.entries().get(symbol);
-        return stock == null ? null : company(stock.name().matches("[A-Za-z]+") ? "(?<![A-Za-z])" + Pattern.quote(stock.name()) + "(?![A-Za-z가-힣])" : Pattern.quote(stock.name()), stock.name()); }
+        if (stock == null) return null;
+        var aliases = com.finsight.stock.StockCatalog.aliases(symbol);
+        return company(aliases.stream().map(Pattern::quote).collect(java.util.stream.Collectors.joining("|")), aliases.toArray(String[]::new)); }
     public static String cleanBody(String body) {
         if (body == null) return "";
         int end=body.length();

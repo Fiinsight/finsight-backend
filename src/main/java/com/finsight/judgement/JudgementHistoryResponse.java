@@ -17,6 +17,7 @@ public record JudgementHistoryResponse(
         java.math.BigDecimal judgementClose,
         java.math.BigDecimal comparisonClose,
         String headline, String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip,
-        String relatedSymbol, String relatedSymbolName, java.time.LocalDate expectedResultDate, Instant expectedResultAt
+        String relatedSymbol, String relatedSymbolName, java.time.LocalDate expectedResultDate, Instant expectedResultAt,
+        String indexName, Double indexChangePercent, String conceptTerm, String conceptDefinition, String unavailableReason
 ) {
 }

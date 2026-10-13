@@ -438,3 +438,13 @@ Move fields and point docent refer to the same highest-ranked article. whatHappe
 Quizzes and mastery updates accept CONCEPT; MARKET is allowed only for beginner questions. TOPIC remains available to article underlines and term explanation but is excluded from quizzes, mastery queries, reviews and daily terms. No eligible question => lesson.question=null; frontend explains “이 기사는 퀴즈로 낼 개념이 없어요”. Historical TOPIC mastery is retained and excluded by read queries.
 
 strongest: effectivePKnown >=0.8 and attempts >=3, highest first, at most3. weakest: effectivePKnown <0.5 or lastCorrect=false, lowest first, at most3. Latest wrong takes precedence to keep groups disjoint. learningCount counts the remaining concepts before either display limit. Empty groups remain empty. `/learning/reviews` uses the same <0.5-or-last-wrong criterion, sorted ascending and at most10. `lastCorrect` is null if no saved answer exists. BKT updates, forgetting weight and level promotion thresholds are unchanged.
+
+## 판단 대상·학습 피드백 (2026-10-13)
+
+- `GET /api/news/{id}`: `judgementTarget: {symbol: string|null, name: string|null, unavailableReason: string|null}`. 새 판단은 strict StockCatalog 별칭 매칭된 종목 우선, 국내 경제 기사 중 코스닥만 언급하면 KOSDAQ, 그 외 KOSPI. 해외만 다룬 기사·부고·인사·내용 없는 비경제 기사는 symbol=null. 대상 없음에는 POST 판단 400. 저장된 뉴스 매핑은 변경하지 않음.
+- V15 nullable `judgement.target_symbol varchar(16)`은 새 판단/사용자가 수정한 미확정 판단에만 저장. 기존 행은 null 보존하고 스케줄러가 자동 재채점하지 않음.
+- history/history/page/detail: `relatedSymbol/relatedSymbolName`은 저장된 판단 대상을 우선. `indexName`, `indexChangePercent`, `conceptTerm`, `conceptDefinition`, `unavailableReason` nullable 추가. 구형 피드백/배열은 기존 읽기 호환을 유지.
+- 피드백 JSON 객체는 verdict/reasons/nextTip에 같은 비교 구간 indexName/indexChangePercent, CONCEPT term/definition을 추가. target과 index 차이 절댓값 <1%p이면 MARKET, 그 이상 INDIVIDUAL 가능성. 시장 비교 숫자는 같은 baseline→comparison 구간만 사용.
+- KIS 기존 kisDailyCandles cache(기간/close entry)를 먼저 재사용; 없을 때만 기존 closing-range client 사용. TTL·상한 유지. 종목은 지수 종가도 확보된 뒤 확정; 시세 누락은 대기.
+- `POST /ai/feedback/judgement`에 concept_term/concept_definition/judgement_id 추가. response conceptTerm/conceptDefinition/mode(RULE|LLM) 추가. 근거 없음에는 칭찬 금지, 호재/악재는 기사 표현 신호로만 사용하고 인과관계 단정 금지.
+- `python3 scripts/regrade_judgements.py --dry-run`: 읽기 전용 SELECT + 오프라인 Java resolver/calendar/rules. Spring·수집·시세/AI 호출 없음. 기존 저장된 유효 종가만 사용하며 부족하면 NO_SAVED_CLOSES. --apply는 제공하지 않음; 실행 승인 전 기존 판단을 변경하지 않음.

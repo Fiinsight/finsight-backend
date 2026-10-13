@@ -13,7 +13,7 @@ class JudgementResultTimingTest {
         assertThat(JudgementService.expectedResultAt(kst("2027-01-01"))).isNull(); // Unverified calendar never invents a holiday result.
     }
     @Test void acknowledgementIncludesTimingForBothCreateAndRevision() {
-        var owner=mock(com.finsight.auth.User.class);var news=mock(com.finsight.news.News.class);when(news.getId()).thenReturn(1L);
+        var owner=mock(com.finsight.auth.User.class);var news=mock(com.finsight.news.News.class);when(news.getTitle()).thenReturn("삼성전자 실적 발표");when(news.getRawContent()).thenReturn("삼성전자 매출이 증가했다. 영업이익이 늘었다.");when(news.getId()).thenReturn(1L);
         var articles=mock(com.finsight.news.NewsRepository.class);when(articles.findById(1L)).thenReturn(java.util.Optional.of(news));
         var rows=mock(JudgementRepository.class);when(rows.findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(owner,1L)).thenReturn(java.util.Optional.empty());
         when(rows.save(any())).thenAnswer(call->{var row=call.<Judgement>getArgument(0);org.springframework.test.util.ReflectionTestUtils.setField(row,"id",10L);org.springframework.test.util.ReflectionTestUtils.setField(row,"createdAt",kst("2026-10-16"));return row;});

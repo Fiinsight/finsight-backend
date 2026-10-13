@@ -23,7 +23,8 @@ public record NewsDetailResponse(
         String relatedSymbol,
         SentimentHint sentimentHint,
         String category,
-        List<String> keyTerms
+        List<String> keyTerms,
+        com.finsight.judgement.JudgementTargetResolver.Target judgementTarget
 ) {
     public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
                                           ArticleContentExtractor contentExtractor) {
@@ -50,7 +51,8 @@ public record NewsDetailResponse(
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle(), rawContent),
-                unavailable ? List.of() : news.getKeyTerms()
+                unavailable ? List.of() : news.getKeyTerms(),
+                com.finsight.judgement.JudgementTargetResolver.resolve(news)
         );
     }
 
