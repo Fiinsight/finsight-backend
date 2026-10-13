@@ -91,7 +91,7 @@ public class ArticleContentExtractor {
         if (!StringUtils.hasText(body)) {
             return "";
         }
-        body = body.replaceAll("(?s)\\[[^\\]]{0,500}(?:자료사진|사진 제공|재판매|DB 금지)[^\\]]{0,500}\\]", " ")
+        body = stripPhotoNoise(body).replaceAll("(?s)\\[[^\\]]{0,500}(?:자료사진|사진 제공|재판매|DB 금지)[^\\]]{0,500}\\]", " ")
                 .replaceFirst("(?s)^.{0,700}?(?:사진|딜링룸|촬영).{0,500}?20\\d{2}\\.\\d{1,2}\\.\\d{1,2}\\s+[\\w.+-]+@[\\w.-]+\\s*", "")
                 .replaceAll("\\([^()\\n]{1,40}=연합뉴스\\)\\s*[가-힣·]{2,12}\\s*기자\\s*=\\s*", "")
                 .replaceAll("사진\\s*=\\s*(?:AFP|AP|EPA|로이터|연합뉴스)(?:/[^\\s]+)?\\s*", "")
@@ -116,6 +116,44 @@ public class ArticleContentExtractor {
             cleaned.add(item);
         }
         return String.join("\n\n", cleaned).trim();
+    }
+
+    public static String stripPhotoNoise(String text) {
+        if (text == null || text.isBlank()) return text;
+        String notice = "^(?:사진은\\s*기사(?:\\s*내용)?(?:와|과)\\s*(?:관련\\s*없|무관)|이미지는\\s*기사(?:\\s*내용)?(?:와|과)\\s*관련\\s*없|자료사진|일러스트\\s*=|그래픽\\s*=)";
+        String credit = "^사진\\s*=\\s*(?:.{1,60}?(?:생성\\s*이미지|제공)|게티이미지뱅크|[^\\s]+)\\s*";
+        List<String> kept = new ArrayList<>();
+        boolean changed = false;
+        for (String part : text.split("(?<=[.!?。！？])(?!\\d)\\s*|\\n+")) {
+            String item = part.strip();
+            if (java.util.regex.Pattern.compile(notice).matcher(item).find()) { changed = true; continue; }
+            String plain = item.replaceFirst(credit, "");
+            changed |= !plain.equals(item);
+            if (!plain.isBlank()) kept.add(plain);
+        }
+        return changed ? String.join("\n\n", kept).strip() : text;
+    }
+
+    public String eventLead(String title, String body, java.time.LocalDate day, double change) {
+        List<String> safe = new ArrayList<>();
+        for (String sentence : clean(title, body).split("(?<=[.!?。！？])(?!\\d)\\s*|\\n+")) {
+            if (sentence.matches("(?s).*(사진\\s*=|\\(사진\\)|제공).*")) continue;
+            if (sentence.matches("(?s).*(지난해|작년|\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일).*열린.*")
+                    && sentence.matches("(?s).*(되고|하고)\\s*있(?:다|어요).*")) continue;
+            var dates = java.util.regex.Pattern.compile("(20\\d{2})[./년-]\\s*(\\d{1,2})[./월-]\\s*(\\d{1,2})").matcher(sentence);
+            boolean old = false;
+            while (dates.find()) {
+                try {
+                    var date = java.time.LocalDate.of(Integer.parseInt(dates.group(1)), Integer.parseInt(dates.group(2)), Integer.parseInt(dates.group(3)));
+                    old |= Math.abs(java.time.temporal.ChronoUnit.DAYS.between(day, date)) >= 365;
+                } catch (java.time.DateTimeException ignored) { }
+            }
+            if (!old && !sentence.isBlank()) safe.add(sentence);
+        }
+        String direction = change < 0 ? "급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려" : "급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜";
+        for (String sentence : safe) if (java.util.regex.Pattern.compile(direction).matcher(sentence).find()) return sentence;
+        for (String sentence : safe) if (sentence.matches("(?s).*\\d.*")) return sentence;
+        return safe.isEmpty() ? title : safe.getFirst();
     }
 
     private String cutKnownPageChrome(String body) {

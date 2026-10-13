@@ -128,8 +128,8 @@ public class ChartService {
         } else {
             LocalDate startDate = candleViews.get(0).date();
             LocalDate endDate = candleViews.get(candleViews.size() - 1).date();
-            Instant start = com.finsight.judgement.KoreanTradingCalendar.previous(startDate).atTime(15, 30).atZone(KST).toInstant();
-            Instant end = endDate.plusDays(1).atStartOfDay(KST).toInstant();
+            Instant start = startDate.atStartOfDay(KST).toInstant();
+            Instant end = endDate.plusDays(1).atTime(9, 0).atZone(KST).toInstant();
 
             matchedNews = deduplicateRelatedNews(findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
@@ -177,12 +177,12 @@ public class ChartService {
             var day = current.date();
             var monday = day.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
             Instant from = "W".equals(period) ? monday.atStartOfDay(KST).toInstant()
-                : com.finsight.judgement.KoreanTradingCalendar.previous(day).atTime(15, 30).atZone(KST).toInstant();
+                : day.atStartOfDay(KST).toInstant();
             Instant to = "W".equals(period) ? monday.plusDays(7).atStartOfDay(KST).toInstant()
-                : day.atTime(15, 30).atZone(KST).toInstant();
-            List<News> candidates = candidateNews(symbol, relatedNews, from, to);
+                : day.plusDays(1).atTime(9, 0).atZone(KST).toInstant();
+            List<News> candidates = candidateNews(symbol, relatedNews, from, to, change);
             Optional<News> news = candidates.stream().findFirst();
-            double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
+            double causeScore = news.map(item -> (double) representativeScore(symbol, item, change)).orElse(0.0);
             var docent = ChartDocentService.rule(docentRequest(symbol, current.date().atStartOfDay(), change, period, candidates, "normal"));
             String explanation = news.isEmpty() && collectionStart != null && to.atZone(KST).toLocalDate().isBefore(collectionStart.atZone(KST).toLocalDate())
                     ? "뉴스 수집(" + collectionStart.atZone(KST).format(java.time.format.DateTimeFormatter.ofPattern("M/d")) + ") 이전 구간이에요" : docent.possibleReason();
@@ -238,7 +238,7 @@ public class ChartService {
                 com.finsight.judgement.KoreanTradingCalendar.previous(currentDate).atTime(15, 30).atZone(KST).toInstant(),
                 current.timestamp().atZone(KST).toInstant());
             Optional<News> news = candidates.stream().findFirst();
-            double causeScore = news.map(item -> causeScore(item, change)).orElse(0.0);
+            double causeScore = news.map(item -> (double) representativeScore(symbol, item, change)).orElse(0.0);
             var docent = ChartDocentService.rule(docentRequest(symbol, current.timestamp(), change, "MINUTE", candidates, "normal"));
             String explanation = docent.possibleReason();
             insights.add(new ChartResponse.MoveInsightView(
@@ -272,7 +272,8 @@ public class ChartService {
         }
         var news=candidates.stream().limit(3).map(item -> {
             String body=articleContentExtractor.clean(item.getTitle(),item.getRawContent());
-            String summary=docentSummary(body);
+            String lead=articleContentExtractor.eventLead(item.getTitle(),body,at.toLocalDate(),change);
+            String summary=docentSummary(lead+"\n\n"+body.replace(lead,""));
             return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relevanceRank(symbol,item)>1?"DIRECT":"MARKET",item.getSource(),item.getSentimentHint()==null?null:item.getSentimentHint().name(),item.getSentimentConfidence());
         }).toList();
         return new com.finsight.external.AiDocentRequest(symbol,com.finsight.stock.StockCatalog.name(symbol),at.toString().length()==16?at.toString()+":00":at.toString(),change,period,news,level,index,indexChange);
@@ -310,10 +311,17 @@ public class ChartService {
     }
     public ChartResponse withDocents(ChartResponse chart,String level) {
         if (docentService==null) return chart;
-        var moves=chart.moveInsights().stream().map(move -> {
+        var sourceMoves=chart.moveInsights();
+        if (("D".equals(chart.period()) || "W".equals(chart.period())) && !chart.candles().isEmpty() && !chart.fallback()) {
+            var from=chart.candles().getFirst().date().atStartOfDay(KST).toInstant();
+            var to=chart.candles().getLast().date().plusDays(1).atTime(9,0).atZone(KST).toInstant();
+            // Rescore cached candles with DB news; do not invalidate or refetch market prices.
+            sourceMoves=findDailyMoveInsights(chart.symbol(),chart.candles(),findRelatedNews(chart.symbol(),from,to),chart.period());
+        }
+        var moves=sourceMoves.stream().map(move -> {
             var articles=move.candidateNews().stream().map(marker -> newsRepository.findById(marker.newsId()).orElse(null)).filter(java.util.Objects::nonNull).toList();
             var docent=docentService.get(docentRequest(chart.symbol(),move.timestamp(),move.changePercent(),chart.period(),articles,level));
-            return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),move.newsId(),move.newsTitle(),move.newsSource(),docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
+            return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),docent.newsId(),docent.newsTitle(),docent.source(),docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
         }).toList();
         return new ChartResponse(chart.symbol(),chart.price(),chart.changePercent(),chart.candles(),chart.newsMarkers(),chart.relatedNews(),largestDocent(moves),chart.period(),chart.intervalMinutes(),chart.minuteCandles(),chart.fallback(),moves);
     }
@@ -364,20 +372,20 @@ public class ChartService {
         var title=ChartDocentService.titleSentiment(news.getTitle());
         return news.getSentimentHint()==null || news.getSentimentHint()==SentimentHint.NEUTRAL ? (title==null?SentimentHint.NEUTRAL:title) : news.getSentimentHint();
     }
-    private double causeScore(News news, double changePercent) {
-        SentimentHint sentiment = effectiveSentiment(news);
-        if (sentiment == null) {
-            return 0.0;
-        }
-        boolean marketNews = news.getRelatedSymbol() != null && news.getRelatedSymbol().startsWith("KOS");
-        boolean directionMatches = (changePercent > 0 && sentiment == SentimentHint.POSITIVE)
-                || (changePercent < 0 && sentiment == SentimentHint.NEGATIVE);
-        if (directionMatches) {
-            return marketNews ? 0.6 : 0.8;
-        }
-        return sentiment == SentimentHint.NEUTRAL
-                ? (marketNews ? 0.3 : 0.4)
-                : 0.1;
+    static int representativeScore(String symbol, News news, double change) {
+        String title=java.util.Objects.toString(news.getTitle(),"");
+        String lead=new ArticleContentExtractor().clean(title,news.getRawContent());
+        lead=lead.substring(0,Math.min(400,lead.length()));
+        String down="급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려";
+        String up="급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜";
+        boolean same=change!=0 && java.util.regex.Pattern.compile(change<0?down:up).matcher(title).find();
+        boolean opposite=change!=0 && java.util.regex.Pattern.compile(change<0?up:down).matcher(title).find();
+        int score=same?3:opposite?-2:0;
+        if (com.finsight.stock.StockCatalog.aliases(symbol).stream().anyMatch(title::contains)) score+=2;
+        if ((title+" "+lead).matches("(?s).*(코스피|코스닥).*(%|포인트).*")) score++;
+        if (java.util.regex.Pattern.compile("채용|면접|전시회|박람회|설명회|시상|기부|MOU|인사|산업대전|반도체 대전",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(title).find()) score-=3;
+        if (title.matches("^(?:[가-힣]{1,8}(?:시|도|군)(?=[ ,·])|(?:교육|고용노동|기획재정|재정경제|농식품|농림축산식품|산업통상자원|국토교통|환경|보건복지|과학기술정보통신)부|금융위|한은).*")) score-=2;
+        return score;
     }
 
 
@@ -426,7 +434,7 @@ public class ChartService {
         String lead = raw.substring(0, Math.min(300, raw.length()));
         String name = com.finsight.stock.StockCatalog.name(symbol);
         if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol) || lead.contains(symbol)
-                || !name.equals(symbol) && (title.contains(name) || lead.contains(name))) return 3;
+                || !name.equals(symbol) && com.finsight.stock.StockCatalog.aliases(symbol).stream().anyMatch(alias -> title.contains(alias) || lead.contains(alias))) return 3;
         String market = com.finsight.stock.StockCatalog.market(symbol);
         String index = "KOSDAQ".equals(market) ? "코스닥" : "KOSPI".equals(market) ? "코스피" : null;
         String other = "코스피".equals(index) ? "코스닥" : "코스피";
@@ -435,11 +443,15 @@ public class ChartService {
     }
 
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to) {
+        return candidateNews(symbol,news,from,to,0);
+    }
+    static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to, double change) {
         return news.stream().filter(item -> item.getPublishedAt() != null
-                && !item.getPublishedAt().isBefore(from) && !item.getPublishedAt().isAfter(to)
-                && relevanceRank(symbol, item) > 0)
-            .sorted(Comparator.comparingInt((News item) -> relevanceRank(symbol, item)).reversed()
-                .thenComparing(News::getPublishedAt, Comparator.reverseOrder()))
+                && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to)
+                && relevanceRank(symbol, item) > 0 && representativeScore(symbol,item,change)>=1)
+            .sorted(Comparator.comparingInt((News item) -> representativeScore(symbol,item,change)).reversed()
+                .thenComparing(Comparator.comparingInt((News item) -> relevanceRank(symbol,item)).reversed())
+                .thenComparing(News::getId,Comparator.nullsLast(Comparator.naturalOrder())))
             .limit(3).toList();
     }
 }
