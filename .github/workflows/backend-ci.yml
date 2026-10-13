@@ -20,3 +20,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Run backend tests (no external credentials required)
         run: ./gradlew test --no-daemon
+
+  prod-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: finsight_migration_ci
+          POSTGRES_USER: finsight_migration_ci
+          POSTGRES_PASSWORD: migration-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finsight_migration_ci -d finsight_migration_ci"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Migrate empty PostgreSQL and boot prod with ddl-auto validate
+        env:
+          FINSIGHT_MIGRATION_TEST: 'true'
+        run: ./gradlew test --tests com.finsight.ProdMigrationStartupTest --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: prod-migration-test-report
+          path: build/reports/tests/test
