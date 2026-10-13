@@ -203,7 +203,7 @@ The final user instruction is to **keep the schema unchanged**: no learning_atte
 
 Optional progress query `readDays=2026-10-11,2026-10-12&reviewDays=2026-10-12` supplies this signed-in device's local reading/detail-open dates. Each list has at most366 ISO dates and4025 characters; malformed input returns400, future dates are ignored, duplicates count once. They are used only in the response and are **not persisted**. Missing readDays means read1 cannot be confirmed; missing reviewDays still permits server judgement creations. Local dates do not affect grading or reward/payment. Device changes can change local-only results; server reading synchronization is proposal-only.
 
-`GET /api/learning/terms/today` (authenticated) returns up to3 `{term,definition}` entries selected from the latest3 stored articles' dictionary terms, supplemented from the local dictionary if needed. No external API/LLM call. The terms pain point displays these at the top of Learn.
+`GET /api/learning/terms/today` (authenticated) returns up to 3 `{term,definition,newsId,title,reason}` entries for the authenticated user. Candidates are CONCEPT terms from the same BriefingService core 3 articles as home; if fewer than 3 eligible terms remain, expand to the last 24 hours of articles. Prioritize last-wrong/effective probability <0.5, then unseen, then learning concepts. Exclude effective probability >=0.8 with >=3 attempts (last-wrong takes precedence). Reasons: 지난번에 틀린 개념 / 처음 보는 개념 / 익히는 중인 개념. No unrelated dictionary filler or external API/LLM call. The terms pain point remains the display condition, with definition and source-article navigation.
 
 ## News selection and empty-body handling
 
@@ -407,7 +407,7 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 
 ## ML1 · BKT 숙련도
 
-`GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level}`이며 각 목록은 최대 3개입니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
+`GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts, learningCount}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level,lastCorrect}`이며 각 목록은 최대 3개입니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
 
 POST 답변은 실제 채점 수준으로 term_mastery를 같은 트랜잭션에서 갱신합니다. 복습은 용어별 최근 기사 하나를 망각 가중 확률 오름차순으로 반환합니다. levelSuggestion은 현재 수준의 서로 다른 용어 5개에서 pKnown≥0.85일 때 다음 수준을 제안하며 자동 변경하지 않습니다. 백필은 자동 실행하지 않습니다. 상세 모델·대상 건수: `docs/ml-personalization.md`.
 
@@ -430,3 +430,11 @@ AI POST `/ai/news/recommendations`: `{behaviors:[{news_id,weight}],candidate_ids
 Daily candidate news are within [trade date 00:00, next day 09:00) KST. StockCatalog aliases (삼전, 닉스, 하닉) join company and same-market-index candidates. Direction +3, headline company +2, headline/lead index movement +1, event −3, institution subject −2, opposite-only −2; scores below1 produce relation NONE. Ties use relevance then stable ID, not publication time. causeScore is this additive relevance score.
 
 Move fields and point docent refer to the same highest-ranked article. whatHappened excludes photo notices, credits, old event captions and dates ≥365days away, preferring direction/numeric statements. MARKET reasons include index percent only from the existing candle cache. Docent keys use news-direction-v2 without invalidating quote/candle caches. Cached candles are rescored from DB news without another market client call.
+
+## Concept learning criteria (V14)
+
+`term.kind`: CONCEPT (default), TOPIC (반도체/AI/HBM/투자/수출/수입/원화), MARKET (코스피/코스닥/원달러). V14 adds the column idempotently and initializes only its classification metadata. Existing news, judgement, learning_progress and term_mastery values are preserved. New TermSeeder inserts carry the same classification.
+
+Quizzes and mastery updates accept CONCEPT; MARKET is allowed only for beginner questions. TOPIC remains available to article underlines and term explanation but is excluded from quizzes, mastery queries, reviews and daily terms. No eligible question => lesson.question=null; frontend explains “이 기사는 퀴즈로 낼 개념이 없어요”. Historical TOPIC mastery is retained and excluded by read queries.
+
+strongest: effectivePKnown >=0.8 and attempts >=3, highest first, at most3. weakest: effectivePKnown <0.5 or lastCorrect=false, lowest first, at most3. Latest wrong takes precedence to keep groups disjoint. learningCount counts the remaining concepts before either display limit. Empty groups remain empty. `/learning/reviews` uses the same <0.5-or-last-wrong criterion, sorted ascending and at most10. `lastCorrect` is null if no saved answer exists. BKT updates, forgetting weight and level promotion thresholds are unchanged.

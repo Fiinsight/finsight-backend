@@ -9,8 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TermMasteryService {
-    public record Mastery(String term, double pKnown, double effectivePKnown, int attempts, Instant lastAnsweredAt, String level) {}
-    public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts) {}
+    public static final double WELL_KNOWN_THRESHOLD = 0.8;
+    public static final int WELL_KNOWN_MIN_ATTEMPTS = 3;
+    public static final double REVIEW_THRESHOLD = 0.5;
+    public record Mastery(String term, double pKnown, double effectivePKnown, int attempts, Instant lastAnsweredAt, String level, Boolean lastCorrect) {
+        public Mastery(String term, double pKnown, double effectivePKnown, int attempts, Instant lastAnsweredAt, String level) {
+            this(term, pKnown, effectivePKnown, attempts, lastAnsweredAt, level, null);
+        }
+    }
+    public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts, int learningCount) {}
     public record BackfillCount(long concepts, long savedAnswers) {}
     private final JdbcTemplate jdbc;
     private Clock clock = Clock.system(ZoneId.of("Asia/Seoul"));
@@ -20,20 +27,23 @@ public class TermMasteryService {
     public List<Mastery> list(Long userId) {
         Instant now = clock.instant();
         return jdbc.query("""
-                SELECT m.*, q.level FROM term_mastery m
-                LEFT JOIN LATERAL (SELECT level FROM learning_progress
+                SELECT m.*, q.level, q.correct FROM term_mastery m
+                JOIN term t ON t.term=m.term
+                LEFT JOIN LATERAL (SELECT level,correct FROM learning_progress
                     WHERE user_id=m.user_id AND term=m.term ORDER BY answered_at DESC, id DESC LIMIT 1) q ON true
-                WHERE m.user_id=? ORDER BY m.term
+                WHERE m.user_id=? AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND q.level='beginner')) ORDER BY m.term
                 """, (rs, index) -> {
             Instant at = rs.getTimestamp("last_answered_at") == null ? null : rs.getTimestamp("last_answered_at").toInstant();
             long days = at == null ? 0 : ChronoUnit.DAYS.between(at.atZone(clock.getZone()).toLocalDate(), now.atZone(clock.getZone()).toLocalDate());
             double p = rs.getDouble("p_known");
-            return new Mastery(rs.getString("term"), p, KnowledgeTracing.decay(p, days), rs.getInt("attempts"), at, rs.getString("level"));
+            return new Mastery(rs.getString("term"), p, KnowledgeTracing.decay(p, days), rs.getInt("attempts"), at, rs.getString("level"), rs.getObject("correct", Boolean.class));
         }, userId);
     }
 
     @Transactional
     public void answer(Long userId, String term, String level, boolean correct) {
+        Integer eligible = jdbc.queryForObject("SELECT count(*) FROM term WHERE term=? AND (kind='CONCEPT' OR (kind='MARKET' AND ?='beginner'))", Integer.class, term, level);
+        if (eligible == null || eligible == 0) return;
         jdbc.update("INSERT INTO term_mastery(user_id,term,p_known,attempts) VALUES(?,?,?,0) ON CONFLICT DO NOTHING", userId, term, KnowledgeTracing.P_INIT);
         Double prior = jdbc.queryForObject("SELECT p_known FROM term_mastery WHERE user_id=? AND term=? FOR UPDATE", Double.class, userId, term);
         jdbc.update("UPDATE term_mastery SET p_known=?,attempts=attempts+1,last_answered_at=? WHERE user_id=? AND term=?",
@@ -42,7 +52,20 @@ public class TermMasteryService {
 
     public static Overview overview(List<Mastery> rows) {
         Comparator<Mastery> byProbability = Comparator.comparingDouble(Mastery::effectivePKnown).thenComparing(Mastery::term);
-        return new Overview(rows.stream().sorted(byProbability.reversed()).limit(3).toList(), rows.stream().sorted(byProbability).limit(3).toList(), rows.stream().mapToInt(Mastery::attempts).sum());
+        return new Overview(rows.stream().filter(TermMasteryService::wellKnown).sorted(byProbability.reversed()).limit(3).toList(),
+                rows.stream().filter(row -> needsReview(row.effectivePKnown(), row.lastCorrect())).sorted(byProbability).limit(3).toList(),
+                rows.stream().mapToInt(Mastery::attempts).sum(),
+                (int) rows.stream().filter(row -> !wellKnown(row) && !needsReview(row.effectivePKnown(), row.lastCorrect())).count());
+    }
+
+    public static boolean needsReview(double probability, Boolean lastCorrect) {
+        return probability < REVIEW_THRESHOLD || Boolean.FALSE.equals(lastCorrect);
+    }
+
+    public static boolean wellKnown(Mastery row) {
+        // A recent wrong answer takes precedence so the same concept cannot occupy both groups.
+        return row.effectivePKnown() >= WELL_KNOWN_THRESHOLD && row.attempts() >= WELL_KNOWN_MIN_ATTEMPTS
+                && !Boolean.FALSE.equals(row.lastCorrect());
     }
 
     public static String suggestion(List<Mastery> rows, String level) {
@@ -55,10 +78,13 @@ public class TermMasteryService {
     public BackfillCount backfillCount() {
         Long concepts = jdbc.queryForObject("""
                 SELECT count(*) FROM (SELECT DISTINCT p.user_id,p.term FROM learning_progress p
-                WHERE NOT EXISTS (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)) missing
+                JOIN term t ON t.term=p.term
+                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)) missing
                 """, Long.class);
         Long answers = jdbc.queryForObject("""
-                SELECT count(*) FROM learning_progress p WHERE NOT EXISTS
+                SELECT count(*) FROM learning_progress p JOIN term t ON t.term=p.term
+                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
                 (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
                 """, Long.class);
         return new BackfillCount(concepts, answers);
@@ -71,7 +97,8 @@ public class TermMasteryService {
         record State(double p, int attempts, Instant at) {}
         Map<Key, State> states = new LinkedHashMap<>();
         jdbc.query("""
-                SELECT p.* FROM learning_progress p WHERE NOT EXISTS
+                SELECT p.* FROM learning_progress p JOIN term t ON t.term=p.term
+                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
                 (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
                 ORDER BY p.answered_at,p.id
                 """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {

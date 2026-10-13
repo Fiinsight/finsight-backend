@@ -52,7 +52,7 @@ public class LearningController {
         return service.answer(userId, newsId, request.level(), request.term(), request.answerIndex());
     }
     @GetMapping("/terms/today")
-    public List<LearningService.Glossary> dailyTerms() { return service.dailyTerms(); }
+    public List<LearningService.DailyTerm> dailyTerms(@AuthenticationPrincipal Long userId) { return service.dailyTerms(userId); }
     @GetMapping("/reviews")
     public List<LearningService.Review> reviews(@AuthenticationPrincipal Long userId) { return service.reviews(userId); }
 }

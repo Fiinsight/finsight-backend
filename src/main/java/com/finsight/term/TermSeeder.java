@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * Seeds a starter set of common Korean finance/investing terms on startup.
  * Idempotent: only inserts terms that are not already present, so restarts
- * never create duplicates.
+ * never create duplicates. Term's constructor assigns CONCEPT/TOPIC/MARKET to new seeds.
  */
 @Component
 public class TermSeeder implements CommandLineRunner {
