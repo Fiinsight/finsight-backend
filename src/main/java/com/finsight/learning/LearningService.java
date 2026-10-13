@@ -2,6 +2,7 @@ package com.finsight.learning;
 
 import com.finsight.auth.UserProfileService;
 import com.finsight.auth.UserRepository;
+import com.finsight.briefing.BriefingService;
 import com.finsight.news.News;
 import com.finsight.news.NewsRepository;
 import com.finsight.news.collect.ArticleContentExtractor;
@@ -19,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class LearningService {
     public record Glossary(String term, String definition) {}
+    public record DailyTerm(String term, String definition, Long newsId, String title, String reason) {}
     public record Question(String term, String prompt, List<String> options) {}
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
@@ -41,11 +43,13 @@ public class LearningService {
     private final AiServiceClient ai;
     private final ArticleContentExtractor extractor;
     private final TermMasteryService mastery;
+    private final BriefingService briefing;
     public LearningService(NewsRepository news, UserRepository users, TermRepository terms,
                            LearningProgressRepository progress, UserProfileService profiles,
-                           AiServiceClient ai, ArticleContentExtractor extractor, TermMasteryService mastery) {
+                           AiServiceClient ai, ArticleContentExtractor extractor, TermMasteryService mastery, BriefingService briefing) {
         this.news = news; this.users = users; this.terms = terms; this.progress = progress;
         this.profiles = profiles; this.ai = ai; this.extractor = extractor; this.mastery = mastery;
+        this.briefing = briefing;
     }
     @Transactional(readOnly = true)
     public Lesson lesson(Long userId, Long newsId, String requestedLevel) {
@@ -103,13 +107,37 @@ public class LearningService {
         return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition());
     }
     @Transactional(readOnly = true)
-    public List<Glossary> dailyTerms() {
-        LinkedHashMap<String,Glossary> selected = new LinkedHashMap<>();
-        for (News article : news.findTop3ByOrderByPublishedAtDesc()) for (Term term : articleTerms(article))
-            selected.putIfAbsent(term.getTerm(), new Glossary(term.getTerm(),term.getShortDefinition()));
-        terms.findAll().stream().filter(term -> term.getShortDefinition()!=null && !term.getShortDefinition().isBlank())
-                .sorted(Comparator.comparing(Term::getTerm)).forEach(term -> selected.putIfAbsent(term.getTerm(), new Glossary(term.getTerm(),term.getShortDefinition())));
-        return selected.values().stream().limit(3).toList();
+    public List<DailyTerm> dailyTerms(Long userId) {
+        Map<String,TermMasteryService.Mastery> known = new HashMap<>();
+        mastery.list(userId).forEach(row -> known.put(row.term(), row));
+        LinkedHashMap<String,DailyTerm> candidates = new LinkedHashMap<>();
+        for (var item : briefing.getTodayBriefing()) news.findById(item.id()).ifPresent(article -> addDailyTerms(candidates, article, known));
+        if (candidates.size() < 3) {
+            for (News article : news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant.now().minus(java.time.Duration.ofHours(24)))) {
+                addDailyTerms(candidates, article, known);
+            }
+        }
+        return candidates.values().stream().sorted(Comparator
+                .comparingInt((DailyTerm term) -> dailyPriority(known.get(term.term())))
+                .thenComparingDouble(term -> known.containsKey(term.term()) ? known.get(term.term()).effectivePKnown() : KnowledgeTracing.P_INIT)
+                .thenComparing(DailyTerm::term)).limit(3).toList();
+    }
+
+    private void addDailyTerms(Map<String,DailyTerm> candidates, News article, Map<String,TermMasteryService.Mastery> known) {
+        if (article.getRawContent() == null || article.getRawContent().isBlank()
+                || Objects.toString(article.getSource(), "").startsWith("SYNTHETIC")) return;
+        for (Term term : articleTerms(article)) {
+            if (term.getKind() != Term.Kind.CONCEPT) continue;
+            var row = known.get(term.getTerm());
+            if (row != null && TermMasteryService.wellKnown(row)) continue;
+            String reason = row == null ? "처음 보는 개념" : Boolean.FALSE.equals(row.lastCorrect()) ? "지난번에 틀린 개념" : "익히는 중인 개념";
+            candidates.putIfAbsent(term.getTerm(), new DailyTerm(term.getTerm(), term.getShortDefinition(), article.getId(), article.getTitle(), reason));
+        }
+    }
+
+    private static int dailyPriority(TermMasteryService.Mastery row) {
+        if (row == null) return 1;
+        return TermMasteryService.needsReview(row.effectivePKnown(), row.lastCorrect()) ? 0 : 2;
     }
     @Transactional(readOnly = true)
     public List<Review> reviews(Long userId) {
@@ -117,8 +145,11 @@ public class LearningService {
         mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
         LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
         progress.findByUser_IdOrderByAnsweredAtDesc(userId).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
+        Map<String,Term> dictionary = new HashMap<>();
+        terms.findAll().forEach(term -> dictionary.put(term.getTerm(), term));
         return latest.values().stream()
-                .filter(row -> !row.isCorrect() || probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT) < 0.6)
+                .filter(row -> dictionary.containsKey(row.getTerm()) && dictionary.get(row.getTerm()).quizEligible(row.getLevel()))
+                .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), row.isCorrect()))
                 .sorted(Comparator
                 .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
                 .thenComparing(LearningProgress::getTerm)).limit(10)
@@ -135,6 +166,7 @@ public class LearningService {
                         .thenComparing(Term::getTerm)).toList();
     }
     GradedQuestion question(News article, Term term, String level) {
+        if (!term.quizEligible(level)) return null;
         String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
         List<String> sentences = Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
                 .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
@@ -176,7 +208,7 @@ public class LearningService {
     private GradedQuestion beginnerQuestion(News article, Term term) {
         Set<String> field = TERM_FIELDS.stream().filter(group -> group.contains(term.getTerm())).findFirst().orElse(Set.of());
         List<String> distractors = new ArrayList<>(terms.findAll().stream()
-                .filter(t -> field.contains(t.getTerm()) && !t.getTerm().equals(term.getTerm()))
+                .filter(t -> t.quizEligible("beginner") && field.contains(t.getTerm()) && !t.getTerm().equals(term.getTerm()))
                 .sorted(Comparator.comparing(Term::getTerm)).map(Term::getShortDefinition)
                 .filter(d -> d != null && !d.isBlank() && !d.equals(term.getShortDefinition())).distinct().toList());
         if (distractors.size() < 2) return null; // No unrelated definitions disguised as suitable distractors.

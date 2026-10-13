@@ -27,7 +27,7 @@ class LearningServiceTest {
         when(ai.learning(any())).thenReturn(Optional.empty());
         when(profile.getOnboarding(1L)).thenReturn(new UserProfileDtos.OnboardingResponse(List.of(), "analyst", "deep", "news", "", null));
         var mastery = mock(TermMasteryService.class);
-        var service = new LearningService(news, users, terms, progress, profile, ai, extractor, mastery);
+        var service = new LearningService(news, users, terms, progress, profile, ai, extractor, mastery, mock(com.finsight.briefing.BriefingService.class));
         var lesson = service.lesson(1L,115L,null);
         when(article.getRewriteMode()).thenReturn("REWRITTEN"); when(article.getRewrittenBeginner()).thenReturn("저장된 실제 리라이팅이에요.");
         clearInvocations(ai);
@@ -64,8 +64,10 @@ class LearningServiceTest {
 
     @Test void reviewsIncludeLastWrongOrLowEffectiveMasteryButExcludeConfidentCorrectAnswers() {
         var progress=mock(LearningProgressRepository.class); var mastery=mock(TermMasteryService.class);
-        var service=new LearningService(mock(NewsRepository.class),mock(UserRepository.class),mock(TermRepository.class),progress,
-                mock(UserProfileService.class),mock(AiServiceClient.class),mock(ArticleContentExtractor.class),mastery);
+        var dictionary=mock(TermRepository.class);
+        when(dictionary.findAll()).thenReturn(List.of(new Term("금리","이자"),new Term("환율","비율"),new Term("매출","금액")));
+        var service=new LearningService(mock(NewsRepository.class),mock(UserRepository.class),dictionary,progress,
+                mock(UserProfileService.class),mock(AiServiceClient.class),mock(ArticleContentExtractor.class),mastery,mock(com.finsight.briefing.BriefingService.class));
         var article=mock(News.class); when(article.getId()).thenReturn(1L);
         var user=mock(User.class);
         var latestWrong=new LearningProgress(user,article,"금리");latestWrong.answer("beginner",false);
@@ -75,13 +77,14 @@ class LearningServiceTest {
         when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(List.of(latestWrong,lowCorrect,highCorrect,earlierWrong));
         when(mastery.list(7L)).thenReturn(List.of(
                 new TermMasteryService.Mastery("금리",.9,.9,3,java.time.Instant.now(),"beginner"),
-                new TermMasteryService.Mastery("환율",.9,.599,3,java.time.Instant.now(),"beginner"),
+                new TermMasteryService.Mastery("환율",.9,.499,3,java.time.Instant.now(),"beginner"),
                 new TermMasteryService.Mastery("매출",.6,.6,3,java.time.Instant.now(),"beginner")));
         assertEquals(List.of("환율","금리"),service.reviews(7L).stream().map(LearningService.Review::term).toList());
         when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(List.of(highCorrect,earlierWrong));
         assertTrue(service.reviews(7L).isEmpty());
         var many=new ArrayList<LearningProgress>();
         for(int i=0;i<12;i++){var row=new LearningProgress(user,article,"개념"+i);row.answer("beginner",false);many.add(row);}
+        when(dictionary.findAll()).thenReturn(many.stream().map(row -> new Term(row.getTerm(),"정의")).toList());
         when(progress.findByUser_IdOrderByAnsweredAtDesc(7L)).thenReturn(many);
         assertEquals(10,service.reviews(7L).size());
     }
@@ -96,7 +99,7 @@ class LearningServiceTest {
         when(terms.findAll()).thenReturn(List.of(new Term("환율","통화 교환 비율"),new Term("금리","이자 비율"),new Term("물가","평균 가격")));
         when(ai.learning(any())).thenReturn(Optional.empty()); when(users.findById(1L)).thenReturn(Optional.of(new User("x","","",AuthProvider.LOCAL)));
         var mastery=mock(TermMasteryService.class);
-        var service=new LearningService(news,users,terms,progress,profiles,ai,extractor,mastery);
+        var service=new LearningService(news,users,terms,progress,profiles,ai,extractor,mastery,mock(com.finsight.briefing.BriefingService.class));
         assertTrue(service.lesson(1L,1L,"beginner").question().prompt().contains("기본 의미"));
         var normal=service.lesson(1L,1L,"normal").question(); assertTrue(normal.prompt().contains("어떻게 변했나요"));
         assertEquals(normal,service.lesson(1L,1L,"normal").question());

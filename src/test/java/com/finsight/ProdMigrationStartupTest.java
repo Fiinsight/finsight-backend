@@ -78,7 +78,7 @@ class ProdMigrationStartupTest {
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
-                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM news", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM judgement", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success", Long.class)).isZero();
@@ -100,6 +100,26 @@ class ProdMigrationStartupTest {
         assertThat(mastery.backfillMissing()).isEqualTo(1);
         assertThat(mastery.backfillMissing()).isZero();
         assertThat(mastery.list(user).stream().filter(item -> item.term().equals("금리")).findFirst().orElseThrow().pKnown()).isEqualTo(row.pKnown());
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void topicsArePreservedButExcludedAndLatestWrongRemainsReviewable() {
+        Long user=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('concept-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long news=jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('금리와 반도체','https://example.test/concept-ci',now()) RETURNING id",Long.class);
+        jdbc.update("INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at) VALUES(?,'반도체',0.99,8,now())",user);
+        mastery.answer(user,"반도체","beginner",true);
+        assertThat(jdbc.queryForObject("SELECT attempts FROM term_mastery WHERE user_id=? AND term='반도체'",Integer.class,user)).isEqualTo(8);
+        assertThat(mastery.list(user)).isEmpty();
+        mastery.answer(user,"코스피","analyst",true);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM term_mastery WHERE user_id=? AND term='코스피'",Long.class,user)).isZero();
+        mastery.answer(user,"금리","beginner",true);
+        jdbc.update("INSERT INTO learning_progress(user_id,news_id,term,level,correct,answered_at) VALUES(?,?,'금리','beginner',false,now())",user,news);
+        var row=mastery.list(user).getFirst();
+        assertThat(row.lastCorrect()).isFalse();
+        assertThat(com.finsight.learning.TermMasteryService.overview(mastery.list(user)).weakest()).extracting(com.finsight.learning.TermMasteryService.Mastery::term).containsExactly("금리");
+        assertThat(jdbc.queryForObject("SELECT kind FROM term WHERE term='반도체'",String.class)).isEqualTo("TOPIC");
+        assertThat(jdbc.queryForObject("SELECT kind FROM term WHERE term='코스피'",String.class)).isEqualTo("MARKET");
     }
 
     @Test

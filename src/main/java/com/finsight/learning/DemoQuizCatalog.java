@@ -24,7 +24,7 @@ public final class DemoQuizCatalog {
                 if (method.getName().equals("findAll")) return dictionary;
                 throw new UnsupportedOperationException("Read-only demo dictionary");
             });
-        var learning = new LearningService(null, null, repository, null, null, null, new ArticleContentExtractor(), null);
+        var learning = new LearningService(null, null, repository, null, null, null, new ArticleContentExtractor(), null, null);
         var id = News.class.getDeclaredField("id");
         id.setAccessible(true); // Restore an existing persisted ID for its exact deterministic quiz seed.
         var categories = new NewsCategoryClassifier();
