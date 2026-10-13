@@ -389,3 +389,9 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 `GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level}`이며 각 목록은 최대 3개입니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
 
 POST 답변은 실제 채점 수준으로 term_mastery를 같은 트랜잭션에서 갱신합니다. 복습은 용어별 최근 기사 하나를 망각 가중 확률 오름차순으로 반환합니다. levelSuggestion은 현재 수준의 서로 다른 용어 5개에서 pKnown≥0.85일 때 다음 수준을 제안하며 자동 변경하지 않습니다. 백필은 자동 실행하지 않습니다. 상세 모델·대상 건수: `docs/ml-personalization.md`.
+
+## ML3 · 로컬 금융 감성 신뢰도
+
+V12: news.sentiment_confidence nullable double precision(0~1). 기존 행/감성값 백필 없음. AI feedback 요청 및 chart.docent 관련 뉴스에 sentiment_hint/sentiment_confidence를 선택 필드로 전달합니다. 0.6 미만 또는 NEUTRAL은 감성 방향을 근거로 쓰지 않습니다. 값이 없는 도슨트는 기존 제목 규칙을 유지합니다. confidence로 DIRECT/MARKET 관계나 실제 결과를 바꾸지 않습니다. 피드백은 기사 감성의 한계를 근거 문장에 표시하며 실제 가격 원인을 단정하지 않습니다.
+
+감성 배치는 별도 ML 환경에서 수동 실행합니다. 기본 읽기 전용 변경 건수 확인, 명시적 --apply만 갱신하며 원래 값이 변경된 행은 건너뜁니다. 수집/요청/스케줄러에서 배치를 실행하지 않습니다. 운영 DB에 migration/배치를 적용하지 않았습니다.
