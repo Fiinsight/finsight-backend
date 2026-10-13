@@ -44,7 +44,8 @@ public class LearningController {
     }
     @GetMapping("/news/{newsId}")
     public LearningService.Lesson lesson(@AuthenticationPrincipal Long userId, @PathVariable Long newsId,
-                                         @RequestParam(required = false) String level) { return service.lesson(userId, newsId, level); }
+                                         @RequestParam(required = false) String level,
+                                         @RequestParam(required = false) String term) { return service.lesson(userId, newsId, level, term); }
     @PostMapping("/news/{newsId}/answers")
     public LearningService.AnswerResult answer(@AuthenticationPrincipal Long userId, @PathVariable Long newsId,
                                                 @Valid @RequestBody Answer request) {

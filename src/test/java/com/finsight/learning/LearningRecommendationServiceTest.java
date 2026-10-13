@@ -39,7 +39,7 @@ class LearningRecommendationServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(Instant.parse("2026-10-13T04:00:00Z"),ZoneId.of("Asia/Seoul")));
         var candidates=List.of(article(1,"국채 금리 하락","금리"),article(2,"국채 금리 하락","금리"),article(3,"반도체 생산 확대","반도체"));
         when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(candidates);
-        assertEquals(2,service.get(7L,List.of()).items().size());verifyNoInteractions(ai);
+        assertTrue(service.get(7L,List.of()).items().isEmpty());verifyNoInteractions(ai);
         var recommendations=mock(LearningRecommendationService.class);
         var controller=new LearningController(mock(LearningService.class),mock(LearningProgressService.class),recommendations);
         controller.recommendations(7L,"1,1,2");verify(recommendations).get(7L,List.of(1L,2L));
@@ -47,5 +47,14 @@ class LearningRecommendationServiceTest {
         assertThrows(org.springframework.web.server.ResponseStatusException.class,()->controller.recommendations(null,""));
         assertTrue(LearningRecommendationService.sameEvent("삼성전자 분기 실적 발표","삼성전자 분기 실적 발표"));
         assertFalse(LearningRecommendationService.sameEvent("삼성전자 분기 실적 발표","원화 환율 변동"));
+    }
+    @Test void recommendationReasonsDescribeTheActualActionAndTruncateLongTitles() {
+        var source=article(1,"한국은행 기준금리 변화와 금융 시장 영향","금리");
+        assertEquals("'금리' 퀴즈를 틀린 기사와 비슷해요",LearningRecommendationService.reasonText(source,new LearningRecommendationService.Activity("QUIZ","금리")));
+        String title=source.getTitle().substring(0,15)+"…";
+        assertEquals("메모한 '"+title+"'와 비슷해요",LearningRecommendationService.reasonText(source,new LearningRecommendationService.Activity("MEMO",null)));
+        assertEquals("판단한 '"+title+"'와 비슷해요",LearningRecommendationService.reasonText(source,new LearningRecommendationService.Activity("JUDGEMENT",null)));
+        var shortTitle=article(2,"환율 변화","환율");
+        assertEquals("읽은 '환율 변화'와 비슷해요",LearningRecommendationService.reasonText(shortTitle,null));
     }
 }

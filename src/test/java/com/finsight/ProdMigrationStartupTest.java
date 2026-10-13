@@ -119,5 +119,10 @@ class ProdMigrationStartupTest {
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().newsId()).isEqualTo(candidate);
         assertThat(response.items().getFirst().reasonNewsId()).isEqualTo(source);
+        assertThat(response.items().getFirst().reason()).isEqualTo("'환율' 퀴즈를 틀린 기사와 비슷해요");
+        jdbc.update("DELETE FROM learning_progress WHERE user_id=?",user);
+        assertThat(recommendations.get(user,java.util.List.of(source)).items().getFirst().reason()).isEqualTo("메모한 '환율 변화'와 비슷해요");
+        jdbc.update("DELETE FROM article_note WHERE user_id=?",user);
+        assertThat(recommendations.get(user,java.util.List.of(source)).items().getFirst().reason()).isEqualTo("판단한 '환율 변화'와 비슷해요");
     }
 }
