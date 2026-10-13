@@ -382,4 +382,4 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 
 ### 적용 제한
 
-이 작업에서 DB에 migration을 실행하거나 기존 결과를 재생성하지 않았습니다. 기존 migration 디렉터리에 `V4__add_level_specific_importance_reasons.sql`, `V4__add_onboarding_profile.sql` 두 파일이 같은 버전으로 존재합니다. 운영 Flyway 이력을 확인하지 않고 기존 migration의 버전/체크섬을 바꾸지 않았으며, 운영 적용 전 이 충돌을 확인해야 합니다.
+운영 DB에 migration/repair/baseline/수동 SQL을 실행하거나 기존 결과를 재생성하지 않았습니다. 사용자 지정 방침대로 `V4__add_onboarding_profile.sql`은 이름·내용을 유지하고 뒤 파일만 `V4_1__add_level_specific_importance_reasons.sql`로 이름 변경했습니다(기존 SQL 내용 불변). V10은 이전 migration에서 누락된 기존 JPA의 learning_progress/daily_note 테이블을 IF NOT EXISTS로 생성합니다. 빈 PostgreSQL 16에서 prod 프로필로 V1~V10 migrate 및 ddl-auto=validate 기동을 검증합니다. 실제 운영 Flyway 이력은 확인 전이며, 기본 방침과 다르면 배포 전에 조정해야 합니다.
