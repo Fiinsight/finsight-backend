@@ -35,11 +35,15 @@ public class NewsAssembler {
     }
 
     public News assemble(NewsCandidate candidate, String rawContent) {
+        return assemble(candidate, rawContent, true);
+    }
+
+    public News assemble(NewsCandidate candidate, String rawContent, boolean allowLlm) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
         news.setCategory(newsCategoryClassifier.classify(candidate.title(), rawContent));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
-        applyRewrite(news, candidate, rawContent);
+        applyRewrite(news, candidate, rawContent, allowLlm);
         return news;
     }
 
@@ -55,7 +59,7 @@ public class NewsAssembler {
         String cleanedContent = extracted.get();
         news.setRawContent(cleanedContent);
         news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), cleanedContent));
-        applyRewrite(news, candidate, cleanedContent);
+        applyRewrite(news, candidate, cleanedContent, true);
     }
 
     /** Refresh cheap, deterministic metadata without making any AI calls. */
@@ -70,15 +74,21 @@ public class NewsAssembler {
                 .anyMatch(value -> value != null && !value.isBlank());
     }
 
-    private void applyRewrite(News news, NewsCandidate candidate, String rawContent) {
-        if (hasStoredSummaries(news)) return;
-        var response = aiServiceClient.rewrite(new AiRewriteRequest(candidate.title(), rawContent, null, candidate.url()));
+    public void retryRewrite(News news) {
+        if (!news.isRewriteRetryPending() || news.getRawContent() == null || news.getRawContent().isBlank()) return;
+        applyRewrite(news, new NewsCandidate(news.getTitle(), news.getUrl(), news.getSource(), news.getPublishedAt(), 0), news.getRawContent(), true);
+    }
+
+    private void applyRewrite(News news, NewsCandidate candidate, String rawContent, boolean allowLlm) {
+        if (hasStoredSummaries(news) && !news.isRewriteRetryPending()) return;
+        var response = aiServiceClient.rewrite(new AiRewriteRequest(candidate.title(), rawContent, null, candidate.url(), allowLlm));
         if (response.isEmpty()) {
             news.setRewriteMode("EXCERPT");
             // The free learning endpoint supplies the excerpt on demand when AI collection is unavailable.
             return;
         }
         var result = response.get();
+        news.setRewriteRetryPending(result.retryable());
         news.setRewrittenBeginner(result.beginner());
         news.setRewrittenNormal(result.normal());
         news.setRewrittenAnalyst(result.analyst());

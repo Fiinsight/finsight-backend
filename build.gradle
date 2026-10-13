@@ -70,3 +70,9 @@ tasks.register('testDemoPersonas', Exec) {
     commandLine 'python3', '-m', 'unittest', '-v', 'test_seed.py'
 }
 tasks.named('test') { dependsOn 'testDemoPersonas' }
+
+tasks.register('testRewriteBackfill', Exec) {
+    workingDir 'scripts'
+    commandLine 'python3', '-m', 'unittest', '-v', 'test_backfill_rewrites.py'
+}
+tasks.named('test') { dependsOn 'testRewriteBackfill' }

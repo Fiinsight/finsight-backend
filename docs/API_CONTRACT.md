@@ -70,6 +70,28 @@ The backend exposes the same three levels as
 `importanceReasonAnalyst`. The level-specific value must be selected for the
 active reading-level tab; clients must not synthesize missing values.
 
+Collection request adds `allow_llm` (default true); only the highest-ranked
+10 candidate slots per collection, including quota retries, set it true.
+Other candidates receive an EXCERPT without calling a provider. A stored
+REWRITTEN article is never regenerated.
+
+Response adds `retryable` (default false). A quota/429 fallback has
+`mode=EXCERPT,retryable=true`; the backend stores `rewrite_retry_pending` and
+retries only these marked articles at the next normal collection. Ordinary
+network, JSON, sentence, number-validation and cap failures stay EXCERPT.
+
+AI rewrite collection permits Gemini only. Calls are serialized with a
+minimum 6-second start interval; the KST daily limit is 30 and the existing
+process limit remains 20. 429 attempts do not consume the daily reservation;
+three quota errors disable rewriting until the next KST day. Other AI features
+retain USE_REAL_LLM=false and DOCENT_WITH_LLM=false.
+
+`GET /health` additionally returns `rewriteEnabled`, `provider`, `rewriteDay`,
+`rewriteSuccessCount`, `rewriteFailureCount`, `rewrite429Count`,
+`rewriteUsedCalls`, `rewriteDailyLimit`, `rewriteStoppedToday`,
+`rewriteLast429At`, `rewriteMinIntervalSeconds`, `processCallLimit`,
+`processCalls`. No credentials are included.
+
 ### Explain Term
 
 ```http

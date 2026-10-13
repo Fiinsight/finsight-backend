@@ -17,6 +17,11 @@ import java.util.stream.Collectors;
 @Table(name = "news")
 public class News {
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean rewriteRetryPending;
+    public boolean isRewriteRetryPending() { return rewriteRetryPending; }
+    public void setRewriteRetryPending(boolean value) { rewriteRetryPending = value; }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
