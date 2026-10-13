@@ -157,7 +157,8 @@ public class FeedbackScheduler {
                 "KOSPI".equals(news.getRelatedSymbol()) ? "코스피" : "KOSDAQ".equals(news.getRelatedSymbol()) ? "코스닥" : com.finsight.stock.StockCatalog.name(news.getRelatedSymbol()),
                 actualChangePercent, judgement.getJudgementClose(), judgement.getComparisonClose(), judgement.getComparisonDate(),
                 judgement.getUser() == null || judgement.getUser().getLearningLevel() == null ? "beginner" : judgement.getUser().getLearningLevel(),
-                cachedIndexName(news), cachedIndexChange(news, judgement.getComparisonDate())
+                cachedIndexName(news), cachedIndexChange(news, judgement.getComparisonDate()),
+                news.getSentimentHint()==null?null:news.getSentimentHint().name(), news.getSentimentConfidence()
         );
 
         Optional<com.finsight.external.AiFeedbackResponse> aiResponse = aiServiceClient.generateFeedback(request);
@@ -228,7 +229,9 @@ public class FeedbackScheduler {
         Double index = cachedIndexChange(judgement.getNews(), judgement.getComparisonDate());
         if (index != null && !java.util.Set.of("KOSPI", "KOSDAQ").contains(judgement.getNews().getRelatedSymbol()))
             market = market.substring(0, market.length() - 1) + String.format(java.util.Locale.ROOT, ", 같은 비교 구간 %s %+.2f%%.", "KOSDAQ".equals(indexSymbol) ? "코스닥" : "코스피", index);
-        var reasons = List.of(new com.finsight.external.AiFeedbackResponse.Reason("기사 근거", core.isBlank() ? "저장된 기사 근거를 확인할 수 없어요." : "기사 핵심 “" + core + "”를 실제 가격 변화와 함께 확인해보세요."),
+        String note = com.finsight.news.SentimentEvidence.note(judgement.getNews().getSentimentHint(), judgement.getNews().getSentimentConfidence());
+        String articleDetail = core.isBlank() ? "저장된 기사 근거를 확인할 수 없어요." : note.isBlank() ? "기사 핵심 “" + core + "”를 실제 가격 변화와 함께 확인해보세요." : "기사 핵심 “" + core + "”를 확인하되, " + note;
+        var reasons = List.of(new com.finsight.external.AiFeedbackResponse.Reason("기사 근거", articleDetail),
                 new com.finsight.external.AiFeedbackResponse.Reason(hasReason ? "판단 근거" : "근거 남기기", hasReason ? "남긴 근거 “" + reason + "”의 기준 시점이 기사와 같은지 확인해보세요." : "다음엔 판단 근거를 한 줄 남겨보세요."),
                 new com.finsight.external.AiFeedbackResponse.Reason("실제 시장", market));
         return new com.finsight.external.AiFeedbackResponse(verdict, headline, summary, reasons, hasReason ? "같은 비교 시점의 기사 근거와 시장 흐름을 함께 확인해보세요." : "다음엔 판단 근거를 한 줄 남겨보세요.");

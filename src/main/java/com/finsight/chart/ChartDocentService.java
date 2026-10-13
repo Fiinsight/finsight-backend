@@ -36,7 +36,7 @@ public class ChartDocentService {
         else if ("MARKET".equals(relation)) reason="개별 소식보다 시장 전체 흐름("+(r.indexName()==null?"관련 지수":r.indexName())
                 +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")이 영향을 줬을 수 있어요.";
         else {
-            var hint=titleSentiment(title);
+            var hint=com.finsight.news.SentimentEvidence.direction(article.sentimentHint(),article.sentimentConfidence(),title);
             reason=context+" "+r.symbolName()+" 관련 ‘"+title+"’ 소식이 나왔고, 주가가 "+String.format(java.util.Locale.ROOT,"%+.2f%%",r.changePercent())+" 움직였어요. "
                     +(hint==null?"다른 요인과 함께 시장 반응에 영향을 줬을 수 있어요.":"이 소식이 "+(hint==com.finsight.briefing.SentimentHint.POSITIVE?"호재":"악재")+"로 받아들여졌을 가능성이 있어요.");
         }

@@ -65,6 +65,10 @@ public class News {
     @Enumerated(EnumType.STRING)
     private SentimentHint sentimentHint;
 
+    private Double sentimentConfidence;
+    public Double getSentimentConfidence() { return sentimentConfidence; }
+    public void setSentimentConfidence(Double value) { sentimentConfidence = value; }
+
     private String category;
 
     // Stored as a comma-separated list rather than a separate @ElementCollection
