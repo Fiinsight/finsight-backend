@@ -67,8 +67,11 @@ class JudgementLearningFeedbackTest {
     @Test void reviewComparesChoiceWithSignalAndChecksFactsAndPriceLinkWithoutGrading() {
         var neutral = article("상담 서비스 안내","고객센터 상담 서비스가 운영된다.");
         var absent = JudgementFeedbackRules.articleReview(neutral,null,JudgementChoice.UP).get(1).detail();
-        assertThat(absent).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요", "다음엔 판단 근거를 한 줄 남겨보세요.", "사실 → 이익·수요·금리 → 방향")
+        assertThat(absent).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요", "다음엔 판단 근거를 한 줄 남겨보세요", "“고객센터 상담 서비스가 운영된다” → 이익·수요·금리 변화 → 예상 방향")
                 .doesNotContain("탄탄", "타당", "잘했", "정확한 판단");
+        assertThat(absent.split("다음엔 판단 근거를 한 줄 남겨보세요",-1)).hasSize(2);
+        assertThat(absent).doesNotContain("순서로 한 줄을 써보세요");
+        assertThat(JudgementFeedbackRules.articleReview(neutral,null,JudgementChoice.UP).getFirst().detail()).contains("중립으로 읽혀요");
         var strong = JudgementFeedbackRules.articleReview(article("매출 증가","매출이 증가했다."),"매출 증가로 이익 개선을 기대해요.",JudgementChoice.UP).get(1).detail();
         assertThat(strong).contains("호재 신호와 상승 선택은 같은 방향", "기사 표현과 가격 경로를 연결", "적중 여부는 아직 알 수 없어요");
         var weak = JudgementFeedbackRules.articleReview(neutral,"그냥 상승할 것 같아요",JudgementChoice.UP).get(1).detail();
