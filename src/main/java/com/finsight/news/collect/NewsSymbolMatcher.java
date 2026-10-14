@@ -24,7 +24,7 @@ public class NewsSymbolMatcher {
         String body = content == null ? "" : content;
         String subject = headline.replaceFirst("^\\s*\\[[^]]+\\]\\s*", "").stripLeading();
         if (subject.matches("^(고용노동부|기획재정부|금융위(?:원회)?|한은|한국은행|정부|국세청|행정안전부|산업통상자원부)(?:[\\s,·]|는|은|이|가|$).*")) return null;
-        var explicit = Pattern.compile("\\[(\\d{6})\\]").matcher(headline + " " + body);
+        var explicit = Pattern.compile("\\[(\\d{6})\\]").matcher(headline);
         if (explicit.find()) return explicit.group(1);
         Set<String> headlineSymbols = companies(headline);
         boolean multiCompany = headline.contains("삼성·SK하닉") || headline.contains("삼전닉스");
@@ -32,6 +32,9 @@ public class NewsSymbolMatcher {
         if (headline.contains("코스피")) return "KOSPI";
         if (headline.contains("코스닥")) return "KOSDAQ";
         if (multiCompany || headlineSymbols.size() > 1 || headline.matches(".*(환율|금리|물가|美|미국|뉴욕|나스닥|S&P|인텔|엔비디아|애플|테슬라|AMD|TSMC).*")) return null;
+        // A market headline must not become the first stock quoted in its body.
+        explicit = Pattern.compile("\\[(\\d{6})\\]").matcher(body);
+        if (explicit.find()) return explicit.group(1);
         Set<String> bodySymbols = companies(content == null ? "" : content);
         if (bodySymbols.size() == 1) {
             String symbol = bodySymbols.iterator().next();

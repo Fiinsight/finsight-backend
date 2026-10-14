@@ -24,8 +24,13 @@ class RequestedQualityTest {
   assertThat(matcher.match("카카오뱅크 실적 전망")).isEqualTo("323410");
   assertThat(matcher.match("카카오페이 실적 전망")).isNull();
  }
- @Test void explicitCodeWinsAndCatalogSupportsSearch() {
-  assertThat(new NewsSymbolMatcher().match("코스피 전망", "현대로템 [064350] 목표가")).isEqualTo("064350");
+ @Test void headlineTargetWinsOverBodyCodesAndCatalogSupportsSearch() {
+  var matcher = new NewsSymbolMatcher();
+  assertThat(matcher.match("코스피 전망", "현대로템 [064350] 목표가")).isEqualTo("KOSPI");
+  assertThat(matcher.match("코스피·코스닥, 삼전닉스 약세에 급락…외국인 팔자", "SK하이닉스[000660]와 삼성전자[005930]가 하락했다.")).isEqualTo("KOSPI");
+  assertThat(matcher.match("삼성전자 실적 발표", "SK하이닉스[000660]와 비교했다.")).isEqualTo("005930");
+  assertThat(matcher.match("현대로템[064350] 목표가 하향", "시장 코스피 흐름")).isEqualTo("064350");
+  assertThat(matcher.match("기업의 신규 계약 발표", "현대로템[064350] 계약을 발표했다.")).isEqualTo("064350");
   assertThat(new NewsSymbolMatcher().match("에코프로비엠 실적 전망")).isEqualTo("247540");
   var service = new com.finsight.stock.PopularStockService(null);
   assertThat(service.search("현대")).hasSizeGreaterThanOrEqualTo(3);
