@@ -89,6 +89,7 @@ class StructuredFeedbackTest {
         var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
         assertThat(view.reasons()).hasSize(2);assertThat(view.feedbackText()).contains("포스코인터", "성장 기대", "비용 부담");
         assertThat(view.reasons().get(1).detail()).contains("사업이 커질 것 같아요", "확인한 사실");
+        assertThat(view.reasons().get(1).detail()).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요");
         assertThat(view.verdict()).isNull();assertThat(view.actualChangePercent()).isNull();assertThat(row.getFeedbackText()).isEqualTo("결과를 비교할 수 없어요");verify(repo,never()).save(any());
     }
     @Test void missingBodyDoesNotInventAPriceExplanation() {

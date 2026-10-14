@@ -115,8 +115,9 @@ class FeedbackSchedulerTest {
         when(ai.generateFeedback(any())).thenAnswer(inv -> Optional.of(JudgementFeedbackRules.generate(inv.getArgument(0))));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
         var content = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
-        verify(records).finalizeOutcome(any(),any(),any(),any(),contains("삼성전자 2026-10-06 종가 기준 +1.20%."),any(),any(),any(),any(),eq("정확한 판단이에요!"),content.capture());
+        verify(records).finalizeOutcome(any(),any(),any(),any(),contains("삼성전자 2026-10-06 종가 기준 +1.20%."),any(),any(),any(),any(),eq("예측 방향이 같았어요"),content.capture());
         assertThat(content.getValue().path("reasons").size()).isEqualTo(3);
+        assertThat(content.getValue().path("reasons").get(1).path("detail").asText()).contains("운이 섞였을 수");
         assertThat(content.getValue().path("indexName").asText()).isEqualTo("코스피");
         assertThat(content.getValue().path("nextTip").asText()).isNotBlank();
         assertThat(Judgement.feedbackJson(item.getFeedbackContent())).isEqualTo(content.getValue());
