@@ -448,3 +448,10 @@ strongest: effectivePKnown >=0.8 and attempts >=3, highest first, at most3. weak
 - KIS 기존 kisDailyCandles cache(기간/close entry)를 먼저 재사용; 없을 때만 기존 closing-range client 사용. TTL·상한 유지. 종목은 지수 종가도 확보된 뒤 확정; 시세 누락은 대기.
 - `POST /ai/feedback/judgement`에 concept_term/concept_definition/judgement_id 추가. response conceptTerm/conceptDefinition/mode(RULE|LLM) 추가. 근거 없음에는 칭찬 금지, 호재/악재는 기사 표현 신호로만 사용하고 인과관계 단정 금지.
 - `python3 scripts/regrade_judgements.py --dry-run`: 읽기 전용 SELECT + 오프라인 Java resolver/calendar/rules. Spring·수집·시세/AI 호출 없음. 기존 저장된 유효 종가만 사용하며 부족하면 NO_SAVED_CLOSES. --apply는 제공하지 않음; 실행 승인 전 기존 판단을 변경하지 않음.
+
+## 피드백 설명·과거 채점 표시 (2026-10-14)
+
+- first `reasons[0].detail`은 기사 원문 인용 → 실적/수급/금리/환율/규제 등 가격 연결 원리 → 관측된 방향과의 관계를 2~4문장으로 설명. 다른 reasons/nextTip은 한 문장. 일반 원리는 가능성 설명이며 새 실적·전망·투자자 매매가 발생했다는 사실을 만들지 않음.
+- history/history/page/detail `gradingIssue: TARGET_MISMATCH|LEGACY_COMPARISON|null` 추가. 저장된 target_symbol이 없는 옛 확정 기록에서 현재 strict target과 옛 종목이 다르면 TARGET_MISMATCH, 비교일이 없으면 LEGACY_COMPARISON. 읽기 응답만 보정하고 저장된 choice/direction/percent/feedback은 수정하지 않음.
+- gradingIssue가 있으면 응답의 headline/verdict/reasons/nextTip을 숨기고 feedbackText/unavailableReason에 이전 기록 안내. 클라이언트는 잘못된 칭찬·적중·가격 차트를 표시하지 않으며 다시 읽기 행동 제공.
+- 유효한 기존 구조화 피드백의 옛 1문장 규칙 문구는 응답에서만 가격 연결 원리 한 문장을 덧붙임. 레거시 배열·null 읽기 호환 유지, 새 가격/AI 호출/DB 재생성 없음.

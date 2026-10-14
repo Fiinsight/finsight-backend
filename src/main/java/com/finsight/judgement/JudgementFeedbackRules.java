@@ -44,7 +44,7 @@ public final class JudgementFeedbackRules {
         market += "; " + comparison;
         String core = first(request.newsSummary());
         String signal = signal(request.newsTitle() + " " + core, request.sentimentHint(), request.sentimentConfidence());
-        String article = "기사 핵심 “" + core + "”에 ";
+        String article = "기사에서는 “" + core + "”라고 전했어요. " + priceChannel(request.newsTitle() + " " + core, signal) + " ";
         if ("POSITIVE".equals(signal)) article += "DOWN".equals(request.marketResult()) && hasIndex && request.indexChangePercent() < -0.5
                 ? "긍정적인 호재 신호가 있었지만 시장 전체 하락에 묻혔을 수 있어요."
                 : "UP".equals(request.marketResult()) ? "긍정적인 호재 신호가 있고 실제 상승 방향도 같았어요."
@@ -64,11 +64,27 @@ public final class JudgementFeedbackRules {
                 new AiFeedbackResponse.Reason("시장 비교", market)), tip, request.conceptTerm(), request.conceptDefinition(), "RULE");
     }
     static String signal(String text, String hint, Double confidence) {
+        if (text.matches("(?s).*(금리|수익률) ?(상승|급등|인상).*" ) && !text.matches("(?s).*(금리|수익률) ?(하락|인하).*")) return "NEGATIVE";
+        if (text.matches("(?s).*(금리|수익률) ?(하락|급락|인하).*" ) && !text.matches("(?s).*(금리|수익률) ?(상승|인상).*")) return "POSITIVE";
+        if (text.contains("환율") && !text.matches("(?s).*(수출|수입).*")) return "NEUTRAL";
         boolean positive = text.matches("(?s).*(급등|상향|호실적|수혜|증가|개선|흑자|반등|상승|급증|치솟).*" );
         boolean negative = text.matches("(?s).*(급락|하향|부진|규제 강화|감소|악화|적자|하락|약세|우려).*" );
         if (positive != negative) return positive ? "POSITIVE" : "NEGATIVE";
         if (!positive && confidence != null && confidence >= 0.6 && hint != null) return hint;
         return "NEUTRAL";
+    }
+    static String priceChannel(String text, String signal) {
+        if (text.contains("금리")) return "금리가 오르면 기업이 돈을 빌리는 비용이 커져 이익 기대에 부담이 될 수 있고, 내려가면 그 부담이 줄 수 있어요.";
+        if (text.contains("환율")) return "환율 변화는 수출로 받는 돈과 수입에 드는 비용에 다르게 작용하므로, 기업의 사업 구조에 따라 주가에 미치는 방향도 달라질 수 있어요.";
+        if (text.matches("(?s).*(실적|매출|영업이익|순이익|흑자|적자).*")) return "POSITIVE".equals(signal)
+                ? "실적 개선 소식은 앞으로 벌 이익에 대한 기대를 높여 주식을 사려는 수요와 상승 요인으로 연결될 수 있어요."
+                : "NEGATIVE".equals(signal) ? "실적 부진 소식은 앞으로 벌 이익에 대한 기대를 낮춰 주식을 팔려는 수요와 하락 요인으로 연결될 수 있어요."
+                : "실적 뉴스는 매출뿐 아니라 비용을 뺀 이익이 어떻게 달라지는지에 따라 주가 기대에 다르게 작용할 수 있어요.";
+        if (text.matches("(?s).*(매수|매도|수급|팔자|사자).*")) return "매수는 주식을 사려는 수요, 매도는 팔려는 공급이어서 매수 압력이 커지면 상승, 매도 압력이 커지면 하락 요인이 될 수 있어요.";
+        if (text.matches("(?s).*(규제|과징금|소송).*")) return "규제나 법적 부담은 사업 범위와 비용을 바꿀 수 있어 앞으로 벌 이익에 대한 기대에도 영향을 줄 수 있어요.";
+        if (text.matches("(?s).*(수주|판매 계약).*")) return "수주나 판매 계약은 앞으로의 매출에 대한 기대를 높여 매수 요인이 될 수 있지만, 실제 이익은 비용과 계약 이행에 따라 달라져요.";
+        if (text.matches("(?s).*투자 확대.*")) return "투자 확대에는 성장 기대와 당장의 비용 부담이 함께 있어 규모만으로 상승·하락을 단정하기 어려워요.";
+        return "이 기사만으로 실제 주가 움직임의 이유를 특정할 실적·수급 근거는 충분하지 않아요.";
     }
     static String first(String value) { return value == null ? "" : value.trim().split("(?<=[.!?])\\s+|\\n+", 2)[0]; }
     private static String label(String value) { return switch (value) { case "UP" -> "상승"; case "DOWN" -> "하락"; default -> "중립"; }; }
