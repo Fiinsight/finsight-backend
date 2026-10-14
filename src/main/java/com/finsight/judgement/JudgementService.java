@@ -82,6 +82,11 @@ public class JudgementService {
         }
         if (issue != null) content = null;
         var displayReasons = content == null ? null : content.reasons();
+        boolean reviewOnly = issue != null || "UNKNOWN".equals(j.getActualDirection());
+        if (reviewOnly) {
+            displayReasons = JudgementFeedbackRules.articleReview(j.getNews(),j.getReasonText());
+            if (notice == null) notice = "이 기록에는 비교할 가격이 저장되지 않아 적중 여부를 계산하지 않았어요. 기사 내용과 내 근거를 먼저 복습해보세요.";
+        }
         if (displayReasons != null && !displayReasons.isEmpty() && displayReasons.getFirst().detail().matches("(?s).*기사 핵심.*(방향도 같았어요|묻혔을 수 있어요|함께 확인해보세요)\\.")) {
             String text = j.getNews().getTitle() + " " + JudgementFeedbackRules.first(new com.finsight.news.collect.ArticleContentExtractor().clean(j.getNews().getTitle(),j.getNews().getRawContent()));
             var enriched = new java.util.ArrayList<>(displayReasons);
@@ -91,8 +96,8 @@ public class JudgementService {
         }
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
-                notice == null ? j.getFeedbackText() : notice, j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
-                issue == null ? j.getFeedbackHeadline() : null, content == null ? null : content.verdict(), displayReasons, content == null ? null : content.nextTip(),
+                reviewOnly ? displayReasons.getFirst().detail() : j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
+                reviewOnly ? null : j.getFeedbackHeadline(), reviewOnly || content == null ? null : content.verdict(), displayReasons, reviewOnly ? "기사 속 사실과 예상 방향을 구분해 근거를 남겨보세요." : content == null ? null : content.nextTip(),
                 symbol, symbolName(symbol),
                 j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,

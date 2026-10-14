@@ -58,7 +58,8 @@ class StructuredFeedbackTest {
         var row=new Judgement(owner,article,JudgementChoice.DOWN,null);row.setActualDirection("DOWN");row.setActualChangePercent(-1.76);row.setFeedbackText("뉴스와 시장 반응을 잘 연결한 판단입니다.");
         when(repo.findByIdAndUser(14L,owner)).thenReturn(Optional.of(row));
         var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,14L);
-        assertThat(view.gradingIssue()).isEqualTo("TARGET_MISMATCH");assertThat(view.feedbackText()).contains("카카오", "연결을 다시 확인").doesNotContain("잘 연결한");assertThat(view.verdict()).isNull();
+        assertThat(view.gradingIssue()).isEqualTo("TARGET_MISMATCH");assertThat(view.unavailableReason()).contains("카카오", "연결을 다시 확인");
+        assertThat(view.feedbackText()).contains("기사에서는", "AI 상담").doesNotContain("잘 연결한");assertThat(view.verdict()).isNull();assertThat(view.reasons()).hasSize(2);
         assertThat(row.getFeedbackText()).isEqualTo("뉴스와 시장 반응을 잘 연결한 판단입니다.");verify(repo,never()).save(any());
     }
     @Test void sameDayLegacyComparisonHasAnExplanationInsteadOfPraise() {
@@ -67,7 +68,8 @@ class StructuredFeedbackTest {
         var row=new Judgement(owner,article,JudgementChoice.UP,null);row.setActualDirection("UP");row.setFeedbackText("정확한 판단입니다.");
         when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
         var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
-        assertThat(view.gradingIssue()).isEqualTo("LEGACY_COMPARISON");assertThat(view.feedbackText()).contains("판단한 날의 가격").doesNotContain("정확한 판단");verify(repo,never()).save(any());
+        assertThat(view.gradingIssue()).isEqualTo("LEGACY_COMPARISON");assertThat(view.unavailableReason()).contains("판단한 날의 가격");
+        assertThat(view.feedbackText()).contains("매출이 증가", "이익에 대한 기대").doesNotContain("정확한 판단");assertThat(view.verdict()).isNull();verify(repo,never()).save(any());
     }
     @Test void oldRuleExplanationIsEnrichedOnlyInTheResponse() {
         var repo=mock(JudgementRepository.class);var owner=mock(User.class);
@@ -78,5 +80,29 @@ class StructuredFeedbackTest {
         when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
         var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
         assertThat(view.reasons().getFirst().detail()).contains("이익에 대한 기대를 높여");assertThat(row.getFeedbackContent().reasons().getFirst()).isEqualTo(old);verify(repo,never()).save(any());
+    }
+    @Test void unknownOutcomeStillOffersArticleReviewWithoutMakingUpAResult() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("포스코인터 에너지 투자 확대","https://example.test","fixture",java.time.Instant.now(),"포스코인터가 에너지 투자를 확대한다.");
+        var row=new Judgement(owner,article,JudgementChoice.UP,"사업이 커질 것 같아요");row.setActualDirection("UNKNOWN");row.setFeedbackText("결과를 비교할 수 없어요");
+        when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
+        assertThat(view.reasons()).hasSize(2);assertThat(view.feedbackText()).contains("포스코인터", "성장 기대", "비용 부담");
+        assertThat(view.reasons().get(1).detail()).contains("사업이 커질 것 같아요", "확인한 사실");
+        assertThat(view.verdict()).isNull();assertThat(view.actualChangePercent()).isNull();assertThat(row.getFeedbackText()).isEqualTo("결과를 비교할 수 없어요");verify(repo,never()).save(any());
+    }
+    @Test void missingBodyDoesNotInventAPriceExplanation() {
+        var article=new News("기사 제목","https://example.test","fixture",java.time.Instant.now(),null);
+        assertThat(JudgementFeedbackRules.articleReview(article,null).getFirst().detail()).contains("기사 본문이 없어");
+    }
+    @Test void savedMarketComparisonIsNotRejectedBecauseItsBodyQuotesAStock() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("코스피·코스닥, 삼전닉스 약세에 급락…외국인 팔자","https://example.test","fixture",java.time.Instant.now(),"코스피가 급락했다. SK하이닉스[000660]와 삼성전자[005930]가 약세다.");article.setRelatedSymbol("KOSPI");
+        var row=new Judgement(owner,article,JudgementChoice.DOWN,"외국인 매도");row.setActualDirection("DOWN");row.setActualChangePercent(-5.46);row.setClosingComparison(java.time.LocalDate.parse("2026-10-13"),6384.24,6035.35);
+        row.setStructuredFeedback("결과",new Judgement.FeedbackContent("CORRECT",List.of(new AiFeedbackResponse.Reason("기사","외국인 매도"),new AiFeedbackResponse.Reason("시장","코스피 하락")),"수급 확인"));
+        when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
+        assertThat(view.gradingIssue()).isNull();assertThat(view.verdict()).isEqualTo("CORRECT");assertThat(view.relatedSymbol()).isEqualTo("KOSPI");assertThat(view.actualChangePercent()).isEqualTo(-5.46);
+        assertThat(row.getComparisonDate()).isEqualTo(java.time.LocalDate.parse("2026-10-13"));verify(repo,never()).save(any());
     }
 }

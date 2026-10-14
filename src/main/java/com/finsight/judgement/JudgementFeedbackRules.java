@@ -16,6 +16,16 @@ public final class JudgementFeedbackRules {
         return percent > 0.5 ? "UP" : percent < -0.5 ? "DOWN" : "NEUTRAL";
     }
     public static String signed(double value) { return String.format(Locale.ROOT, "%+.2f%%", value); }
+    static List<AiFeedbackResponse.Reason> articleReview(com.finsight.news.News news, String userReason) {
+        String core = first(new com.finsight.news.collect.ArticleContentExtractor().clean(news.getTitle(),news.getRawContent()));
+        String text = news.getTitle() + " " + core;
+        String explanation = core.isBlank() ? "기사 본문이 없어 가격에 영향을 줄 근거를 확인하기 어려워요."
+                : "기사에서는 “" + core + "”라고 전했어요. " + priceChannel(text,signal(text,java.util.Objects.toString(news.getSentimentHint(),null),news.getSentimentConfidence()));
+        String reason = first(userReason);
+        return List.of(new AiFeedbackResponse.Reason("기사의 핵심과 의미",explanation),
+                new AiFeedbackResponse.Reason("내 판단 돌아보기",reason.isBlank() ? "남긴 판단 근거가 없어요. 다음에는 기사 속 사실과 예상한 가격 방향을 한 줄로 연결해보세요."
+                        : "남긴 근거 “" + reason + "”에서 기사로 확인한 사실과 앞으로의 예상을 나눠보세요."));
+    }
     public static AiFeedbackResponse generate(AiFeedbackRequest request) {
         boolean aligned = request.userChoice().equals(request.marketResult());
         double percent = request.actualChangePercent();
@@ -83,7 +93,7 @@ public final class JudgementFeedbackRules {
         if (text.matches("(?s).*(매수|매도|수급|팔자|사자).*")) return "매수는 주식을 사려는 수요, 매도는 팔려는 공급이어서 매수 압력이 커지면 상승, 매도 압력이 커지면 하락 요인이 될 수 있어요.";
         if (text.matches("(?s).*(규제|과징금|소송).*")) return "규제나 법적 부담은 사업 범위와 비용을 바꿀 수 있어 앞으로 벌 이익에 대한 기대에도 영향을 줄 수 있어요.";
         if (text.matches("(?s).*(수주|판매 계약).*")) return "수주나 판매 계약은 앞으로의 매출에 대한 기대를 높여 매수 요인이 될 수 있지만, 실제 이익은 비용과 계약 이행에 따라 달라져요.";
-        if (text.matches("(?s).*투자 확대.*")) return "투자 확대에는 성장 기대와 당장의 비용 부담이 함께 있어 규모만으로 상승·하락을 단정하기 어려워요.";
+        if (text.matches("(?s).*(투자 확대|신규 투자|투자한다|투입|증설).*")) return "투자 확대에는 성장 기대와 당장의 비용 부담이 함께 있어 규모만으로 상승·하락을 단정하기 어려워요.";
         return "이 기사만으로 실제 주가 움직임의 이유를 특정할 실적·수급 근거는 충분하지 않아요.";
     }
     static String first(String value) { return value == null ? "" : value.trim().split("(?<=[.!?])\\s+|\\n+", 2)[0]; }
