@@ -19,7 +19,7 @@ class FeedbackSchedulerTest {
     private final AiServiceClient ai = mock(AiServiceClient.class);
     private final FeedbackScheduler scheduler = new FeedbackScheduler(records, candles, ai);
     @org.junit.jupiter.api.BeforeEach void clock() {
-        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
+        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(1);
         when(candles.getClosingCandles(eq("KOSPI"),any(),any())).thenAnswer(inv -> new KisDailyCandleResult(List.of(bar(inv.getArgument(1).toString(),100),bar(inv.getArgument(2).toString(),100.2)),false));
         org.springframework.test.util.ReflectionTestUtils.setField(scheduler, "clock", Clock.fixed(Instant.parse("2026-10-06T07:00:00Z"), ZoneId.of("Asia/Seoul")));
     }
@@ -33,13 +33,15 @@ class FeedbackSchedulerTest {
         return item;
     }
     private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
-    @Test void startupProcessesPastComparisonAndSkipsFutureComparison() {
+    @Test void startupFinalizesUnresolvablePastButSkipsFutureComparison() {
         var past = pending(null, "2026-09-28");
         var future = pending("005930", "2026-10-06");
         when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of(past, future));
         scheduler.generatePendingFeedback();
-        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
-        verifyNoInteractions(candles);
+        assertThat(past.getActualDirection()).isEqualTo("UNKNOWN");
+        assertThat(future.getActualDirection()).isNull();
+        verify(records).finalizeOutcome(any(),any(),eq("UNKNOWN"),isNull(),eq("판단 대상이 정해지지 않은 기사예요"),any(),isNull(),isNull(),isNull(),any(),any(),isNull());
+        verifyNoInteractions(candles,ai);
     }
     @Test void backlogUsesExactHistoricalClosesAndStoresThemOnce() {
         var item = pending("005930", "2026-09-28");
@@ -60,7 +62,7 @@ class FeedbackSchedulerTest {
         assertThat(item.getComparisonClose()).isEqualByComparingTo("101.2");
         assertThat(item.getFeedbackText()).doesNotContain("UP", "UNKNOWN");
         assertThat(scheduler.runNow(1L)).isZero();
-        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
     @Test void allDirectionsUseClosesWithFreeTemplateWhenAiIsUnavailable() {
         for (double close : new double[]{101,100.5,99}) {
@@ -82,13 +84,16 @@ class FeedbackSchedulerTest {
             assertThat(scheduler.runNow(1L)).isZero();
             assertThat(item.getActualDirection()).isNull(); assertThat(item.getJudgementClose()).isNull();
         }
-        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any()); verifyNoInteractions(ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any()); verifyNoInteractions(ai);
     }
-    @Test void noSymbolIsNotAnIncorrectResult() {
+    @Test void unresolvableDueRecordFinishesUnknownWithoutCallingProviders() {
         var item = pending(null,"2026-10-02");
-        assertThat(scheduler.runNow(1L)).isZero();
-        assertThat(item.getFeedbackText()).isNull();
-        assertThat(item.getActualDirection()).isNull(); verifyNoInteractions(candles, ai);
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        assertThat(item.getFeedbackText()).isEqualTo("판단 대상이 정해지지 않은 기사예요");
+        assertThat(item.getActualDirection()).isEqualTo("UNKNOWN");
+        assertThat(item.getFeedbackGeneratedAt()).isNotNull();
+        assertThat(item.getActualChangePercent()).isNull();
+        assertThat(scheduler.runNow(1L)).isZero(); verifyNoInteractions(candles, ai);
     }
     @Test void indexAlsoUsesHistoricalIndexCloses() {
         var item = pending("KOSDAQ","2026-09-28");
@@ -115,7 +120,7 @@ class FeedbackSchedulerTest {
         when(ai.generateFeedback(any())).thenAnswer(inv -> Optional.of(JudgementFeedbackRules.generate(inv.getArgument(0))));
         assertThat(scheduler.runNow(1L)).isEqualTo(1);
         var content = org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
-        verify(records).finalizeOutcome(any(),any(),any(),any(),contains("삼성전자 2026-10-06 종가 기준 +1.20%."),any(),any(),any(),any(),eq("예측 방향이 같았어요"),content.capture());
+        verify(records).finalizeOutcome(any(),any(),any(),any(),contains("삼성전자 2026-10-06 종가 기준 +1.20%."),any(),any(),any(),any(),eq("예측 방향이 같았어요"),content.capture(),eq("005930"));
         assertThat(content.getValue().path("reasons").size()).isEqualTo(3);
         assertThat(content.getValue().path("reasons").get(1).path("detail").asText()).contains("운이 섞였을 수");
         assertThat(content.getValue().path("indexName").asText()).isEqualTo("코스피");
@@ -148,6 +153,33 @@ class FeedbackSchedulerTest {
         assertThat(item.getFeedbackContent().reasons()).hasSize(3);
         assertThat(item.getFeedbackHeadline()).doesNotContain("정확한 판단");
         assertThat(item.getFeedbackText()).doesNotContain("잘 연결", "정확한 판단").contains("한 줄 남겨보세요");
+    }
+
+    @Test void missingTargetUsesNewsResolverAndPinsItInTheAtomicOutcome() {
+        var item = pending(null,"2026-10-02");
+        when(item.getNews().getTitle()).thenReturn("삼성전자 매출 증가");
+        when(item.getNews().getRawContent()).thenReturn("삼성전자의 매출이 증가했다.");
+        item.getNews().setRelatedSymbol("005930");
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",102)),false));
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        assertThat(item.getTargetSymbol()).isEqualTo("005930");
+        verify(records).finalizeOutcome(any(),any(),eq("UP"),any(),any(),any(),any(),any(),any(),any(),any(),eq("005930"));
+        verify(ai).generateFeedback(argThat(request -> "005930".equals(request.relatedSymbol())));
+    }
+    @Test void resolvedTargetCannotOverwriteAnotherCompletedOrRevisedOutcome() {
+        var item = pending("005930","2026-10-02");
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-10-02",100),bar("2026-10-06",102)),false));
+        when(records.finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any())).thenReturn(0);
+        assertThat(scheduler.runNow(1L)).isZero();
+        assertThat(item.getActualDirection()).isNull();
+        assertThat(item.getFeedbackGeneratedAt()).isNull();
+    }
+    @Test void localQaIsNeverResolvedFinalizedOrSentToProviders() {
+        var item = pending(null,"2026-10-02");
+        when(item.getNews().getTitle()).thenReturn("로컬 QA 기록 화면 검증 삼성전자");
+        assertThat(scheduler.runNow(1L)).isZero();
+        verifyNoInteractions(candles,ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
 
 }

@@ -14,10 +14,11 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
     @Query("UPDATE Judgement j SET j.actualDirection=:direction, j.actualChangePercent=:change, j.feedbackText=:feedback, "
-        + "j.feedbackGeneratedAt=:generated, j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after, j.feedbackHeadline=:headline, j.feedbackContent=:content "
-        + "WHERE j.id=:id AND j.createdAt=:judgedAt AND j.actualDirection IS NULL AND j.feedbackGeneratedAt IS NULL")
+        + "j.feedbackGeneratedAt=:generated, j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after, j.feedbackHeadline=:headline, j.feedbackContent=:content, j.targetSymbol=:target "
+        + "WHERE j.id=:id AND j.createdAt=:judgedAt AND j.actualDirection IS NULL AND j.feedbackGeneratedAt IS NULL "
+        + "AND (j.targetSymbol IS NULL OR trim(j.targetSymbol)='' OR j.targetSymbol=:target)")
     int finalizeOutcome(Long id, Instant judgedAt, String direction, Double change, String feedback, Instant generated,
-        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, com.fasterxml.jackson.databind.JsonNode content);
+        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, com.fasterxml.jackson.databind.JsonNode content, String target);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     java.util.Optional<Judgement> findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(User user, Long newsId);

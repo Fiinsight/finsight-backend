@@ -41,6 +41,7 @@ public final class JudgementRegradePlan {
         var id = News.class.getDeclaredField("id"); id.setAccessible(true);
         List<Map<String,Object>> plans = new ArrayList<>();
         for (var row : input.path("judgements")) {
+            if (row.path("title").asText().contains("로컬 QA")) continue;
             var article = new News(row.path("title").asText(),row.path("url").asText(),row.path("source").asText(),Instant.now(),row.path("raw_content").asText());
             id.set(article,row.path("news_id").asLong());
             var target = JudgementTargetResolver.resolve(article);
@@ -51,7 +52,8 @@ public final class JudgementRegradePlan {
             plan.put("previousTarget", row.path("related_symbol").isNull() ? null : row.path("related_symbol").asText());
             plan.put("target",target.symbol()); plan.put("baselineDate",before); plan.put("comparisonDate",after);
             if (target.symbol() == null) { plan.put("status","NO_TARGET"); plans.add(plan); continue; }
-            if (after.isAfter(LocalDate.now(ZoneId.of("Asia/Seoul")))) { plan.put("status","NOT_DUE"); plans.add(plan); continue; }
+            var now = ZonedDateTime.now(ZoneId.of("Asia/Seoul"));
+            if (after.isAfter(now.toLocalDate()) || (after.equals(now.toLocalDate()) && now.toLocalTime().isBefore(LocalTime.of(15,40)))) { plan.put("status","NOT_DUE"); plans.add(plan); continue; }
             String symbol = target.symbol();
             Double start = closes.get(symbol+":"+before), end = closes.get(symbol+":"+after);
             String index = "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(symbol)) ? "KOSDAQ" : "KOSPI";
@@ -61,6 +63,9 @@ public final class JudgementRegradePlan {
                 plan.put("status","NO_SAVED_CLOSES"); plans.add(plan); continue;
             }
             double percent = new ClosingPrices.Pair(start,end).percent();
+            plan.put("judgementClose",start); plan.put("comparisonClose",end);
+            plan.put("indexName",indexTarget ? null : JudgementTargetResolver.name(index));
+            plan.put("indexChangePercent",indexTarget ? null : new ClosingPrices.Pair(indexStart,indexEnd).percent());
             String body = new com.finsight.news.collect.ArticleContentExtractor().clean(article.getTitle(),article.getRawContent());
             var concept = learning.feedbackConcept(row.path("user_id").asLong(),article,row.path("learning_level").asText("beginner"));
             var request = new AiFeedbackRequest(row.path("news_id").asLong(),row.path("choice").asText(),row.path("reason_text").asText(""),

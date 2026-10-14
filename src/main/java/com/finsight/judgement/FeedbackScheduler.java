@@ -93,13 +93,15 @@ public class FeedbackScheduler {
     private boolean processOne(Judgement judgement) {
         var now = java.time.ZonedDateTime.now(clock);
         if (judgement.getFeedbackGeneratedAt() != null || judgement.getActualDirection() != null) return false;
+        if (java.util.Objects.toString(judgement.getNews().getTitle(), "").contains("로컬 QA")) return false;
         LocalDate judgementDay = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
         LocalDate comparison = KoreanTradingCalendar.next(judgementDay);
         LocalDate baseline = KoreanTradingCalendar.onOrBefore(judgementDay);
         if (comparison.isAfter(now.toLocalDate()) || (comparison.equals(now.toLocalDate()) && now.toLocalTime().isBefore(java.time.LocalTime.of(15, 40)))) return false;
-        // Old rows are changed only by the separately approved regrade, never startup catch-up.
         String symbol = judgement.getTargetSymbol();
-        if (!JudgementTargetResolver.valid(symbol)) return false;
+        if (!StringUtils.hasText(symbol)) symbol = JudgementTargetResolver.resolve(judgement.getNews()).symbol();
+        if (!JudgementTargetResolver.valid(symbol)) return finishWithoutTarget(judgement, symbol);
+        judgement.setTargetSymbol(symbol);
         var prices = closingPrices(symbol, baseline, comparison);
         if (prices.isEmpty()) return false;
         boolean indexTarget = symbol.equals("KOSPI") || symbol.equals("KOSDAQ");
@@ -117,13 +119,28 @@ public class FeedbackScheduler {
                 indexName, indexChange, feedback.conceptTerm(), feedback.conceptDefinition());
         // Atomic conditional update: concurrent scheduler/manual runs or a revised judgement cannot overwrite an outcome.
         int updated = judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), actualDirection,
-            actualChangePercent, feedbackText, clock.instant(), judgement.getComparisonDate(), judgement.getJudgementClose(), judgement.getComparisonClose(), feedback.headline(), Judgement.feedbackJson(content));
+            actualChangePercent, feedbackText, clock.instant(), judgement.getComparisonDate(), judgement.getJudgementClose(), judgement.getComparisonClose(), feedback.headline(), Judgement.feedbackJson(content), symbol);
         if (updated != 1) return false;
 
         judgement.setActualDirection(actualDirection);
         judgement.setActualChangePercent(actualChangePercent);
         judgement.setFeedbackText(feedbackText);
         judgement.setStructuredFeedback(feedback.headline(), content);
+        judgement.setFeedbackGeneratedAt(clock.instant());
+        return true;
+    }
+
+    private boolean finishWithoutTarget(Judgement judgement, String symbol) {
+        String reason = "판단 대상이 정해지지 않은 기사예요";
+        var content = new Judgement.FeedbackContent(null,
+                JudgementFeedbackRules.articleReview(judgement.getNews(), judgement.getReasonText(), judgement.getChoice()),
+                "국내 종목이나 시장에 연결되는 다른 기사에서 판단을 남겨보세요.");
+        if (judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), "UNKNOWN", null, reason,
+                clock.instant(), null, null, null, "판단 대상이 없어요", Judgement.feedbackJson(content), symbol) != 1) return false;
+        judgement.setTargetSymbol(symbol);
+        judgement.setActualDirection("UNKNOWN");
+        judgement.setFeedbackText(reason);
+        judgement.setStructuredFeedback("판단 대상이 없어요", content);
         judgement.setFeedbackGeneratedAt(clock.instant());
         return true;
     }

@@ -65,6 +65,28 @@ GitHub Actions runs this command for pull requests and pushes to `main`. The tes
 - Kakao rejects the authorization code or profile request: the API returns `502 Bad Gateway`; a stalled Kakao request returns `504 Gateway Timeout`.
 - KIS minute data is unavailable, times out, or returns a non-zero `rt_cd`: the chart endpoint returns fallback candles and sets `fallback: true`.
 
+## 예전 UNKNOWN 판단 재채점
+
+`scripts/regrade_judgements.py`는 `actual_direction='UNKNOWN' AND comparison_date IS NULL`인 기록만 계획합니다. 제목에 `로컬 QA`가 포함된 기록은 제외합니다. 저장된 종가로 다음 거래일 결과를 계산한 `READY`만 적용할 수 있으며, 가격 부족·대상 없음·비교일 전 기록은 그대로 둡니다. 서버 시작, 시세 조회, AI 호출은 하지 않습니다. Java 21, Python 3, `psql`과 로컬 DB 연결 설정이 필요합니다.
+
+저장소 루트에서 먼저 변경 전후를 확인하세요. 기본 실행도 dry-run입니다.
+
+```bash
+python3 scripts/regrade_judgements.py --dry-run
+```
+
+출력에는 대상 건수·상태와 READY 기록의 아래 9개 컬럼 변경 전후가 나옵니다. 내용을 확인한 뒤 사용자가 직접 적용합니다.
+
+```bash
+python3 scripts/regrade_judgements.py --apply
+```
+
+`--apply`도 새 스냅샷으로 계획과 변경 전후를 다시 출력한 뒤 READY만 한 트랜잭션으로 적용합니다. 갱신 컬럼은 `target_symbol`, `actual_direction`, `actual_change_percent`, `comparison_date`, `judgement_close`, `comparison_close`, `feedback_text`, `feedback_headline`, `feedback_reasons`입니다. 기존 `feedback_generated_at`은 보존합니다. 계획 이후 판단·기사가 변경됐거나 다른 실행이 먼저 재채점했다면 전체 적용을 롤백합니다. 기존 도구와 같이 loopback의 `finsight` / `finsight_demo` DB만 허용합니다. READY가 0건이면 DB 쓰기를 하지 않습니다.
+
+대기 중인 NULL 대상 기록은 백엔드 스케줄러가 뉴스에서 대상을 찾아 채점 결과와 함께 고정합니다. 대상 자체가 없는 기사는 비교 시점이 지난 뒤 UNKNOWN과 사유로 종료합니다. 이미 UNKNOWN으로 끝난 기록은 스케줄러가 다시 채점하지 않으며 위 수동 도구를 사용해야 합니다.
+
+코드 변경을 실행 중 서비스에 반영하려면 **백엔드(8080)와 AI 서버(8001)를 재시작**해야 합니다. 백엔드는 시작 시 대기 기록 채점을 수행할 수 있으므로, 단순 화면 점검만 할 때는 기존 `finsight.feedback.on-startup=false` 설정을 사용하세요. 과거 UNKNOWN 적용은 서버 재시작으로 실행되지 않습니다.
+
 ## 앞으로의 계획
 
 1. 인증·온보딩 선택값을 사용자 프로필과 연결하고 개인화 조회에 반영

@@ -50,7 +50,7 @@ class StructuredFeedbackTest {
             var pending = Arrays.stream(JudgementRepository.class.getMethods()).filter(item -> item.getName().equals(name)).findFirst().orElseThrow();
             assertThat(pending.getAnnotation(org.springframework.data.jpa.repository.Query.class).value()).contains("LEFT JOIN FETCH j.user");
         }
-        assertThat(method.getAnnotation(org.springframework.data.jpa.repository.Query.class).value()).contains("j.feedbackHeadline=:headline", "j.feedbackContent=:content", "j.createdAt=:judgedAt", "j.actualDirection IS NULL", "j.feedbackGeneratedAt IS NULL");
+        assertThat(method.getAnnotation(org.springframework.data.jpa.repository.Query.class).value()).contains("j.feedbackHeadline=:headline", "j.feedbackContent=:content", "j.createdAt=:judgedAt", "j.actualDirection IS NULL", "j.feedbackGeneratedAt IS NULL", "j.targetSymbol=:target", "j.targetSymbol IS NULL");
     }
     @Test void mismatchedLegacyTargetNeverReturnsOldPraiseOrChangesTheRow() {
         var repo=mock(JudgementRepository.class);var owner=mock(User.class);
@@ -94,7 +94,16 @@ class StructuredFeedbackTest {
     }
     @Test void missingBodyDoesNotInventAPriceExplanation() {
         var article=new News("기사 제목","https://example.test","fixture",java.time.Instant.now(),null);
-        assertThat(JudgementFeedbackRules.articleReview(article,null).getFirst().detail()).contains("기사 본문이 없어");
+        assertThat(JudgementFeedbackRules.articleReview(article,null).getFirst().detail()).contains("기사 본문이 없어", "기사 신호도 확인하기 어려워요");
+    }
+    @Test void unresolvedUnknownReturnsTheNoTargetReasonWithoutWriting() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("[부고] 기업 임원 별세","https://example.test","fixture",java.time.Instant.now(),"기업 임원의 부고를 전한다.");
+        var row=new Judgement(owner,article,JudgementChoice.UP,null);row.setActualDirection("UNKNOWN");row.setFeedbackText("판단 대상이 정해지지 않은 기사예요");
+        when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
+        assertThat(view.unavailableReason()).isEqualTo("판단 대상이 정해지지 않은 기사예요");
+        assertThat(view.verdict()).isNull();verify(repo,never()).save(any());
     }
     @Test void savedMarketComparisonIsNotRejectedBecauseItsBodyQuotesAStock() {
         var repo=mock(JudgementRepository.class);var owner=mock(User.class);

@@ -47,11 +47,13 @@ public final class JudgementFeedbackRules {
         return "기사의 " + ("POSITIVE".equals(signal) ? "호재" : "악재") + " 신호와 " + label(choice) + " 선택은 " + (aligned ? "같은" : "다른") + " 방향이에요.";
     }
 
-    static String reasonCheck(String userReason, String choice, String verdict, String articleText, String interpretation, String articleSignal) {
+    static String reasonCheck(String userReason, String choice, String verdict, String articleText, String interpretation, String articleSignal, String articleLead) {
         String reason = java.util.Objects.toString(userReason, "").strip();
         String choiceCheck = verdict == null ? choiceCheck(articleSignal,choice) : "";
+        String lead = first(articleLead).replaceAll("[.!?]+$", "");
+        String example = lead.isBlank() ? "사실 → 이익·수요·금리 → 방향" : "예: “" + lead.substring(0,Math.min(lead.length(),50)) + "” → 이익·수요·금리 변화 → 예상 방향";
         if (reason.isBlank()) return verdict == null
-                ? choiceCheck + " 다음엔 판단 근거를 한 줄 남겨보세요. ‘사실 → 이익·수요·금리 → 방향’ 순서로 한 줄을 써보세요."
+                ? choiceCheck + " 다음엔 판단 근거를 한 줄 남겨보세요(" + example + ")."
                 : "다음엔 판단 근거를 한 줄 남겨보세요.";
         String source = articleText.toLowerCase(Locale.ROOT);
         boolean hasFact = REASON_WORDS.matcher(reason).results().map(match -> match.group().substring(0,2).toLowerCase(Locale.ROOT))
@@ -87,8 +89,12 @@ public final class JudgementFeedbackRules {
         String signal = signal(text,java.util.Objects.toString(news.getSentimentHint(),null),news.getSentimentConfidence());
         String explanation = core.isBlank() ? "기사 본문이 없어 가격에 영향을 줄 근거를 확인하기 어려워요."
                 : "기사에서는 “" + core + "”라고 전했어요. " + priceChannel(text,signal);
+        explanation += core.isBlank() ? " 본문이 없어 기사 신호도 확인하기 어려워요."
+                : "POSITIVE".equals(signal) ? " 기사 표현은 호재 신호로 읽히지만 실제 가격 방향을 보장하지는 않아요."
+                : "NEGATIVE".equals(signal) ? " 기사 표현은 악재 신호로 읽히지만 실제 가격 방향을 보장하지는 않아요."
+                : " 이 기사에는 뚜렷한 호재·악재 방향 신호가 없어 중립으로 읽혀요.";
         return List.of(new AiFeedbackResponse.Reason("기사의 핵심과 의미",explanation),
-                new AiFeedbackResponse.Reason("내 판단 돌아보기",reasonCheck(userReason,choice == null ? null : choice.name(),null,text,"",signal)));
+                new AiFeedbackResponse.Reason("내 판단 돌아보기",reasonCheck(userReason,choice == null ? null : choice.name(),null,text,"",signal,core)));
     }
     public static AiFeedbackResponse generate(AiFeedbackRequest request) {
         boolean aligned = request.userChoice().equals(request.marketResult());
@@ -127,7 +133,7 @@ public final class JudgementFeedbackRules {
                 : "개별 소식의 발표 시점과 같은 날 시장 흐름을 나란히 비교해보세요.";
         return new AiFeedbackResponse(verdict, headline, summary, List.of(
                 new AiFeedbackResponse.Reason("기사 신호와 결과", article),
-                new AiFeedbackResponse.Reason(reason.isBlank() ? "근거 남기기" : "내 근거 점검", reasonCheck(request.userReason(),request.userChoice(),verdict,request.newsTitle() + " " + core,interpretation,signal)),
+                new AiFeedbackResponse.Reason(reason.isBlank() ? "근거 남기기" : "내 근거 점검", reasonCheck(request.userReason(),request.userChoice(),verdict,request.newsTitle() + " " + core,interpretation,signal,core)),
                 new AiFeedbackResponse.Reason("시장 비교", market)), tip, request.conceptTerm(), request.conceptDefinition(), "RULE");
     }
     static String signal(String text, String hint, Double confidence) {

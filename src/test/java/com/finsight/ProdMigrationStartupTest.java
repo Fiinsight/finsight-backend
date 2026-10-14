@@ -69,8 +69,10 @@ class ProdMigrationStartupTest {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.reasons[0].detail").value("이전 근거"));
         var row=judgementRows.findById(legacy).orElseThrow();
         var content=new com.finsight.judgement.Judgement.FeedbackContent("CORRECT",java.util.List.of(new com.finsight.external.AiFeedbackResponse.Reason("기사","원문 사실")),"비교 기준 확인");
-        assertThat(judgementRows.finalizeOutcome(legacy,row.getCreatedAt(),"UP",1.2,"결과",java.time.Instant.now(),java.time.LocalDate.parse("2026-10-07"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(101.2),"결과",com.finsight.judgement.Judgement.feedbackJson(content))).isEqualTo(1);
+        assertThat(judgementRows.finalizeOutcome(legacy,row.getCreatedAt(),"UP",1.2,"결과",java.time.Instant.now(),java.time.LocalDate.parse("2026-10-07"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(101.2),"결과",com.finsight.judgement.Judgement.feedbackJson(content),"005930")).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT jsonb_typeof(feedback_reasons) FROM judgement WHERE id=?",String.class,legacy)).isEqualTo("object");
+        assertThat(jdbc.queryForObject("SELECT target_symbol FROM judgement WHERE id=?",String.class,legacy)).isEqualTo("005930");
+        assertThat(judgementRows.finalizeOutcome(legacy,row.getCreatedAt(),"DOWN",-2.,"다른 실행",java.time.Instant.now(),java.time.LocalDate.parse("2026-10-07"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(98),"변경",com.finsight.judgement.Judgement.feedbackJson(content),"000660")).isZero();
     }
 
     @Test
