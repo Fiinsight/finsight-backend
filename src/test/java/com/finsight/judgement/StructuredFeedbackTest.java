@@ -52,4 +52,31 @@ class StructuredFeedbackTest {
         }
         assertThat(method.getAnnotation(org.springframework.data.jpa.repository.Query.class).value()).contains("j.feedbackHeadline=:headline", "j.feedbackContent=:content", "j.createdAt=:judgedAt", "j.actualDirection IS NULL", "j.feedbackGeneratedAt IS NULL");
     }
+    @Test void mismatchedLegacyTargetNeverReturnsOldPraiseOrChangesTheRow() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("고용노동부 고객센터, AI 상담 24시간 제공","https://example.test","fixture",java.time.Instant.now(),"카카오톡에서 고용노동부 채널을 검색하면 AI 상담을 이용할 수 있다.");article.setRelatedSymbol("035720");
+        var row=new Judgement(owner,article,JudgementChoice.DOWN,null);row.setActualDirection("DOWN");row.setActualChangePercent(-1.76);row.setFeedbackText("뉴스와 시장 반응을 잘 연결한 판단입니다.");
+        when(repo.findByIdAndUser(14L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,14L);
+        assertThat(view.gradingIssue()).isEqualTo("TARGET_MISMATCH");assertThat(view.feedbackText()).contains("카카오", "연결을 다시 확인").doesNotContain("잘 연결한");assertThat(view.verdict()).isNull();
+        assertThat(row.getFeedbackText()).isEqualTo("뉴스와 시장 반응을 잘 연결한 판단입니다.");verify(repo,never()).save(any());
+    }
+    @Test void sameDayLegacyComparisonHasAnExplanationInsteadOfPraise() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("삼성전자 매출 증가","https://example.test","fixture",java.time.Instant.now(),"삼성전자 매출이 증가했다. 영업이익도 늘었다.");article.setRelatedSymbol("005930");
+        var row=new Judgement(owner,article,JudgementChoice.UP,null);row.setActualDirection("UP");row.setFeedbackText("정확한 판단입니다.");
+        when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
+        assertThat(view.gradingIssue()).isEqualTo("LEGACY_COMPARISON");assertThat(view.feedbackText()).contains("판단한 날의 가격").doesNotContain("정확한 판단");verify(repo,never()).save(any());
+    }
+    @Test void oldRuleExplanationIsEnrichedOnlyInTheResponse() {
+        var repo=mock(JudgementRepository.class);var owner=mock(User.class);
+        var article=new News("삼성전자 실적 개선","https://example.test","fixture",java.time.Instant.now(),"삼성전자 매출이 증가했다. 영업이익도 늘었다.");article.setRelatedSymbol("005930");
+        var row=new Judgement(owner,article,JudgementChoice.UP,"실적 개선");row.setActualDirection("UP");row.setClosingComparison(java.time.LocalDate.parse("2026-10-14"),100,102);
+        var old=new AiFeedbackResponse.Reason("기사 신호","기사 핵심 “매출이 증가했다.”에 호재 신호가 있고 실제 상승 방향도 같았어요.");
+        row.setStructuredFeedback("결과",new Judgement.FeedbackContent("CORRECT",List.of(old),"팁."));
+        when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
+        var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
+        assertThat(view.reasons().getFirst().detail()).contains("이익에 대한 기대를 높여");assertThat(row.getFeedbackContent().reasons().getFirst()).isEqualTo(old);verify(repo,never()).save(any());
+    }
 }

@@ -69,16 +69,36 @@ public class JudgementService {
     private JudgementHistoryResponse history(Judgement j) {
         var content = j.getFeedbackContent();
         var symbol = j.getTargetSymbol() == null ? j.getNews().getRelatedSymbol() : j.getTargetSymbol();
+        String issue = null;
+        String notice = null;
+        if (java.util.Set.of("UP","DOWN","NEUTRAL").contains(java.util.Objects.toString(j.getActualDirection(),""))) {
+            if (j.getTargetSymbol() == null && symbol != null && !symbol.equals(JudgementTargetResolver.resolve(j.getNews()).symbol())) {
+                issue = "TARGET_MISMATCH";
+                notice = "이 기사와 " + symbolName(symbol) + " 주가의 연결을 다시 확인해야 해요. 저장된 등락을 이 기사의 영향으로 설명할 수 없어 이전 적중 여부와 피드백을 표시하지 않아요.";
+            } else if (j.getComparisonDate() == null) {
+                issue = "LEGACY_COMPARISON";
+                notice = "이 기록은 판단한 날의 가격으로 비교돼 다음 거래일 예측의 결과로 해석하기 어려워요. 대상과 비교 종가가 확인된 새 판단에서 설명을 확인해보세요.";
+            }
+        }
+        if (issue != null) content = null;
+        var displayReasons = content == null ? null : content.reasons();
+        if (displayReasons != null && !displayReasons.isEmpty() && displayReasons.getFirst().detail().matches("(?s).*기사 핵심.*(방향도 같았어요|묻혔을 수 있어요|함께 확인해보세요)\\.")) {
+            String text = j.getNews().getTitle() + " " + JudgementFeedbackRules.first(new com.finsight.news.collect.ArticleContentExtractor().clean(j.getNews().getTitle(),j.getNews().getRawContent()));
+            var enriched = new java.util.ArrayList<>(displayReasons);
+            var first = displayReasons.getFirst();
+            enriched.set(0,new com.finsight.external.AiFeedbackResponse.Reason(first.title(),first.detail()+" "+JudgementFeedbackRules.priceChannel(text,JudgementFeedbackRules.signal(text,null,null))));
+            displayReasons = java.util.List.copyOf(enriched); // Read-only display of old rule copy; stored feedback is untouched.
+        }
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
-                j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
-                j.getFeedbackHeadline(), content == null ? null : content.verdict(), content == null ? null : content.reasons(), content == null ? null : content.nextTip(),
+                notice == null ? j.getFeedbackText() : notice, j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
+                issue == null ? j.getFeedbackHeadline() : null, content == null ? null : content.verdict(), displayReasons, content == null ? null : content.nextTip(),
                 symbol, symbolName(symbol),
                 j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
                 content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
                 content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(),
-                "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null);
+                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue);
     }
 
     private String symbolName(String symbol) {

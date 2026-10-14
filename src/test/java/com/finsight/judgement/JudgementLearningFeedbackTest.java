@@ -40,4 +40,12 @@ class JudgementLearningFeedbackTest {
         assertThat(result.summary()).contains("개별 소식의 영향이 더 컸을 수").doesNotContain("때문에 하락");
         assertThat(result.nextTip()).contains("실적 발표 일정");
     }
+    @Test void earningsAndOrderFlowExplainThePriceChannelInsteadOfOnlyAlignment() {
+        var earnings = JudgementFeedbackRules.generate(request("실적 부진", "실적 부진", "매출이 감소했다.",-.2));
+        assertThat(earnings.reasons().getFirst().detail()).contains("이익에 대한 기대를 낮춰", "팔려는 수요");
+        assertThat(JudgementFeedbackRules.priceChannel("매출 증가","POSITIVE")).contains("이익에 대한 기대를 높여", "상승 요인");
+        assertThat(JudgementFeedbackRules.priceChannel("외국인 매도 확대","NEGATIVE")).contains("수요", "공급", "매도 압력");
+        assertThat(JudgementFeedbackRules.signal("기준금리 상승",null,null)).isEqualTo("NEGATIVE");
+        assertThat(JudgementFeedbackRules.signal("환율 상승",null,null)).isEqualTo("NEUTRAL");
+    }
 }
