@@ -84,7 +84,7 @@ public class JudgementService {
         var displayReasons = content == null ? null : content.reasons();
         boolean reviewOnly = issue != null || "UNKNOWN".equals(j.getActualDirection());
         if (reviewOnly) {
-            displayReasons = JudgementFeedbackRules.articleReview(j.getNews(),j.getReasonText());
+            displayReasons = JudgementFeedbackRules.articleReview(j.getNews(),j.getReasonText(),j.getChoice());
             if (notice == null) notice = "이 기록에는 비교할 가격이 저장되지 않아 적중 여부를 계산하지 않았어요. 기사 내용과 내 근거를 먼저 복습해보세요.";
         }
         if (displayReasons != null && !displayReasons.isEmpty() && displayReasons.getFirst().detail().matches("(?s).*기사 핵심.*(방향도 같았어요|묻혔을 수 있어요|함께 확인해보세요)\\.")) {
