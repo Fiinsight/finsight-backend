@@ -58,14 +58,13 @@ public class NewsAssembler {
         }
         String cleanedContent = extracted.get();
         news.setRawContent(cleanedContent);
-        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), cleanedContent));
+        // Existing symbols change only through a separately reviewed remap preview.
         applyRewrite(news, candidate, cleanedContent, true);
     }
 
     /** Refresh cheap, deterministic metadata without making any AI calls. */
     public void refreshMetadata(News news) {
         news.setCategory(newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()));
-        news.setRelatedSymbol(newsSymbolMatcher.match(news.getTitle(), news.getRawContent()));
         news.setSentimentHint(newsSentimentClassifier.classify(news.getTitle()));
     }
 

@@ -66,22 +66,22 @@ class NewsPipelineQualityTest {
     @Test
     void mapsCommonCompanyAliasesToChartSymbols() {
         NewsSymbolMatcher matcher = new NewsSymbolMatcher();
-        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isNull();
+        assertThat(matcher.match("삼성·SK하닉 실적 전망 상향")).isEqualTo("000660");
         assertThat(matcher.match("현대로템 목표주가 하향", "코스피와 삼성전자 동향")).isEqualTo("064350");
         assertThat(matcher.match("뉴욕 증시 상승, 나스닥 최고", "코스피 전망")).isNull();
         assertThat(matcher.match("여러 기업 주가 상승")).isNull();
         assertThat(matcher.match("코스피 상승", "삼성전자와 카카오 동향")).isEqualTo("KOSPI");
-        assertThat(matcher.match("삼성전자 및 SK하이닉스 투자 확대")).isNull();
+        assertThat(matcher.match("삼성전자 및 SK하이닉스 투자 확대")).isEqualTo("005930");
         assertThat(matcher.match("삼성전기 AI 기판 투자 확대")).isEqualTo("009150");
         assertThat(matcher.match("SK하닉 공급 확대 기대")).isEqualTo("000660");
-        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isNull();
+        assertThat(matcher.match("AI 서버 기판 투자 확대", "삼성전기가 6.8조원 규모를 투자합니다.")).isEqualTo("009150");
     }
 
     @Test
     void overseasAndIncidentalMentionsDoNotBecomeDomesticTickers() {
         var matcher = new NewsSymbolMatcher();
         assertThat(matcher.match("인텔 실적 발표", "삼성전자와 비교했다. 삼성전자 실적도 언급했다.")).isNull();
-        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다.")).isNull();
+        assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다.")).isEqualTo("005930");
         assertThat(matcher.match("기업 동향", "삼성전자 실적이 늘었다. 삼성전자 전망도 개선됐다.")).isEqualTo("005930");
         assertThat(matcher.match("카카오뱅크 실적 개선")).isEqualTo("323410");
         assertThat(matcher.match("현대차증권 보고서 발표")).isNull();

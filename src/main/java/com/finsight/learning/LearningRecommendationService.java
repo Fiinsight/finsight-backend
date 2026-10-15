@@ -25,6 +25,7 @@ public class LearningRecommendationService {
     }
     @Transactional(readOnly=true)
     public Response get(Long userId, List<Long> readIds) {
+        Set<String> watched=new HashSet<>(jdbc.queryForList("SELECT symbol FROM user_watchlist WHERE user_id=? ORDER BY created_at,id",String.class,userId));
         Instant now=clock.instant(), since=now.minus(Duration.ofDays(30));
         var activities=jdbc.queryForList("""
                 SELECT news_id,sum(weight) AS weight,
@@ -66,7 +67,7 @@ public class LearningRecommendationService {
                     selected.add(view(article,reason,reasons.get(reason.getId()),"LOCAL_SENTENCE_TRANSFORMER",item.score()));
                     if(selected.size()==3) break;
                 }
-                if(!selected.isEmpty()) return new Response(selected,"LOCAL_SENTENCE_TRANSFORMER");
+                if(!selected.isEmpty()) return prioritize(new Response(selected,"LOCAL_SENTENCE_TRANSFORMER"),candidates,watched,excluded,observations.values());
             }
         }
         record Ranked(News article, News reason, double score) {}
@@ -90,7 +91,29 @@ public class LearningRecommendationService {
             selected.add(view(row.article(),row.reason(),reasons.get(row.reason().getId()),"RULE_INTEREST",row.score()));
             if(selected.size()==3) break;
         }
-        return new Response(selected,selected.stream().anyMatch(item->"RULE_INTEREST".equals(item.basis()))?"RULE_INTEREST":"RULE_RECENT");
+        return prioritize(new Response(selected,selected.stream().anyMatch(item->"RULE_INTEREST".equals(item.basis()))?"RULE_INTEREST":"RULE_RECENT"),candidates,watched,excluded,observations.values());
+    }
+    private Response prioritize(Response original,List<News> candidates,Set<String> watched,Set<Long> excluded,Collection<News> observed) {
+        var eligible=candidates.stream().filter(n->watched.contains(n.getRelatedSymbol()) && !excluded.contains(n.getId())
+                && !duplicate(n,List.of(),observed)).toList();
+        if(eligible.isEmpty()) return original;
+        var selected=new ArrayList<Recommendation>();
+        var byId=candidates.stream().collect(Collectors.toMap(News::getId,n->n));
+        // Preserve existing personalized ranking inside the watchlist group, then fill with recent watched news.
+        for(var item:original.items()) if(watched.contains(byId.get(item.newsId()).getRelatedSymbol())) selected.add(item);
+        for(var article:eligible) {
+            if(selected.size()==3) break;
+            if(selected.stream().anyMatch(item->item.newsId().equals(article.getId())) || duplicate(article,selected,observed)) continue;
+            String body=extractor.clean(article.getTitle(),article.getRawContent());
+            String summary=body==null?"":body.split("(?<=[.!?])\\s+|\\n+",2)[0];
+            selected.add(new Recommendation(article.getId(),article.getTitle(),article.getCategory(),summary.substring(0,Math.min(400,summary.length())),
+                    "관심종목 "+com.finsight.stock.StockCatalog.name(article.getRelatedSymbol())+" 소식이에요",null,null,"WATCHLIST",null));
+        }
+        for(var item:original.items()) {
+            if(selected.size()==3) break;
+            if(selected.stream().noneMatch(previous->previous.newsId().equals(item.newsId()) || sameEvent(previous.title(),item.title()))) selected.add(item);
+        }
+        return new Response(List.copyOf(selected),selected.stream().anyMatch(item->"WATCHLIST".equals(item.basis()))?"WATCHLIST":original.basis());
     }
     private Recommendation view(News article, News reason, Activity activity, String basis, double score) {
         String body=extractor.clean(article.getTitle(),article.getRawContent());

@@ -57,4 +57,24 @@ class LearningRecommendationServiceTest {
         var shortTitle=article(2,"환율 변화","환율");
         assertEquals("읽은 '환율 변화'와 비슷해요",LearningRecommendationService.reasonText(shortTitle,null));
     }
+    @Test void watchlistPriorityKeepsReadExclusionsAndFallsBackExactlyWhenNoWatchedNewsExists() {
+        var jdbc=mock(JdbcTemplate.class);var news=mock(NewsRepository.class);var ai=mock(AiServiceClient.class);
+        var service=new LearningRecommendationService(jdbc,news,ai,new ArticleContentExtractor());
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(Instant.parse("2026-10-13T04:00:00Z"),ZoneId.of("Asia/Seoul")));
+        var source=article(1,"기준금리 변화","금리");var normal=article(2,"채권 투자 환경","금리");
+        var watched=article(3,"반도체 신규 계약","반도체");when(watched.getRelatedSymbol()).thenReturn("005930");
+        when(news.findAllById(any())).thenReturn(List.of(source));
+        when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(List.of(source,normal,watched));
+        var before=service.get(31L,List.of(1L));
+        when(jdbc.queryForList(startsWith("SELECT symbol"),eq(String.class),eq(31L))).thenReturn(List.of("000660"));
+        assertEquals(before,service.get(31L,List.of(1L)));
+        when(jdbc.queryForList(startsWith("SELECT symbol"),eq(String.class),eq(31L))).thenReturn(List.of("005930"));
+        var prioritized=service.get(31L,List.of(1L));
+        assertEquals(3L,prioritized.items().getFirst().newsId());
+        assertFalse(prioritized.items().stream().anyMatch(item->item.newsId()==1L));
+        assertFalse(service.get(31L,List.of(1L,3L)).items().stream().anyMatch(item->item.newsId()==3L));
+        // Cold start has no behavior source; a watched article still has an honest, explicit recommendation reason.
+        when(news.findAllById(any())).thenReturn(List.of());
+        assertEquals("WATCHLIST",service.get(31L,List.of()).items().getFirst().basis());
+    }
 }
