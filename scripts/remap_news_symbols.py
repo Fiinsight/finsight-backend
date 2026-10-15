@@ -56,7 +56,8 @@ class SymbolPreview { public static void main(String[] args) throws Exception {
         driver.write_text(source)
         encode = lambda value: base64.b64encode(value.encode()).decode()
         payload = ''.join(f"{row['id']}\t{encode(row['title'])}\t{encode(row['body'])}\n" for row in rows)
-        result = subprocess.run(['java', '--class-path', str(ROOT / 'build/classes/java/main'), str(driver)],
+        classpath = os.pathsep.join(str(ROOT / path) for path in ('build/classes/java/main', 'build/resources/main'))
+        result = subprocess.run(['java', '--class-path', classpath, str(driver)],
                                 input=payload, text=True, capture_output=True)
         if result.returncode:
             raise RuntimeError('Matcher execution failed; compile backend first. ' + result.stderr[:500])

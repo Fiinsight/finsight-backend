@@ -104,3 +104,41 @@ python3 scripts/regrade_judgements.py --apply
 차트는 완성된 응답을 1분 재사용하고, 분봉 캐시는 Caffeine의 키별 중복 요청 합치기를 사용합니다. 일봉·주가 외부 응답 대기는 5초로 제한합니다. KIS 시세 요청은 이 서버 프로세스에서 1.1초 간격으로 예약하며 2초를 넘는 대기열은 요청하지 않습니다. HTTP 오류 후 30초 쉬고 토큰 발급 실패 후 최소 60초 쉬며 자동 재시도하지 않습니다. 다른 프로그램이나 여러 서버가 같은 앱키를 쓰면 합산 제한은 별도로 관리해야 합니다. 실제 시세가 없으면 빈 캔들과 `fallback=true`를 반환합니다.
 
 뉴스 선별은 오늘 기사 우선 → 제목의 중요도 점수 → 실제 발행시간 순서입니다. 같은 출처·날짜의 제목에서 속보·종합 표기만 다른 기사는 한 번만 표시하며, 추가 뉴스는 동일 순위의 네 번째부터 이어집니다. 부족한 개수는 가짜 기사로 채우지 않습니다.
+
+## 관심종목 기반 학습 1단계 (V16)
+
+로그인 사용자 본인만 `GET /api/watchlist`, `PUT /api/watchlist/{symbol}`,
+`DELETE /api/watchlist/{symbol}`를 사용할 수 있습니다. StockCatalog의 6자리 종목만,
+계정당 최대 20개이며 추가/삭제는 멱등입니다. 홈 뉴스는
+`GET /api/news/watchlist?limit=5`로 최근 48시간의 본인 관심종목 뉴스를 최신순으로 받습니다.
+학습 추천도 읽은 기사 제외 규칙을 유지하면서 관심종목 소식을 먼저 보여줍니다.
+
+스키마는 `V16__create_user_watchlist.sql`로만 만듭니다. Hibernate의 자동 생성·수정은
+`validate`로 전환했으므로 **V16 적용 없이 기본 bootRun만 실행하면 새 테이블 검증이 실패합니다.**
+`.env`는 변경하지 않습니다. 이미 Flyway 이력이 있는 환경은 정상 Flyway 기동으로 V16이 적용됩니다.
+
+Flyway 이력 없이 V15까지의 스키마를 사용하던 로컬 DB라면, **V15 스키마와 동일한지
+확인한 다음** 아래 명령으로 기존 스키마를 15로 baseline하고 V16을 적용할 수 있습니다.
+이력 없는 다른 DB에 버전 15 baseline을 임의로 사용하지 마세요.
+
+```sh
+cd finsight-backend
+./gradlew bootRun --args='--spring.flyway.enabled=true --spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=15 --spring.jpa.hibernate.ddl-auto=validate --finsight.news.collection.enabled=false --finsight.news.collection.on-startup=false --finsight.feedback.on-startup=false'
+```
+
+위 명령은 기존처럼 뉴스 자동 수집과 시작 시 채점을 하지 않습니다. 이번 구현 작업에서는 실행하지 않았습니다.
+8001 AI 서버는 재시작할 필요가 없습니다. API·검증 범위·재매핑 dry-run 결과는
+[관심종목 구현 보고서](docs/WATCHLIST_PHASE1_2026-10-15.md)를 참고하세요.
+
+기존 뉴스 종목은 자동 변경하지 않습니다. `NewsAssembler.reprocess/refreshMetadata`도 저장된 종목을 보존합니다.
+아래 첫 명령은 읽기 전용 preview입니다. 두 번째는 **사용자가 파일을 검토하고 적용하기로 결정했을 때만** 실행합니다.
+
+```sh
+python3 scripts/remap_news_symbols.py --output docs/watchlist-2026-10-15/remap-preview.json
+# 아래는 실행하지 않은 적용 예시입니다.
+python3 scripts/remap_news_symbols.py --apply docs/watchlist-2026-10-15/remap-preview.json
+```
+
+apply는 현재 계산 결과와 검토한 preview가 완전히 같을 때만 기존 조건부 UPDATE를 수행합니다.
+원문·판단 기록을 수정하지 않지만 뉴스의 related_symbol 변경은 기존 화면의 대상 해석에 영향을 줄 수 있으므로
+판단이 연결된 기사와 종목→지수/미연결 변경도 함께 검토하세요.

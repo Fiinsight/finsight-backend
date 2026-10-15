@@ -10,7 +10,8 @@ spring:
     password: ${DB_PASSWORD:finsight}
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema changes, including user_watchlist, must be applied by Flyway.
+      ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: false

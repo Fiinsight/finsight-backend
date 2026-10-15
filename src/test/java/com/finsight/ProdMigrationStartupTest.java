@@ -42,6 +42,7 @@ class ProdMigrationStartupTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired com.finsight.learning.TermMasteryService mastery;
     @Autowired com.finsight.learning.LearningRecommendationService recommendations;
+    @Autowired com.finsight.watchlist.WatchlistService watchlist;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.finsight.external.AiServiceClient ai;
 
@@ -80,7 +81,7 @@ class ProdMigrationStartupTest {
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
-                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
+                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM news", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM judgement", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success", Long.class)).isZero();
@@ -146,5 +147,53 @@ class ProdMigrationStartupTest {
         assertThat(recommendations.get(user,java.util.List.of(source)).items().getFirst().reason()).isEqualTo("메모한 '환율 변화'와 비슷해요");
         jdbc.update("DELETE FROM article_note WHERE user_id=?",user);
         assertThat(recommendations.get(user,java.util.List.of(source)).items().getFirst().reason()).isEqualTo("판단한 '환율 변화'와 비슷해요");
+    }
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void watchlistMigrationOwnerScopeLimitAndRecentNewsWorkOnPostgres() throws Exception {
+        Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('watch-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long other=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('watch-other-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        String token=jwt.issue(users.findById(owner).orElseThrow()),otherToken=jwt.issue(users.findById(other).orElseThrow());
+        var symbols=com.finsight.stock.StockCatalog.entries().keySet().stream().limit(21).toList();
+        for(String symbol:symbols.subList(0,20)) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/watchlist/"+symbol).header("Authorization","Bearer "+token)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/watchlist/"+symbols.getFirst()).header("Authorization","Bearer "+token)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/watchlist/"+symbols.get(20)).header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.message").value("관심종목은 20개까지 추가할 수 있어요"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/watchlist").header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(20))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].symbol").value(symbols.getFirst()));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/watchlist").param("userId",owner.toString()).header("Authorization","Bearer "+otherToken))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(0));
+        for(String invalid:java.util.List.of("KOSPI","KOSDAQ","999999")) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/watchlist/"+invalid).header("Authorization","Bearer "+token)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        for(int i=0;i<7;i++) jdbc.update("INSERT INTO news(title,url,raw_content,related_symbol,published_at,created_at) VALUES(?,?,'기업 실적을 확인했다.',?,now()-(? * interval '1 hour'),now())","관심 뉴스 "+i,"https://example.test/watch/"+i,symbols.getFirst(),i+1);
+        jdbc.update("INSERT INTO news(title,url,related_symbol,published_at,created_at) VALUES('48시간 밖','https://example.test/watch/old',?,now()-interval '49 hours',now())",symbols.getFirst());
+        jdbc.update("INSERT INTO news(title,url,related_symbol,published_at,created_at) VALUES('미래 기사','https://example.test/watch/future',?,now()+interval '1 hour',now())",symbols.getFirst());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/news/watchlist").header("Authorization","Bearer "+token))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(5))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].title").value("관심 뉴스 0"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[4].title").value("관심 뉴스 4"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/news/watchlist").header("Authorization","Bearer "+otherToken)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(0));
+        for(int i=0;i<2;i++) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/watchlist/"+symbols.getFirst()).header("Authorization","Bearer "+token)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_watchlist WHERE user_id=?",Integer.class,owner)).isEqualTo(19);
+    }
+
+    @Test
+    void concurrentWatchlistAddsCannotExceedTwenty() throws Exception {
+        Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('watch-race-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        var symbols=com.finsight.stock.StockCatalog.entries().keySet().stream().limit(21).toList();
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            for(String symbol:symbols.subList(0,19)) watchlist.add(owner,symbol);
+            var start=new java.util.concurrent.CountDownLatch(1);
+            var results=new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+            for(String symbol:symbols.subList(19,21)) results.add(executor.submit(()->{
+                start.await();
+                try { watchlist.add(owner,symbol);return 200; }
+                catch(org.springframework.web.server.ResponseStatusException error) {return error.getStatusCode().value();}
+            }));
+            start.countDown();
+            assertThat(java.util.List.of(results.get(0).get(10,java.util.concurrent.TimeUnit.SECONDS),results.get(1).get(10,java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM user_watchlist WHERE user_id=?",Integer.class,owner)).isEqualTo(20);
+        } finally { jdbc.update("DELETE FROM app_user WHERE id=?",owner); }
     }
 }
