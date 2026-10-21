@@ -180,17 +180,17 @@ curl -fsS -X POST 'http://localhost:8080/api/judgements/generate-feedback-now' \
 `validate`로 전환했으므로 **V16 적용 없이 기본 bootRun만 실행하면 새 테이블 검증이 실패합니다.**
 `.env`는 변경하지 않습니다. 이미 Flyway 이력이 있는 환경은 정상 Flyway 기동으로 V16이 적용됩니다.
 
-현재 로컬 DB는 V15까지의 컬럼은 있지만 Flyway 이력이 없습니다. **해당 로컬 DB가 V15 스키마인지
-확인한 다음**, 사용자 본인이 아래 명령으로 기동하면 기존 스키마를 15로 baseline하고 V16을 적용합니다.
+Flyway 이력 없이 V15까지의 스키마를 사용하던 로컬 DB라면, **V15 스키마와 동일한지
+확인한 다음** 아래 명령으로 기존 스키마를 15로 baseline하고 V16을 적용할 수 있습니다.
 이력 없는 다른 DB에 버전 15 baseline을 임의로 사용하지 마세요.
 
 ```sh
-cd /Users/subin/Desktop/Finsight/finsight-backend
+cd finsight-backend
 ./gradlew bootRun --args='--spring.flyway.enabled=true --spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=15 --spring.jpa.hibernate.ddl-auto=validate --finsight.news.collection.enabled=false --finsight.news.collection.on-startup=false --finsight.feedback.on-startup=false'
 ```
 
 위 명령은 기존처럼 뉴스 자동 수집과 시작 시 채점을 하지 않습니다. 이번 구현 작업에서는 실행하지 않았습니다.
-8001 AI 서버는 재시작할 필요가 없습니다. 자세한 변경 파일·검증·375px 캡처·재매핑 preview는
+8001 AI 서버는 재시작할 필요가 없습니다. API·검증 범위·재매핑 dry-run 결과는
 [관심종목 구현 보고서](docs/WATCHLIST_PHASE1_2026-10-15.md)를 참고하세요.
 
 기존 뉴스 종목은 자동 변경하지 않습니다. `NewsAssembler.reprocess/refreshMetadata`도 저장된 종목을 보존합니다.
