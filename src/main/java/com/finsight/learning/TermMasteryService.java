@@ -30,8 +30,8 @@ public class TermMasteryService {
                 SELECT m.*, q.level, q.correct FROM term_mastery m
                 JOIN term t ON t.term=m.term
                 LEFT JOIN LATERAL (SELECT level,correct FROM learning_progress
-                    WHERE user_id=m.user_id AND term=m.term ORDER BY answered_at DESC, id DESC LIMIT 1) q ON true
-                WHERE m.user_id=? AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND q.level='beginner')) ORDER BY m.term
+                    WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC, id DESC LIMIT 1) q ON true
+                WHERE m.user_id=? AND m.definition_only AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND q.level='beginner')) ORDER BY m.term
                 """, (rs, index) -> {
             Instant at = rs.getTimestamp("last_answered_at") == null ? null : rs.getTimestamp("last_answered_at").toInstant();
             long days = at == null ? 0 : ChronoUnit.DAYS.between(at.atZone(clock.getZone()).toLocalDate(), now.atZone(clock.getZone()).toLocalDate());
@@ -44,10 +44,22 @@ public class TermMasteryService {
     public void answer(Long userId, String term, String level, boolean correct) {
         Integer eligible = jdbc.queryForObject("SELECT count(*) FROM term WHERE term=? AND (kind='CONCEPT' OR (kind='MARKET' AND ?='beginner'))", Integer.class, term, level);
         if (eligible == null || eligible == 0) return;
-        jdbc.update("INSERT INTO term_mastery(user_id,term,p_known,attempts) VALUES(?,?,?,0) ON CONFLICT DO NOTHING", userId, term, KnowledgeTracing.P_INIT);
-        Double prior = jdbc.queryForObject("SELECT p_known FROM term_mastery WHERE user_id=? AND term=? FOR UPDATE", Double.class, userId, term);
-        jdbc.update("UPDATE term_mastery SET p_known=?,attempts=attempts+1,last_answered_at=? WHERE user_id=? AND term=?",
-                KnowledgeTracing.update(prior, correct, level), java.sql.Timestamp.from(clock.instant()), userId, term);
+        jdbc.update("INSERT INTO term_mastery(user_id,term,p_known,attempts,definition_only) VALUES(?,?,?,0,true) ON CONFLICT DO NOTHING", userId, term, KnowledgeTracing.P_INIT);
+        record Stored(double p, int attempts, Instant at, boolean definitionOnly) {}
+        Stored stored = jdbc.query("SELECT p_known,attempts,last_answered_at,definition_only FROM term_mastery WHERE user_id=? AND term=? FOR UPDATE",
+                (rs, index) -> new Stored(rs.getDouble("p_known"), rs.getInt("attempts"),
+                        rs.getTimestamp("last_answered_at") == null ? null : rs.getTimestamp("last_answered_at").toInstant(), rs.getBoolean("definition_only")), userId, term).getFirst();
+        Instant now = clock.instant();
+        double prior = stored.definitionOnly() ? effective(stored.p(), stored.at(), now, clock.getZone()) : KnowledgeTracing.P_INIT;
+        // Definition questions have the same three-option format at every reading level.
+        jdbc.update("UPDATE term_mastery SET p_known=?,attempts=?,last_answered_at=?,definition_only=true WHERE user_id=? AND term=?",
+                KnowledgeTracing.update(prior, correct, "beginner"), (stored.definitionOnly() ? stored.attempts() : 0) + 1,
+                java.sql.Timestamp.from(now), userId, term);
+    }
+
+    static double effective(double probability, Instant answeredAt, Instant now, ZoneId zone) {
+        long days = answeredAt == null ? 0 : ChronoUnit.DAYS.between(answeredAt.atZone(zone).toLocalDate(), now.atZone(zone).toLocalDate());
+        return KnowledgeTracing.decay(probability, days);
     }
 
     public static Overview overview(List<Mastery> rows) {
@@ -70,7 +82,7 @@ public class TermMasteryService {
 
     public static String suggestion(List<Mastery> rows, String level) {
         if (!List.of("beginner", "normal").contains(Objects.toString(level, ""))) return null;
-        return rows.stream().filter(row -> level.equals(row.level()) && row.pKnown() >= 0.85).map(Mastery::term).distinct().count() >= 5
+        return rows.stream().filter(row -> level.equals(row.level()) && row.effectivePKnown() >= 0.85 && wellKnown(row)).map(Mastery::term).distinct().count() >= 5
                 ? "beginner".equals(level) ? "normal" : "analyst" : null;
     }
 
@@ -79,13 +91,13 @@ public class TermMasteryService {
         Long concepts = jdbc.queryForObject("""
                 SELECT count(*) FROM (SELECT DISTINCT p.user_id,p.term FROM learning_progress p
                 JOIN term t ON t.term=p.term
-                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
-                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)) missing
+                WHERE p.question_type='DEFINITION' AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term AND m.definition_only)) missing
                 """, Long.class);
         Long answers = jdbc.queryForObject("""
                 SELECT count(*) FROM learning_progress p JOIN term t ON t.term=p.term
-                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
-                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
+                WHERE p.question_type='DEFINITION' AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term AND m.definition_only)
                 """, Long.class);
         return new BackfillCount(concepts, answers);
     }
@@ -98,17 +110,21 @@ public class TermMasteryService {
         Map<Key, State> states = new LinkedHashMap<>();
         jdbc.query("""
                 SELECT p.* FROM learning_progress p JOIN term t ON t.term=p.term
-                WHERE (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
-                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term)
+                WHERE p.question_type='DEFINITION' AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND p.level='beginner')) AND NOT EXISTS
+                (SELECT 1 FROM term_mastery m WHERE m.user_id=p.user_id AND m.term=p.term AND m.definition_only)
                 ORDER BY p.answered_at,p.id
                 """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
             var key = new Key(rs.getLong("user_id"), rs.getString("term"));
             var prior = states.getOrDefault(key, new State(KnowledgeTracing.P_INIT, 0, null));
-            states.put(key, new State(KnowledgeTracing.update(prior.p(), rs.getBoolean("correct"), rs.getString("level")), prior.attempts() + 1, rs.getTimestamp("answered_at").toInstant()));
+            Instant answeredAt = rs.getTimestamp("answered_at").toInstant();
+            states.put(key, new State(KnowledgeTracing.update(effective(prior.p(), prior.at(), answeredAt, clock.getZone()),
+                    rs.getBoolean("correct"), "beginner"), prior.attempts() + 1, answeredAt));
         });
         int inserted = 0;
         for (var entry : states.entrySet()) inserted += jdbc.update("""
-                INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING
+                INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at,definition_only) VALUES(?,?,?,?,?,true)
+                ON CONFLICT (user_id,term) DO UPDATE SET p_known=EXCLUDED.p_known,attempts=EXCLUDED.attempts,
+                last_answered_at=EXCLUDED.last_answered_at,definition_only=true WHERE NOT term_mastery.definition_only
                 """, entry.getKey().userId(), entry.getKey().term(), entry.getValue().p(), entry.getValue().attempts(), java.sql.Timestamp.from(entry.getValue().at()));
         return inserted;
     }

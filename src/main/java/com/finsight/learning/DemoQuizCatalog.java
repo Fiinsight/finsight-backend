@@ -38,9 +38,9 @@ public final class DemoQuizCatalog {
             articles.add(Map.of("id", article.getId(), "category", categories.classify(article.getTitle(),article.getRawContent()),
                 "validSymbol", Objects.equals(symbols.match(article.getTitle(),article.getRawContent()),row.path("related_symbol").asText())));
             for (var term : learning.articleTerms(article)) for (var level : List.of("beginner","normal","analyst")) {
-                var question = learning.question(article,term,level);
+                var question = learning.question(article,term,level,true);
                 if (question != null) questions.add(Map.of("newsId",article.getId(),"term",term.getTerm(),
-                    "requestedLevel",level,"level",question.level(),"prompt",question.publicQuestion().prompt(),
+                    "type",question.publicQuestion().type().name(),"requestedLevel",level,"level",question.level(),"prompt",question.publicQuestion().prompt(),
                     "options",question.publicQuestion().options(),"correctIndex",question.publicQuestion().options().indexOf(question.correctAnswer())));
             }
         }
@@ -53,8 +53,10 @@ public final class DemoQuizCatalog {
         Map<String,Double> probabilities = new LinkedHashMap<>();
         Map<String,Integer> attempts = new LinkedHashMap<>();
         for (var row : input.path("attempts")) {
+            QuestionType type = row.hasNonNull("type") ? QuestionType.valueOf(row.path("type").asText()) : QuestionType.historical(row.path("level").asText());
+            if (type != QuestionType.DEFINITION) continue;
             String key = row.path("owner").asText()+":"+row.path("term").asText();
-            probabilities.put(key,KnowledgeTracing.update(probabilities.getOrDefault(key,KnowledgeTracing.P_INIT),row.path("correct").asBoolean(),row.path("level").asText()));
+            probabilities.put(key,KnowledgeTracing.update(probabilities.getOrDefault(key,KnowledgeTracing.P_INIT),row.path("correct").asBoolean(),"beginner"));
             attempts.merge(key,1,Integer::sum);
         }
         List<Object> selections = new ArrayList<>();
@@ -70,7 +72,7 @@ public final class DemoQuizCatalog {
                 var q=choices.stream().filter(value -> selected.equals(value.get("term"))).findFirst().orElseThrow();
                 double prior=known.getOrDefault(selected,KnowledgeTracing.P_INIT);
                 selections.add(Map.of("owner",owner,"newsId",newsId,"term",selected,"level",q.get("level"),
-                    "pKnown",prior,"afterCorrect",KnowledgeTracing.update(prior,true,(String)q.get("level"))));
+                    "pKnown",prior,"afterCorrect","DEFINITION".equals(q.get("type")) ? KnowledgeTracing.update(prior,true,"beginner") : prior));
             });
         }
         System.out.println("DEMO_JSON:"+json.writeValueAsString(Map.of("questions",questions,"articles",articles,"prices",prices,"probabilities",probabilities,"attempts",attempts,"selections",selections)));

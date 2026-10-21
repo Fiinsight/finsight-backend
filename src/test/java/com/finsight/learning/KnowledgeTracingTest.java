@@ -22,7 +22,7 @@ class KnowledgeTracingTest {
         return p;
     }
     @Test void decayAndSelectionBoundariesPreserveArticleOrderOnTies() {
-        assertEquals(.6 * Math.pow(.97,10), KnowledgeTracing.decay(.6,10), 1e-12);
+        assertEquals(.3 + .3 * Math.pow(.97,10), KnowledgeTracing.decay(.6,10), 1e-12);
         assertEquals(.6, KnowledgeTracing.decay(.6,-1));
         var terms = List.of("금리","환율","물가");
         assertEquals("환율", KnowledgeTracing.select(terms,Map.of("금리",.1,"환율",.4,"물가",.7)));
@@ -31,17 +31,30 @@ class KnowledgeTracingTest {
         assertEquals("금리", KnowledgeTracing.select(terms,Map.of()));
         assertNull(KnowledgeTracing.select(List.of(),Map.of()));
     }
-    @Test void masterySuggestionNeedsFiveDistinctCurrentLevelConcepts() {
+    @Test void masterySuggestionUsesEffectiveConceptEvidenceAndRequiresEnoughAttempts() {
         var rows = new ArrayList<TermMasteryService.Mastery>();
-        for(int i=0;i<5;i++) rows.add(new TermMasteryService.Mastery("용어"+i,.85,.4,3,Instant.EPOCH,"beginner"));
-        assertEquals("normal", TermMasteryService.suggestion(rows,"beginner"));
-        assertNull(TermMasteryService.suggestion(rows.subList(0,4),"beginner"));
-        assertNull(TermMasteryService.suggestion(rows,"normal"));
-        assertNull(TermMasteryService.suggestion(rows,"analyst"));
-        assertNull(TermMasteryService.suggestion(Collections.nCopies(5,rows.getFirst()),"beginner"));
-        rows.set(0,new TermMasteryService.Mastery("용어0",.8499,.4,3,Instant.EPOCH,"beginner"));
+        for(int i=0;i<5;i++) rows.add(new TermMasteryService.Mastery("용어"+i,.9,.85,3,Instant.EPOCH,"normal",true));
+        assertEquals("analyst", TermMasteryService.suggestion(rows,"normal"));
+        assertNull(TermMasteryService.suggestion(rows.subList(0,4),"normal"));
         assertNull(TermMasteryService.suggestion(rows,"beginner"));
-        assertEquals(15, TermMasteryService.overview(rows).totalAttempts());
-        assertEquals(3, TermMasteryService.overview(rows).weakest().size());
+        assertNull(TermMasteryService.suggestion(rows,"analyst"));
+        assertNull(TermMasteryService.suggestion(Collections.nCopies(5,rows.getFirst()),"normal"));
+        rows.set(0,new TermMasteryService.Mastery("용어0",.99,.4,10,Instant.EPOCH,"normal",true));
+        assertNull(TermMasteryService.suggestion(rows,"normal"));
+        rows.set(0,new TermMasteryService.Mastery("용어0",.99,.99,2,Instant.EPOCH,"normal",true));
+        assertNull(TermMasteryService.suggestion(rows,"normal"));
+        rows.set(0,new TermMasteryService.Mastery("용어0",.99,.99,5,Instant.EPOCH,"normal",false));
+        assertNull(TermMasteryService.suggestion(rows,"normal"));
+    }
+
+    @Test void forgettingConvergesToTheInitialFloorWithKstDayBoundaries() {
+        assertEquals(.3+.65*Math.pow(.97,60),KnowledgeTracing.decay(.95,60),1e-12);
+        assertTrue(KnowledgeTracing.decay(.95,60) > KnowledgeTracing.P_INIT);
+        assertEquals(.3,KnowledgeTracing.decay(.95,100000),1e-12);
+        assertEquals(.3,KnowledgeTracing.decay(.3,60),1e-12);
+        assertEquals(.2,KnowledgeTracing.decay(.2,0),1e-12);
+        var before=Instant.parse("2026-10-20T14:59:00Z");
+        var after=Instant.parse("2026-10-20T15:00:00Z");
+        assertEquals(KnowledgeTracing.decay(.9,1),TermMasteryService.effective(.9,before,after,java.time.ZoneId.of("Asia/Seoul")),1e-12);
     }
 }

@@ -137,7 +137,7 @@ def plan(data, generated, now):
         add('demo-beginner',term,3,False,'beginner')
     for term in ('코스피','매출','영업이익'):
         add('demo-beginner',term,4,True,'beginner')
-    for term in ('AI','반도체'):
+    for term in ('금리','환율'):
         add('demo-beginner',term,2,True,'beginner')
     for term in ('밸류에이션','수급'):
         add('demo-investor',term,3,False,'analyst')
@@ -207,12 +207,14 @@ def sql_for(plan, mastery, password_hash, now, tables):
         statements.append('UPDATE app_user SET '+','.join(k+'='+quote(v) for k,v in values.items())+f' WHERE {scope};')
         select=f'FROM app_user WHERE {scope}'
         for q in plan[name]['quizzes']:
-            statements.append(f"INSERT INTO learning_progress(user_id,news_id,term,level,correct,answered_at) SELECT id,{int(q['newsId'])},{quote(q['term'])},{quote(q['level'])},{str(q['correct']).lower()},{quote(q['at'])} {select};")
+            question_type=q.get('type', {'beginner':'DEFINITION','normal':'DIRECTION','analyst':'FACT_CHECK'}.get(q['level'],'LEGACY'))
+            statements.append(f"INSERT INTO learning_progress(user_id,news_id,term,level,correct,answered_at,question_type) SELECT id,{int(q['newsId'])},{quote(q['term'])},{quote(q['level'])},{str(q['correct']).lower()},{quote(q['at'])},{quote(question_type)} {select};")
         if 'term_mastery' in tables:
             for term in sorted({q['term'] for q in plan[name]['quizzes']}):
                 key=name+':'+term
-                last=max(q['at'] for q in plan[name]['quizzes'] if q['term']==term)
-                statements.append(f"INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at) SELECT id,{quote(term)},{mastery['probabilities'][key]},{mastery['attempts'][key]},{quote(last)} {select};")
+                if key not in mastery['probabilities']: continue
+                last=max(q['at'] for q in plan[name]['quizzes'] if q['term']==term and q.get('type', 'DEFINITION' if q['level']=='beginner' else 'LEGACY')=='DEFINITION')
+                statements.append(f"INSERT INTO term_mastery(user_id,term,p_known,attempts,last_answered_at,definition_only) SELECT id,{quote(term)},{mastery['probabilities'][key]},{mastery['attempts'][key]},{quote(last)},true {select};")
         for note in plan[name]['notes']:
             statements.append(f"INSERT INTO article_note(user_id,news_id,content,created_at,updated_at) SELECT id,{int(note['newsId'])},{quote(note['content'])},{quote(note['at'])},{quote(note['at'])} {select};")
         for j in plan[name]['judgements']:
@@ -249,12 +251,12 @@ def main():
     spec=spec_from_file_location('old_seed',ROOT/'scripts/seed_demo.py'); old=module_from_spec(spec); spec.loader.exec_module(old)
     counts={name:{key:len(value) for key,value in planned[name].items()} for name in PERSONAS}
     for name in PERSONAS:
-        counts[name]['masteryTerms']=len({q['term'] for q in planned[name]['quizzes']}) if 'term_mastery' in tables else 0
+        counts[name]['masteryTerms']=sum(key.startswith(name+':') for key in mastery['probabilities']) if 'term_mastery' in tables else 0
         counts[name]['accountsCreated']=int(not any(row['email']==name+'@finsight.test' for row in existing))
     deletion={name:{table:int(query(env,f'SELECT count(*) FROM {table} WHERE user_id IN(SELECT id FROM app_user WHERE {owner(name)});')) for table in TABLES if table in tables} for name in PERSONAS}
     if 'term_mastery' not in tables: missing.append('term_mastery 미구현 DB: 숙련도 저장 생략')
     promotion=[]
-    for term in ('AI','반도체'):
+    for term in ('금리','환율'):
         candidates=[s for s in mastery.get('selections',[]) if s['owner']=='demo-beginner' and s['term']==term and s['pKnown']<.85 and s['afterCorrect']>=.85 and datetime.fromisoformat(next(n['published_at'] for n in data['news'] if n['id']==s['newsId']).replace('Z','+00:00'))<=now]
         if candidates:
             promotion.append(candidates[0])
