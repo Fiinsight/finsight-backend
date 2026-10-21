@@ -11,6 +11,20 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class NewsAssemblerTest {
+    @Test void existingNewsMetadataAndRefreshNeverApplyTheNewSymbolMatcher() {
+        var ai=mock(AiServiceClient.class);var extractor=mock(ArticleContentExtractor.class);
+        var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),extractor);
+        for(String previous:java.util.Arrays.asList(null,"005930")) {
+            var article=new News("포스코인터 신규 계약","https://fixture.test/existing","fixture",Instant.EPOCH,"기존 원문");
+            article.setRelatedSymbol(previous);
+            when(extractor.extract(article.getUrl())).thenReturn(Optional.of("포스코인터가 신규 계약을 발표했다."));
+            when(extractor.isUsable(any(),any())).thenReturn(true);
+            assembler.refreshMetadata(article);assembler.reprocess(article);
+            assertThat(article.getRelatedSymbol()).isEqualTo(previous);
+        }
+        var fresh=assembler.assemble(new NewsCandidate("포스코인터 신규 계약","https://fixture.test/new","fixture",Instant.EPOCH,1),"포스코인터가 신규 계약을 발표했다.",false);
+        assertThat(fresh.getRelatedSymbol()).isEqualTo("047050");
+    }
     @Test void collectsAllLevelsInOneCallAndNeverRewritesStoredArticle() {
         var ai = mock(AiServiceClient.class); var extractor = mock(ArticleContentExtractor.class);
         var assembler = new NewsAssembler(ai, new NewsCategoryClassifier(), new NewsSymbolMatcher(), new NewsSentimentClassifier(), extractor);
