@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class LearningService {
     public record Glossary(String term, String definition) {}
     public record DailyTerm(String term, String definition, Long newsId, String title, String reason) {}
-    public record Question(String term, String prompt, List<String> options) {}
+    public record Question(String term, String prompt, List<String> options, QuestionType type) {}
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
     record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
@@ -75,12 +75,14 @@ public class LearningService {
         List<Term> matchedTerms = articleTerms(article);
         List<Glossary> glossary = matchedTerms.stream().limit(3)
                 .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
+        Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
+        mastery.list(userId).forEach(row -> knowledge.put(row.term(),row));
         Map<String,Double> probabilities = new HashMap<>();
-        mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.pKnown()));
+        knowledge.forEach((term,row) -> probabilities.put(term,row.effectivePKnown()));
         String quizLevel = level;
-        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel) != null).map(Term::getTerm).toList(), probabilities);
+        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm()))) != null).map(Term::getTerm).toList(), probabilities);
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
-        GradedQuestion quiz = first == null ? null : question(article, first, level);
+        GradedQuestion quiz = first == null ? null : question(article, first, level, needsConcept(knowledge.get(first.getTerm())));
         if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
         return new Lesson(newsId, level,
                 usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
@@ -94,16 +96,17 @@ public class LearningService {
         News article = article(newsId);
         Term target = articleTerms(article).stream().filter(t -> t.getTerm().equals(term)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 문항이 아닙니다."));
-        GradedQuestion graded = question(article, target, level);
+        var known = mastery.list(userId).stream().filter(row -> row.term().equals(term)).findFirst().orElse(null);
+        GradedQuestion graded = question(article, target, level, needsConcept(known));
         Question question = graded == null ? null : graded.publicQuestion();
         if (question == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "준비된 퀴즈가 없습니다.");
         if (answerIndex < 0 || answerIndex >= question.options().size()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 답변입니다.");
         boolean correct = question.options().get(answerIndex).equals(graded.correctAnswer());
-        LearningProgress record = progress.findByUser_IdAndNews_IdAndTerm(userId, newsId, term)
+        LearningProgress record = progress.findByUser_IdAndNews_IdAndTermAndQuestionType(userId, newsId, term, question.type())
                 .orElseGet(() -> new LearningProgress(users.findById(userId).orElseThrow(), article, term));
-        record.answer(graded.level(), correct);
+        record.answer(graded.level(), correct, question.type());
         progress.save(record);
-        mastery.answer(userId, term, graded.level(), correct);
+        if (question.type() == QuestionType.DEFINITION) mastery.answer(userId, term, graded.level(), correct);
         return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition());
     }
     @Transactional(readOnly = true)
@@ -144,10 +147,11 @@ public class LearningService {
         Map<String,Double> probabilities = new HashMap<>();
         mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
         LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
-        progress.findByUser_IdOrderByAnsweredAtDesc(userId).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
+        progress.findByUser_IdOrderByAnsweredAtDesc(userId).stream().filter(row -> row.getQuestionType() == QuestionType.DEFINITION).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
         Map<String,Term> dictionary = new HashMap<>();
         terms.findAll().forEach(term -> dictionary.put(term.getTerm(), term));
         return latest.values().stream()
+                .filter(row -> row.getQuestionType() == QuestionType.DEFINITION)
                 .filter(row -> dictionary.containsKey(row.getTerm()) && dictionary.get(row.getTerm()).quizEligible(row.getLevel()))
                 .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), row.isCorrect()))
                 .sorted(Comparator
@@ -173,8 +177,19 @@ public class LearningService {
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();
     }
+    static boolean needsConcept(TermMasteryService.Mastery row) {
+        return row == null || row.effectivePKnown() < 0.85 || row.attempts() < TermMasteryService.WELL_KNOWN_MIN_ATTEMPTS
+                || Boolean.FALSE.equals(row.lastCorrect());
+    }
     GradedQuestion question(News article, Term term, String level) {
+        return question(article,term,level,false);
+    }
+    GradedQuestion question(News article, Term term, String level, boolean conceptFirst) {
         if (!term.quizEligible(level)) return null;
+        if (conceptFirst) {
+            GradedQuestion definition = beginnerQuestion(article, term, level);
+            if (definition != null) return definition;
+        }
         String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
         List<String> sentences = Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
                 .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
@@ -193,27 +208,39 @@ public class LearningService {
                 if ((up?1:0)+(down?1:0)+(flat?1:0) != 1) continue;
                 List<String> options = new ArrayList<>(List.of("증가", "감소", "변화 없음"));
                 Collections.shuffle(options, seed);
-                return new GradedQuestion(new Question(term.getTerm(), "기사에서 ‘" + term.getTerm() + "’가 어떻게 변했나요?\n" + sentence, List.copyOf(options)), "normal", up?"증가":down?"감소":"변화 없음");
+                return new GradedQuestion(new Question(term.getTerm(), "기사에서 ‘" + term.getTerm() + "’가 어떻게 변했나요?\n" + sentence, List.copyOf(options), QuestionType.DIRECTION), "normal", up?"증가":down?"감소":"변화 없음");
             }
         }
-        if ("analyst".equals(level) && sentences.size() >= 2) {
-            // Distractors are complete source sentences: do not truncate numbers or qualifiers.
-            List<String> facts = new ArrayList<>(sentences.stream().filter(value -> value.length()<=180
-                    && !value.matches(".*(전망|예상|가능성|예측).*" )).toList());
-            Collections.shuffle(facts, seed);
-            List<String> outside = List.of("기사에서는 다음 거래일의 주가 상승이 확정됐다고 밝혔다.",
-                    "기사에서는 모든 투자자의 수익이 보장된다고 밝혔다.", "기사에서는 향후 시장 변동이 전혀 없다고 밝혔다.");
-            List<String> unsupported = outside.stream().filter(value -> !body.contains(value)).toList();
-            if (facts.size()>=2 && !unsupported.isEmpty()) {
-                String correct = unsupported.get(seed.nextInt(unsupported.size()));
-                List<String> options = new ArrayList<>(List.of(correct, facts.get(0), facts.get(1)));
+        if ("analyst".equals(level)) {
+            for (String fact : sentences) {
+                if (fact.length() > 180 || !fact.contains(term.getTerm()) || fact.matches(".*(전망|예상|가능성|예측).*")) continue;
+                List<String> changed = factVariants(fact).stream().filter(value -> !body.contains(value)).distinct().limit(2).toList();
+                if (changed.size() < 2) continue;
+                List<String> options = new ArrayList<>(List.of(fact, changed.get(0), changed.get(1)));
                 Collections.shuffle(options, seed);
-                return new GradedQuestion(new Question(term.getTerm(), "다음 중 기사에 나온 사실이 아닌 것은?", List.copyOf(options)), "analyst", correct);
+                return new GradedQuestion(new Question(term.getTerm(), "다음 중 기사 원문과 일치하는 문장은 무엇인가요?",
+                        List.copyOf(options), QuestionType.FACT_CHECK), level, fact);
             }
         }
-        return beginnerQuestion(article, term);
+        return beginnerQuestion(article, term, level);
     }
-    private GradedQuestion beginnerQuestion(News article, Term term) {
+
+    static List<String> factVariants(String fact) {
+        List<String> variants = new ArrayList<>();
+        // Match only explicit amount/rate/count units; calendar and clock numbers stay intact.
+        var number = java.util.regex.Pattern.compile("(?<![0-9.,])([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?)(?=\\s*(?:%|퍼센트|bp|베이시스포인트|조\\s*원|억\\s*원|만\\s*원|천\\s*원|원|달러|유로|엔|위안|개|명|대|건|톤|배럴))").matcher(fact);
+        if (number.find()) {
+            var value = new java.math.BigDecimal(number.group(1).replace(",", ""));
+            for (int offset : List.of(1, 2)) variants.add(fact.substring(0, number.start(1))
+                    + value.add(java.math.BigDecimal.valueOf(offset)).toPlainString() + fact.substring(number.end(1)));
+        }
+        for (var pair : List.of(List.of("상승", "하락"), List.of("증가", "감소"), List.of("인상", "인하"), List.of("늘었", "줄었"))) {
+            for (int i = 0; i < 2; i++) if (fact.contains(pair.get(i)))
+                variants.add(fact.replaceFirst(pair.get(i), pair.get(1-i)));
+        }
+        return variants;
+    }
+    private GradedQuestion beginnerQuestion(News article, Term term, String level) {
         Set<String> field = TERM_FIELDS.stream().filter(group -> group.contains(term.getTerm())).findFirst().orElse(Set.of());
         List<String> distractors = new ArrayList<>(terms.findAll().stream()
                 .filter(t -> t.quizEligible("beginner") && field.contains(t.getTerm()) && !t.getTerm().equals(term.getTerm()))
@@ -224,7 +251,7 @@ public class LearningService {
         Collections.shuffle(distractors, seed);
         List<String> options = new ArrayList<>(List.of(term.getShortDefinition(), distractors.get(0), distractors.get(1)));
         Collections.shuffle(options, seed);
-        return new GradedQuestion(new Question(term.getTerm(), "이 기사에 등장하는 ‘" + term.getTerm() + "’의 기본 의미는 무엇인가요?", List.copyOf(options)), "beginner", term.getShortDefinition());
+        return new GradedQuestion(new Question(term.getTerm(), "이 기사에 등장하는 ‘" + term.getTerm() + "’의 기본 의미는 무엇인가요?", List.copyOf(options), QuestionType.DEFINITION), level, term.getShortDefinition());
     }
     private void validateLevel(String level) {
         if (!List.of("beginner", "normal", "analyst").contains(level)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 읽기 수준입니다.");

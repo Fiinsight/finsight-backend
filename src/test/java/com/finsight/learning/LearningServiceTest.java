@@ -22,7 +22,7 @@ class LearningServiceTest {
         when(article.getRawContent()).thenReturn("AI와 매출 변화도 있지만 환율은 변했다.");
         when(terms.findAll()).thenReturn(List.of(target, new Term("금리", "이자 비율"), new Term("기준금리", "정책 이자 비율"), new Term("AI", "인공지능"), new Term("매출", "판매 금액")));
         when(users.findById(1L)).thenReturn(Optional.of(new User("test", "", "", AuthProvider.LOCAL)));
-        when(progress.findByUser_IdAndNews_IdAndTerm(1L, 115L, "환율")).thenReturn(Optional.empty());
+        when(progress.findByUser_IdAndNews_IdAndTermAndQuestionType(1L, 115L, "환율", QuestionType.DEFINITION)).thenReturn(Optional.empty());
         when(extractor.clean(any(), any())).thenReturn("환율은 변했다.");
         when(ai.learning(any())).thenReturn(Optional.empty());
         when(profile.getOnboarding(1L)).thenReturn(new UserProfileDtos.OnboardingResponse(List.of(), "analyst", "deep", "news", "", null));
@@ -50,11 +50,11 @@ class LearningServiceTest {
         assertEquals(target.getShortDefinition(), right.definition()); assertEquals(target.getShortDefinition(), wrong.definition());
         assertEquals(target.getShortDefinition(),right.termDefinition());
         assertFalse(java.util.Arrays.stream(LearningService.AnswerResult.class.getRecordComponents()).anyMatch(field -> field.getName().equals("correctIndex")));
-        verify(progress,times(2)).findByUser_IdAndNews_IdAndTerm(1L,115L,"환율");
+        verify(progress,times(2)).findByUser_IdAndNews_IdAndTermAndQuestionType(1L,115L,"환율",QuestionType.DEFINITION);
         verify(mastery).answer(1L,"환율","beginner",true); verify(mastery).answer(1L,"환율","beginner",false);
         when(article.getRawContent()).thenReturn("환율과 금리가 변했다.");
-        when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.9,.9,5,java.time.Instant.now(),"beginner"), new TermMasteryService.Mastery("금리",.55,.55,2,java.time.Instant.now(),"beginner")));
-        assertEquals("금리",service.lesson(1L,115L,"beginner").question().term());
+        when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.9,.45,5,java.time.Instant.now(),"beginner"), new TermMasteryService.Mastery("금리",.55,.55,2,java.time.Instant.now(),"beginner")));
+        assertEquals("환율",service.lesson(1L,115L,"beginner").question().term());
         assertEquals("환율",service.lesson(1L,115L,"beginner","환율").question().term());
         assertThrows(ResponseStatusException.class, () -> service.lesson(1L,115L,"beginner","다른용어"));
         service.reviews(2L); verify(progress).findByUser_IdOrderByAnsweredAtDesc(2L);
@@ -89,7 +89,7 @@ class LearningServiceTest {
         assertEquals(10,service.reviews(7L).size());
     }
 
-    @Test void differentLevelsUseSourceFactsAndFallbackIsSavedAsBeginner() {
+    @Test void readingQuestionsDoNotUpdateConceptMasteryAndDefinitionsKeepRequestedLevel() {
         var news=mock(NewsRepository.class); var users=mock(UserRepository.class); var terms=mock(TermRepository.class);
         var progress=mock(LearningProgressRepository.class); var profiles=mock(UserProfileService.class);
         var ai=mock(AiServiceClient.class); var extractor=mock(ArticleContentExtractor.class); var article=mock(News.class);
@@ -101,14 +101,16 @@ class LearningServiceTest {
         var mastery=mock(TermMasteryService.class);
         var service=new LearningService(news,users,terms,progress,profiles,ai,extractor,mastery,mock(com.finsight.briefing.BriefingService.class));
         assertTrue(service.lesson(1L,1L,"beginner").question().prompt().contains("기본 의미"));
+        when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.95,.95,3,java.time.Instant.now(),"normal",true)));
         var normal=service.lesson(1L,1L,"normal").question(); assertTrue(normal.prompt().contains("어떻게 변했나요"));
         assertEquals(normal,service.lesson(1L,1L,"normal").question());
         var normalAnswer=service.answer(1L,1L,"normal","환율",normal.options().indexOf("증가"));
         assertTrue(normalAnswer.correct()); assertEquals("증가",normalAnswer.definition()); assertEquals("통화 교환 비율",normalAnswer.termDefinition());
-        var analyst=service.lesson(1L,1L,"analyst").question(); assertTrue(analyst.prompt().contains("사실이 아닌"));
+        var analyst=service.lesson(1L,1L,"analyst").question(); assertTrue(analyst.prompt().contains("원문과 일치")); assertEquals(QuestionType.FACT_CHECK,analyst.type());
         assertEquals(analyst,service.lesson(1L,1L,"analyst").question());
-        int outside=-1; for(int i=0;i<3;i++) if(!article.getRawContent().contains(analyst.options().get(i))) outside=i;
-        assertTrue(outside>=0); assertTrue(service.answer(1L,1L,"analyst","환율",outside).correct());
+        int source=-1; for(int i=0;i<3;i++) if(article.getRawContent().contains(analyst.options().get(i))) source=i;
+        assertTrue(source>=0); assertTrue(service.answer(1L,1L,"analyst","환율",source).correct());
+        verify(mastery,never()).answer(any(),any(),any(),anyBoolean());
         for (String ambiguous : List.of("환율은 2% 상승할 전망이다.","환율은 2% 올랐다가 1% 하락했다.","환율 변동과 함께 금리가 2% 상승했다.","환율은 상승했다.")) {
             when(article.getRawContent()).thenReturn(ambiguous);
             assertTrue(service.lesson(1L,1L,"normal").question().prompt().contains("기본 의미"));
@@ -117,10 +119,41 @@ class LearningServiceTest {
         var fallback=service.lesson(1L,1L,"normal").question(); assertTrue(fallback.prompt().contains("기본 의미"));
         service.answer(1L,1L,"normal","환율",fallback.options().indexOf("통화 교환 비율"));
         var saved=org.mockito.ArgumentCaptor.forClass(LearningProgress.class); verify(progress,times(3)).save(saved.capture());
-        assertEquals(List.of("normal","analyst","beginner"),saved.getAllValues().stream().map(LearningProgress::getLevel).toList());
+        assertEquals(List.of("normal","analyst","normal"),saved.getAllValues().stream().map(LearningProgress::getLevel).toList());
         verify(mastery).answer(1L,"환율","normal",true);
-        verify(mastery).answer(1L,"환율","analyst",true);
-        verify(mastery).answer(1L,"환율","beginner",true);
+        verify(mastery, times(1)).answer(any(),any(),any(),anyBoolean());
+        assertEquals(List.of(QuestionType.DIRECTION,QuestionType.FACT_CHECK,QuestionType.DEFINITION),
+                saved.getAllValues().stream().map(LearningProgress::getQuestionType).toList());
         verify(ai,never()).generateFeedback(any());
     }
+    @Test void factualDistractorsAlterSourceNumbersOrDirectionAndNeverUseGuaranteedProfits() {
+        var variants=LearningService.factVariants("환율은 2.5% 상승했다.");
+        assertTrue(variants.contains("환율은 3.5% 상승했다."));
+        assertTrue(variants.contains("환율은 2.5% 하락했다."));
+        assertTrue(variants.stream().allMatch(value -> value.startsWith("환율은 ")));
+        assertTrue(variants.stream().noneMatch(value -> value.contains("보장") || value.contains("확정")));
+        assertTrue(LearningService.factVariants("환율 동향을 발표했다.").isEmpty());
+    }
+
+    @Test void onlyAmountRateAndQuantityNumbersChangeWhileDatesAndClocksStayIntact() {
+        for (String temporal : List.of("2026년 10월 21일", "2026-10-21", "2026.10.21", "3분기", "15시 30분", "15:30", "2주 전")) {
+            assertTrue(LearningService.factVariants(temporal + " 실적을 발표했다.").isEmpty());
+            var variants=LearningService.factVariants(temporal + " 매출은 20억원으로 증가했다.");
+            assertTrue(variants.size() >= 2);
+            assertTrue(variants.stream().allMatch(value -> value.startsWith(temporal + " ")));
+        }
+        assertTrue(LearningService.factVariants("2026년 거래량은 20개였다.").contains("2026년 거래량은 21개였다."));
+        assertTrue(LearningService.factVariants("2026년 성장률은 2.5%였다.").contains("2026년 성장률은 3.5%였다."));
+        assertTrue(LearningService.factVariants("매출은 1,200억원이었다.").contains("매출은 1201억원이었다."));
+    }
+
+    @Test void allReadingLevelsKeepReceivingDefinitionsUntilPromotionEvidenceIsReady() {
+        for (String level : List.of("beginner","normal","analyst")) {
+            assertTrue(LearningService.needsConcept(null));
+            assertTrue(LearningService.needsConcept(new TermMasteryService.Mastery("금리",.99,.79,5,java.time.Instant.now(),level,true)));
+            assertTrue(LearningService.needsConcept(new TermMasteryService.Mastery("금리",.82,.82,2,java.time.Instant.now(),level,true)));
+            assertFalse(LearningService.needsConcept(new TermMasteryService.Mastery("금리",.94,.94,3,java.time.Instant.now(),level,true)));
+        }
+    }
+
 }

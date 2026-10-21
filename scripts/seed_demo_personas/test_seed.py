@@ -81,4 +81,15 @@ class DemoSeedTest(unittest.TestCase):
             self.assertNotIn(span,offsets)
             self.assertTrue(all(datetime.fromisoformat(q['at'])<=now for q in quizzes))
 
+    def test_seed_keeps_question_types_and_only_verified_concept_mastery(self):
+        plan={name:{'quizzes':[],'notes':[],'judgements':[]} for name in seed.PERSONAS}
+        plan['demo-beginner']['quizzes']=[
+            {'newsId':1,'term':'금리','level':'normal','type':'DEFINITION','correct':True,'at':'2026-10-20T10:00:00+09:00'},
+            {'newsId':2,'term':'환율','level':'analyst','type':'FACT_CHECK','correct':True,'at':'2026-10-20T10:00:00+09:00'}]
+        mastery={'probabilities':{'demo-beginner:금리':.6},'attempts':{'demo-beginner:금리':1}}
+        sql=seed.sql_for(plan,mastery,'synthetic-hash',datetime(2026,10,21,tzinfo=seed.KST),set(seed.TABLES))
+        self.assertEqual(sql.count('INSERT INTO term_mastery'),1)
+        self.assertIn("'FACT_CHECK'",sql)
+        self.assertIn('definition_only',sql)
+
 if __name__=='__main__': unittest.main()

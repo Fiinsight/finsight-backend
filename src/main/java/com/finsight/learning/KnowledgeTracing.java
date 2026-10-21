@@ -27,7 +27,7 @@ public final class KnowledgeTracing {
 
     public static double decay(double probability, long elapsedDays) {
         if (!Double.isFinite(probability) || probability < 0 || probability > 1) throw new IllegalArgumentException("Invalid probability");
-        return probability * Math.pow(0.97, Math.max(0, elapsedDays));
+        return P_INIT + (probability - P_INIT) * Math.pow(0.97, Math.max(0, elapsedDays));
     }
 
     public static String select(List<String> terms, Map<String, Double> probabilities) {
