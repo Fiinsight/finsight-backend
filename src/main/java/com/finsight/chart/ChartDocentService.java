@@ -48,7 +48,6 @@ public class ChartDocentService {
         return new ChartResponse.DocentView(relation,lead,reason,impact,article==null?null:article.newsId(),article==null?null:title,article==null?null:article.source(),"RULE");
     }
     static com.finsight.briefing.SentimentHint titleSentiment(String title) {
-        boolean up=title!=null && title.matches(".*(급등|상향|호실적|수혜).*"), down=title!=null && title.matches(".*(급락|하향|부진|규제 강화).*" );
-        return up==down?null:up?com.finsight.briefing.SentimentHint.POSITIVE:com.finsight.briefing.SentimentHint.NEGATIVE;
+        return com.finsight.news.SentimentEvidence.titleDirection(title);
     }
 }

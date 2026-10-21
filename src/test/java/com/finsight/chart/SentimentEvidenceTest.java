@@ -23,4 +23,15 @@ class SentimentEvidenceTest {
         assertTrue(SentimentEvidence.note(SentimentHint.POSITIVE,.8).contains("단정할 수는 없어요"));
         assertTrue(SentimentEvidence.note(SentimentHint.POSITIVE,.59).contains("판단하기 어려워요"));
     }
+
+    @Test void sharedTitleVocabularyUsesTheFinalDirectionInMixedHeadlines() {
+        for(String word:List.of("상한가","신고가","폭등","급반등","치솟","껑충","뛰었","3%↑","3% 올라","52주 최고")) {
+            assertEquals(SentimentHint.POSITIVE,SentimentEvidence.titleDirection("삼성전자 "+word));
+            assertEquals(SentimentEvidence.titleDirection(word),ChartDocentService.titleSentiment(word));
+        }
+        for(String word:List.of("하한가","신저가","폭락","추락","곤두박질","주저앉","3%↓","3% 내려","52주 최저")) assertEquals(SentimentHint.NEGATIVE,SentimentEvidence.titleDirection(word));
+        assertEquals(SentimentHint.POSITIVE,SentimentEvidence.titleDirection("하락 딛고 반등"));
+        assertEquals(SentimentHint.NEGATIVE,SentimentEvidence.titleDirection("반등 뒤 다시 추락"));
+        assertNull(SentimentEvidence.titleDirection("52주 거래 자료"));
+    }
 }

@@ -37,6 +37,12 @@ public class ChartService {
     private static final int VOLATILITY_WINDOW = 20;
     private static final int MIN_VOLATILITY_OBSERVATIONS = 5;
     private static final double VOLATILITY_MULTIPLIER = 2.0;
+    @org.springframework.beans.factory.annotation.Value("${finsight.chart.daily-min-move-percent:2.0}")
+    private double dailyMinMovePercent = 2.0;
+    @org.springframework.beans.factory.annotation.Value("${finsight.chart.weekly-min-move-percent:4.0}")
+    private double weeklyMinMovePercent = 4.0;
+    @org.springframework.beans.factory.annotation.Value("${finsight.chart.volatility-multiplier:2.0}")
+    private double volatilityMultiplier = 2.0;
 
     private final KisDailyCandleClient kisDailyCandleClient;
     private final KisMinuteCandleClient kisMinuteCandleClient;
@@ -128,8 +134,8 @@ public class ChartService {
         } else {
             LocalDate startDate = candleViews.get(0).date();
             LocalDate endDate = candleViews.get(candleViews.size() - 1).date();
-            Instant start = startDate.atStartOfDay(KST).toInstant();
-            Instant end = endDate.plusDays(1).atTime(9, 0).atZone(KST).toInstant();
+            Instant start = moveWindow(startDate, periodDivCode).from();
+            Instant end = referenceEnd(moveWindow(endDate,periodDivCode));
 
             matchedNews = deduplicateRelatedNews(findRelatedNews(symbol, start, end).stream()
                     .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
@@ -171,19 +177,15 @@ public class ChartService {
                     previousChanges.add((prior.close() - before.close()) / before.close() * 100.0);
                 }
             }
-            if (Math.abs(change) < ("W".equals(period) ? 5.0 : 3.0) && !isSignificantMove(previousChanges, change)) {
+            if (Math.abs(change) < moveThreshold(previousChanges, "W".equals(period) ? weeklyMinMovePercent : dailyMinMovePercent, volatilityMultiplier)) {
                 continue;
             }
-            var day = current.date();
-            var monday = day.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
-            Instant from = "W".equals(period) ? monday.atStartOfDay(KST).toInstant()
-                : day.atStartOfDay(KST).toInstant();
-            Instant to = "W".equals(period) ? monday.plusDays(7).atStartOfDay(KST).toInstant()
-                : day.plusDays(1).atTime(9, 0).atZone(KST).toInstant();
+            var window = moveWindow(current.date(), period);
+            Instant from = window.from(), to = window.to();
             List<News> candidates = candidateNews(symbol, relatedNews, from, to, change);
             Optional<News> news = candidates.stream().findFirst();
             double causeScore = news.map(item -> (double) representativeScore(symbol, item, change)).orElse(0.0);
-            var docent = ChartDocentService.rule(docentRequest(symbol, current.date().atStartOfDay(), change, period, candidates, "normal"));
+            var docent = ChartDocentService.rule(docentRequest(symbol, window.to().atZone(KST).toLocalDateTime(), change, period, candidates, "normal"));
             String explanation = news.isEmpty() && collectionStart != null && to.atZone(KST).toLocalDate().isBefore(collectionStart.atZone(KST).toLocalDate())
                     ? "뉴스 수집(" + collectionStart.atZone(KST).format(java.time.format.DateTimeFormatter.ofPattern("M/d")) + ") 이전 구간이에요" : docent.possibleReason();
             insights.add(new ChartResponse.MoveInsightView(
@@ -194,19 +196,40 @@ public class ChartService {
                     news.map(News::getSource).orElse(null),
                     explanation,
                     causeScore,
-                    candidates.stream().map(item -> toMarker(symbol, item)).toList(),
+                    withReferences(symbol, candidates, relatedNews, window),
                     docent
             ));
             log.info("Move cause assessment: date={}, change={}%, newsId={}, score={}",
                     current.date(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
         }
-        return insights.stream()
-                .sorted(Comparator.comparing((ChartResponse.MoveInsightView item) -> collectionStart != null
-                    && ("W".equals(period) ? item.timestamp().toLocalDate().plusDays(6) : item.timestamp().toLocalDate())
-                        .isBefore(collectionStart.atZone(KST).toLocalDate()))
-                    .thenComparing(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed()))
-                .limit(5)
-                .toList();
+        return recentMoves(insights, candles.getLast().date().atTime(15,30));
+    }
+
+    record MoveWindow(Instant from, Instant to) {}
+    static MoveWindow moveWindow(LocalDate day, String period) {
+        LocalDate monday = day.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+        LocalDate end = "W".equals(period) ? com.finsight.judgement.KoreanTradingCalendar.onOrBefore(monday.plusDays(4).isAfter(LocalDate.now(KST)) ? LocalDate.now(KST) : monday.plusDays(4)) : day;
+        LocalDate start = com.finsight.judgement.KoreanTradingCalendar.previous("W".equals(period) ? monday : day);
+        return new MoveWindow(start.atTime(15,30).atZone(KST).toInstant(), end.atTime(15,30).atZone(KST).toInstant());
+    }
+    private static Instant referenceEnd(MoveWindow window) {
+        return com.finsight.judgement.KoreanTradingCalendar.next(window.to().atZone(KST).toLocalDate()).atTime(9,0).atZone(KST).toInstant();
+    }
+    private List<NewsMarkerView> withReferences(String symbol, List<News> causes, List<News> all, MoveWindow window) {
+        Instant until = referenceEnd(window);
+        var references = candidateNews(symbol,all,window.to(),until).stream().map(n -> new NewsMarkerView(n.getPublishedAt().atZone(KST).toLocalDate(),n.getPublishedAt(),n.getId(),n.getTitle(),n.getSource(),"REFERENCE"));
+        return Stream.concat(causes.stream().map(n -> toMarker(symbol,n)),references).toList();
+    }
+    static double moveThreshold(List<Double> changes, double minimum, double multiplier) {
+        if (changes.size() < MIN_VOLATILITY_OBSERVATIONS) return minimum;
+        double mean=changes.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+        double deviation=Math.sqrt(changes.stream().mapToDouble(v -> Math.pow(v-mean,2)).average().orElse(0));
+        return Math.max(minimum, Math.min(minimum*3, multiplier*deviation));
+    }
+    static List<ChartResponse.MoveInsightView> recentMoves(List<ChartResponse.MoveInsightView> moves, LocalDateTime latest) {
+        return moves.stream().sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView m) ->
+            Math.abs(m.changePercent()) / (1 + Math.max(0, java.time.Duration.between(m.timestamp(),latest).toHours()) / 168.0)).reversed()
+            .thenComparing(ChartResponse.MoveInsightView::timestamp,Comparator.reverseOrder())).limit(5).toList();
     }
 
     private List<ChartResponse.MoveInsightView> findMoveInsights(String symbol, List<com.finsight.external.kis.KisMinuteCandle> candles) {
@@ -217,32 +240,25 @@ public class ChartService {
         LocalDate endDate = candles.get(candles.size() - 1).timestamp().toLocalDate();
         List<News> relatedNews = findRelatedNews(
                 symbol,
-                startDate.atStartOfDay(KST).toInstant(),
+                com.finsight.judgement.KoreanTradingCalendar.previous(startDate).atTime(15,30).atZone(KST).toInstant(),
                 endDate.plusDays(1).atStartOfDay(KST).toInstant()).stream()
                 .filter(news -> articleContentExtractor.isUsable(news.getTitle(), news.getRawContent()))
                 .toList();
 
+        var daily = kisDailyCandleClient == null ? null : kisDailyCandleClient.getCandlesWithStatus(symbol,30,"D");
+        var closes = new java.util.HashMap<LocalDate,Double>();
+        if (daily != null && !daily.fallback()) daily.candles().forEach(c -> closes.put(c.date(),c.close()));
         List<ChartResponse.MoveInsightView> insights = new ArrayList<>();
-        for (int i = 1; i < candles.size(); i++) {
-            var previous = candles.get(i - 1);
-            var current = candles.get(i);
-            if (previous.close() == 0.0) {
-                continue;
-            }
-            double change = (current.close() - previous.close()) / previous.close() * 100.0;
-            if (Math.abs(change) < 0.5) {
-                continue;
-            }
-            LocalDate currentDate = current.timestamp().toLocalDate();
-            List<News> candidates = candidateNews(symbol, relatedNews,
-                com.finsight.judgement.KoreanTradingCalendar.previous(currentDate).atTime(15, 30).atZone(KST).toInstant(),
-                current.timestamp().atZone(KST).toInstant());
+        for (var move : minuteMoves(candles,closes)) {
+            double change = move.change();
+            List<News> candidates = candidateNews(symbol, relatedNews, move.from().atZone(KST).toInstant(),
+                move.at().atZone(KST).toInstant(), change);
             Optional<News> news = candidates.stream().findFirst();
             double causeScore = news.map(item -> (double) representativeScore(symbol, item, change)).orElse(0.0);
-            var docent = ChartDocentService.rule(docentRequest(symbol, current.timestamp(), change, "MINUTE", candidates, "normal"));
-            String explanation = docent.possibleReason();
+            var docent = ChartDocentService.rule(docentRequest(symbol, move.at(), change, "MINUTE", candidates, "normal"));
+            String explanation = move.kind()+" · "+docent.possibleReason();
             insights.add(new ChartResponse.MoveInsightView(
-                    current.timestamp(),
+                    move.at(),
                     Math.round(change * 100.0) / 100.0,
                     news.map(News::getId).orElse(null),
                     news.map(News::getTitle).orElse(null),
@@ -253,12 +269,60 @@ public class ChartService {
                     docent
             ));
             log.info("Move cause assessment: timestamp={}, change={}%, newsId={}, score={}",
-                    current.timestamp(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
+                    move.at(), Math.round(change * 100.0) / 100.0, news.map(News::getId).orElse(null), causeScore);
         }
-        return insights.stream()
-                .sorted(Comparator.comparingDouble((ChartResponse.MoveInsightView item) -> Math.abs(item.changePercent())).reversed())
-                .limit(5)
-                .toList();
+        return recentMoves(insights,candles.getLast().timestamp());
+    }
+
+    record MinuteMove(LocalDateTime at, double change, LocalDateTime from, String kind) {}
+    static List<MinuteMove> minuteMoves(List<com.finsight.external.kis.KisMinuteCandle> input, java.util.Map<LocalDate,Double> dailyCloses) {
+        var candles=input.stream().sorted(Comparator.comparing(com.finsight.external.kis.KisMinuteCandle::timestamp)).toList();
+        var result=new ArrayList<MinuteMove>();
+        for (int i=0;i<candles.size();i++) {
+            var current=candles.get(i); var date=current.timestamp().toLocalDate();
+            LocalDate priorDay=com.finsight.judgement.KoreanTradingCalendar.previous(date);
+            Double priorClose=dailyCloses.get(priorDay);
+            if (priorClose==null && i>0) {
+                var prior=candles.get(i-1);
+                if (prior.timestamp().toLocalDate().equals(priorDay) && prior.timestamp().toLocalTime().equals(java.time.LocalTime.of(15,30))) priorClose=prior.close();
+            }
+            boolean opening=i==0 || !candles.get(i-1).timestamp().toLocalDate().equals(date);
+            if (opening && priorClose!=null && priorClose>0) {
+                double gap=(current.open()/priorClose-1)*100;
+                if (Math.abs(gap)>=.5) result.add(new MinuteMove(current.timestamp(),gap,priorDay.atTime(15,30),"개장 갭"));
+            }
+            if (priorClose!=null && priorClose>0) {
+                double cumulative=(current.close()/priorClose-1)*100;
+                if (Math.abs(cumulative)>=2) addMinuteMove(result,new MinuteMove(current.timestamp(),cumulative,priorDay.atTime(15,30),"전일 종가 대비 누적"));
+            }
+            if (opening) continue;
+            var previous=candles.get(i-1);
+            if (previous.close()<=0) continue;
+            double adjacent=(current.close()/previous.close()-1)*100;
+            if (Math.abs(adjacent)>=.5) addMinuteMove(result,new MinuteMove(current.timestamp(),adjacent,previous.timestamp(),"분봉 변동"));
+            var boundary=current.timestamp().minusMinutes(30);
+            int anchor=i-1;
+            while (anchor>0 && candles.get(anchor-1).timestamp().toLocalDate().equals(date) && !candles.get(anchor-1).timestamp().isBefore(boundary)) anchor--;
+            var first=candles.get(anchor);
+            if (first.close()>0 && !first.timestamp().isBefore(boundary)) {
+                double rolling=(current.close()/first.close()-1)*100;
+                if (Math.abs(rolling)>=1) addMinuteMove(result,new MinuteMove(current.timestamp(),rolling,first.timestamp(),"30분 누적"));
+            }
+        }
+        var unique=new java.util.LinkedHashMap<LocalDateTime,MinuteMove>();
+        for (var move:result) unique.merge(move.at(),move,(a,b) -> a.kind().equals("개장 갭") ? a : b.kind().equals("개장 갭") || Math.abs(b.change())>Math.abs(a.change()) ? b : a);
+        return new ArrayList<>(unique.values());
+    }
+    private static void addMinuteMove(List<MinuteMove> moves, MinuteMove move) {
+        for (int j=moves.size()-1;j>=0;j--) {
+            var previous=moves.get(j);
+            if (java.time.Duration.between(previous.at(),move.at()).toMinutes()>30) break;
+            if (previous.kind().equals(move.kind()) && Math.signum(previous.change())==Math.signum(move.change())) {
+                if (Math.abs(move.change())>Math.abs(previous.change())) moves.set(j,move);
+                return;
+            }
+        }
+        moves.add(move);
     }
 
     static ChartResponse.DocentView largestDocent(List<ChartResponse.MoveInsightView> moves) {
@@ -313,15 +377,17 @@ public class ChartService {
         if (docentService==null) return chart;
         var sourceMoves=chart.moveInsights();
         if (("D".equals(chart.period()) || "W".equals(chart.period())) && !chart.candles().isEmpty() && !chart.fallback()) {
-            var from=chart.candles().getFirst().date().atStartOfDay(KST).toInstant();
-            var to=chart.candles().getLast().date().plusDays(1).atTime(9,0).atZone(KST).toInstant();
+            var from=moveWindow(chart.candles().getFirst().date(),chart.period()).from();
+            var to=referenceEnd(moveWindow(chart.candles().getLast().date(),chart.period()));
             // Rescore cached candles with DB news; do not invalidate or refetch market prices.
             sourceMoves=findDailyMoveInsights(chart.symbol(),chart.candles(),findRelatedNews(chart.symbol(),from,to),chart.period());
         }
         var moves=sourceMoves.stream().map(move -> {
-            var articles=move.candidateNews().stream().map(marker -> newsRepository.findById(marker.newsId()).orElse(null)).filter(java.util.Objects::nonNull).toList();
-            var docent=docentService.get(docentRequest(chart.symbol(),move.timestamp(),move.changePercent(),chart.period(),articles,level));
-            return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),docent.newsId(),docent.newsTitle(),docent.source(),docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
+            var articles=move.candidateNews().stream().filter(marker -> !"REFERENCE".equals(marker.relationType())).map(marker -> newsRepository.findById(marker.newsId()).orElse(null)).filter(java.util.Objects::nonNull).toList();
+            var at="W".equals(chart.period()) ? moveWindow(move.timestamp().toLocalDate(),"W").to().atZone(KST).toLocalDateTime() : move.timestamp();
+            var docent=docentService.get(docentRequest(chart.symbol(),at,move.changePercent(),chart.period(),articles,level));
+            String prefix="MINUTE".equals(chart.period()) && move.explanation().contains(" · ") ? move.explanation().substring(0,move.explanation().indexOf(" · ")+3) : "";
+            return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),docent.newsId(),docent.newsTitle(),docent.source(),prefix+docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
         }).toList();
         return new ChartResponse(chart.symbol(),chart.price(),chart.changePercent(),chart.candles(),chart.newsMarkers(),chart.relatedNews(),largestDocent(moves),chart.period(),chart.intervalMinutes(),chart.minuteCandles(),chart.fallback(),moves);
     }
@@ -376,14 +442,16 @@ public class ChartService {
         String title=java.util.Objects.toString(news.getTitle(),"");
         String lead=new ArticleContentExtractor().clean(title,news.getRawContent());
         lead=lead.substring(0,Math.min(400,lead.length()));
-        String down="급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려";
-        String up="급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜";
-        boolean same=change!=0 && java.util.regex.Pattern.compile(change<0?down:up).matcher(title).find();
-        boolean opposite=change!=0 && java.util.regex.Pattern.compile(change<0?up:down).matcher(title).find();
-        int score=same?3:opposite?-2:0;
-        if (com.finsight.stock.StockCatalog.aliases(symbol).stream().anyMatch(title::contains)) score+=2;
+        var direction = com.finsight.news.SentimentEvidence.titleDirection(title);
+        boolean same = change!=0 && direction!=null && (change>0)==(direction==SentimentHint.POSITIVE);
+        int score = direction==null || change==0 ? 0 : same ? 3 : -2;
+        if (com.finsight.stock.StockCatalog.mentions(symbol,title)) score+=2;
+        if (symbol.equals(news.getRelatedSymbol())) score+=3;
+        if (com.finsight.stock.StockCatalog.mentions(symbol,lead)) score+=2;
+        if (relevanceRank(symbol,news)>1 && (title+" "+lead).matches("(?s).*(공시|실적|매출|수주|계약|영업이익).*")) score++;
         if ((title+" "+lead).matches("(?s).*(코스피|코스닥).*(%|포인트).*")) score++;
         if (java.util.regex.Pattern.compile("채용|면접|전시회|박람회|설명회|시상|기부|MOU|인사|산업대전|반도체 대전",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(title).find()) score-=3;
+        if ((title+" "+lead).matches("(?is).*(전시회|박람회|SEDEX|반도체\\s*대전).*" ) && !title.matches(".*(공시|실적|수주|계약|매출|영업이익).*")) score-=5;
         if (title.matches("^(?:[가-힣]{1,8}(?:시|도|군)(?=[ ,·])|(?:교육|고용노동|기획재정|재정경제|농식품|농림축산식품|산업통상자원|국토교통|환경|보건복지|과학기술정보통신)부|금융위|한은).*")) score-=2;
         return score;
     }
@@ -434,7 +502,7 @@ public class ChartService {
         String lead = raw.substring(0, Math.min(300, raw.length()));
         String name = com.finsight.stock.StockCatalog.name(symbol);
         if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol) || lead.contains(symbol)
-                || !name.equals(symbol) && com.finsight.stock.StockCatalog.aliases(symbol).stream().anyMatch(alias -> title.contains(alias) || lead.contains(alias))) return 3;
+                || !name.equals(symbol) && (com.finsight.stock.StockCatalog.mentions(symbol,title) || com.finsight.stock.StockCatalog.mentions(symbol,lead))) return 3;
         String market = com.finsight.stock.StockCatalog.market(symbol);
         String index = "KOSDAQ".equals(market) ? "코스닥" : "KOSPI".equals(market) ? "코스피" : null;
         String other = "코스피".equals(index) ? "코스닥" : "코스피";
