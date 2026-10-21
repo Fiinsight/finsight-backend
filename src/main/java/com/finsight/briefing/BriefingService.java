@@ -85,7 +85,7 @@ public class BriefingService {
                 && articleContentExtractor.isUsable(news.getTitle(), news.getRawContent());
     }
 
-    private NewsBriefResponse toBriefResponse(News news) {
+    public NewsBriefResponse toBriefResponse(News news) {
         String summary = news.getRewrittenNormal() != null && !news.getRewrittenNormal().isBlank()
                 ? news.getRewrittenNormal() : "요약을 확인할 수 없습니다. 원문 링크에서 확인하세요.";
         summary = ArticleContentExtractor.stripPhotoNoise(summary);
