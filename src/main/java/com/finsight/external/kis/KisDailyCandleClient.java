@@ -16,9 +16,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 /**
- * Fetches recent daily OHLC candles for a stock symbol from KIS.
- *
- * TODO: KIS 공식 문서(https://apiportal.koreainvestment.com) 대조 필요 — tr_id/endpoint는 best-effort로 작성함
+ * Fetches a requested historical OHLC range for stocks or domestic indices.
+ * Matches KIS official inquire_daily_itemchartprice / inquire_daily_indexchartprice examples.
  */
 @Component
 public class KisDailyCandleClient {
@@ -77,14 +76,16 @@ public class KisDailyCandleClient {
             Optional<String> token = tokenProvider.getAccessToken();
             if (token.isEmpty()) return new KisDailyCandleResult(List.of(), true);
             JsonNode response = webClient.get()
-                    .uri(uriBuilder -> uriBuilder.path(index ? "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice" : DAILY_CANDLE_PATH)
+                    .uri(uriBuilder -> {
+                        uriBuilder.path(index ? "/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice" : DAILY_CANDLE_PATH)
                             .queryParam("FID_COND_MRKT_DIV_CODE", index ? "U" : "J")
                             .queryParam("FID_INPUT_ISCD", code)
                             .queryParam("FID_INPUT_DATE_1", startDate.format(YYYYMMDD))
                             .queryParam("FID_INPUT_DATE_2", endDate.format(YYYYMMDD))
-                            .queryParam("FID_PERIOD_DIV_CODE", periodDivCode)
-                            .queryParam("FID_ORG_ADJ_PRC", "1")
-                            .build())
+                            .queryParam("FID_PERIOD_DIV_CODE", periodDivCode);
+                        if (!index) uriBuilder.queryParam("FID_ORG_ADJ_PRC", "1");
+                        return uriBuilder.build();
+                    })
                     .headers(headers -> KisApiHeaders.apply(headers, token.get(), index ? "FHKUP03500100" : DAILY_CANDLE_TR_ID, appKey, appSecret))
                     .retrieve()
                     .bodyToMono(JsonNode.class)
