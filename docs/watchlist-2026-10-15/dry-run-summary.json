@@ -1,0 +1,156 @@
+{
+  "news_total": 411,
+  "linked_before": 136,
+  "linked_after_preview": 130,
+  "stock_before": 71,
+  "stock_after_preview": 78,
+  "changed": 96,
+  "new_links": 32,
+  "removed_links": 38,
+  "changed_links": 26,
+  "with_judgements": 9,
+  "example20": [
+    {
+      "id": 6,
+      "title": "미·중 정상회담 앞두고 트럼프 보란 듯…中, 최강 AI 칩 공개 [강경주의 테크X]",
+      "previous": null,
+      "proposed": "000660",
+      "judgements": 0
+    },
+    {
+      "id": 8,
+      "title": "연속 유가 하락에 美증시 상승…나스닥 개장초 사상최고 경신",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 1
+    },
+    {
+      "id": 12,
+      "title": "연휴 뒤 채권시장 변수는…미중 정상회담·유가·10월 발행물량",
+      "previous": null,
+      "proposed": "006800",
+      "judgements": 0
+    },
+    {
+      "id": 16,
+      "title": "주식·채권도 코인으로…STO 제도화에 조각투자 시대 '성큼'",
+      "previous": null,
+      "proposed": "016360",
+      "judgements": 0
+    },
+    {
+      "id": 24,
+      "title": "美는 물가, 中은 경기…글로벌 증시 변수 쏟아진다",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    },
+    {
+      "id": 28,
+      "title": "한·멕시코, 정상회담 계기 경협 강화…무역협정 개시도 준비",
+      "previous": null,
+      "proposed": "047050",
+      "judgements": 0
+    },
+    {
+      "id": 32,
+      "title": "안산시, ASV 내 첨단로봇 400억원대 대규모 투자 유치",
+      "previous": null,
+      "proposed": "035720",
+      "judgements": 0
+    },
+    {
+      "id": 37,
+      "title": "[마켓인사이트] 추석 연휴서 돌아온 韓증시, 상승흐름 이어갈까",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    },
+    {
+      "id": 42,
+      "title": "전통 제조업에서 반도체·AI로…전남광주 산업지도 다시 그린다",
+      "previous": null,
+      "proposed": "005930",
+      "judgements": 0
+    },
+    {
+      "id": 44,
+      "title": "'역대급 실적' 증권가, 하반기 채용 활기…대형사도 가세",
+      "previous": null,
+      "proposed": "005940",
+      "judgements": 0
+    },
+    {
+      "id": 56,
+      "title": "\"4년뒤 전세계 반도체시장 3100조\"",
+      "previous": null,
+      "proposed": "000660",
+      "judgements": 0
+    },
+    {
+      "id": 57,
+      "title": "반도체 초호황에 성과급 기대감...삼성·SK하닉 육아휴직률 첫 동반 하락",
+      "previous": null,
+      "proposed": "000660",
+      "judgements": 0
+    },
+    {
+      "id": 58,
+      "title": "불량품만 잡아내도 뜬다…몸값 오른 반도체 검사장비기업[반도체 플러스]",
+      "previous": null,
+      "proposed": "042700",
+      "judgements": 0
+    },
+    {
+      "id": 59,
+      "title": "45년간 주가상승 1등 … 엔비디아도 애플도 아닙니다",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    },
+    {
+      "id": 63,
+      "title": "인도네시아, 증시 거래 주가 하한 98% 인하…MSCI 강등 경고 대응",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    },
+    {
+      "id": 66,
+      "title": "IBK증권 \"씨엠티엑스, 성장 기대 실적 입증 구간\"",
+      "previous": null,
+      "proposed": "388210",
+      "judgements": 0
+    },
+    {
+      "id": 71,
+      "title": "한투PE, 1조원 규모 투자 플랫폼 구축…\"데이터센터 등 투자 대상\"",
+      "previous": null,
+      "proposed": "071050",
+      "judgements": 0
+    },
+    {
+      "id": 80,
+      "title": "\"아무리 할인해도 과자가 안팔려요\"…유명 식품기업 주가 '뚝'",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    },
+    {
+      "id": 81,
+      "title": "포스코인터, '알짜' 에너지 사업 투자 확대...美 가스전까지 진출",
+      "previous": null,
+      "proposed": "047050",
+      "judgements": 1
+    },
+    {
+      "id": 89,
+      "title": "한달여 앞 美중간선거, 박스권 韓증시 촉매될까…증권가 촉각",
+      "previous": "KOSPI",
+      "proposed": null,
+      "judgements": 0
+    }
+  ],
+  "catalog_stock_before": 65,
+  "catalog_stock_after_preview": 78
+}
