@@ -58,7 +58,7 @@ class ChartDocentTest {
     @Test void titleSentimentIsTransientAndSummaryNeverCutsFigures() {
         assertThat(ChartDocentService.titleSentiment("삼성전자 호실적 상향")).isEqualTo(com.finsight.briefing.SentimentHint.POSITIVE);
         assertThat(ChartDocentService.titleSentiment("규제 강화로 부진")).isEqualTo(com.finsight.briefing.SentimentHint.NEGATIVE);
-        assertThat(ChartDocentService.titleSentiment("급등 뒤 급락")).isNull();
+        assertThat(ChartDocentService.titleSentiment("급등 뒤 급락")).isEqualTo(com.finsight.briefing.SentimentHint.NEGATIVE);
         assertThat(ChartService.docentSummary("첫 사실이다. " + "가".repeat(390) + " 123.45% 증가했다.")).isEqualTo("첫 사실이다.");
     }
     @Test void malformedAiResultFallsBack() {

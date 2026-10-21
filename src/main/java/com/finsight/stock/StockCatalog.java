@@ -17,12 +17,21 @@ public class StockCatalog {
     public static String market(String code) { var stock = STOCKS.get(code); return stock == null ? null : stock.market(); }
     public static java.util.List<String> aliases(String code) {
         return switch (code) {
-            case "005930" -> java.util.List.of("삼성전자", "삼전");
-            case "000660" -> java.util.List.of("SK하이닉스", "하이닉스", "닉스", "하닉");
-            case "047050" -> java.util.List.of("포스코인터내셔널", "포스코인터");
-            case "003670" -> java.util.List.of("포스코퓨처엠", "포스코퓨처");
+            case "005930" -> java.util.List.of("삼성전자", "삼전", "Samsung Electronics");
+            case "000660" -> java.util.List.of("SK하이닉스", "하이닉스", "닉스", "하닉", "SK hynix");
+            case "047050" -> java.util.List.of("포스코인터내셔널", "포스코인터", "POSCO International");
+            case "003670" -> java.util.List.of("포스코퓨처엠", "포스코퓨처", "POSCO Future M");
+            case "005380" -> java.util.List.of("현대자동차", "현대차", "Hyundai Motor");
+            case "035420" -> java.util.List.of("NAVER", "네이버");
+            case "035720" -> java.util.List.of("카카오", "Kakao");
+            case "373220" -> java.util.List.of("LG에너지솔루션", "LG엔솔", "LG Energy Solution");
             default -> java.util.List.of(name(code));
         };
+    }
+    public static boolean mentions(String code, String text) {
+        if (text==null) return false;
+        String normalized=text.toLowerCase(java.util.Locale.ROOT);
+        return aliases(code).stream().anyMatch(alias -> normalized.contains(alias.toLowerCase(java.util.Locale.ROOT)));
     }
     private static Map<String, Stock> load() {
         var result = new LinkedHashMap<String, Stock>();
