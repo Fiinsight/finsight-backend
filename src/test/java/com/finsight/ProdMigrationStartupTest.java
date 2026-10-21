@@ -89,6 +89,24 @@ class ProdMigrationStartupTest {
 
     @Test
     @org.springframework.transaction.annotation.Transactional
+    void unknownRegradeIsOwnerScopedConditionalAndRefreshesTheArrivalTimestamp() {
+        Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('regrade-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long news=jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('기업 정책','https://example.test/regrade-ci',now()) RETURNING id",Long.class);
+        Long id=jdbc.queryForObject("INSERT INTO judgement(user_id,news_id,choice,created_at,actual_direction,feedback_generated_at) VALUES(?,?,'UP','2026-09-28T01:00:00Z','UNKNOWN','2026-10-01T08:00:00Z') RETURNING id",Long.class,owner,news);
+        var row=judgementRows.findUnknownByOwner(owner).getFirst();
+        var content=new com.finsight.judgement.Judgement.FeedbackContent("CORRECT",java.util.List.of(new com.finsight.external.AiFeedbackResponse.Reason("기사","기업 정책")),"시장 확인");
+        var json=com.finsight.judgement.Judgement.feedbackJson(content);
+        var generated=java.time.Instant.parse("2026-10-14T08:00:00Z");
+        assertThat(judgementRows.findUnknownByOwner(-1L)).isEmpty();
+        assertThat(judgementRows.regradeUnknownOutcome(id,-1L,row.getCreatedAt(),"KOSPI","UP",2.,java.time.LocalDate.parse("2026-09-29"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(102),"새 결과","방향 일치",json,generated)).isZero();
+        assertThat(judgementRows.regradeUnknownOutcome(id,owner,row.getCreatedAt(),"KOSPI","UP",2.,java.time.LocalDate.parse("2026-09-29"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(102),"새 결과","방향 일치",json,generated)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT target_symbol FROM judgement WHERE id=?",String.class,id)).isEqualTo("KOSPI");
+        assertThat(jdbc.queryForObject("SELECT feedback_generated_at FROM judgement WHERE id=?",java.sql.Timestamp.class,id).toInstant()).isEqualTo(generated);
+        assertThat(judgementRows.regradeUnknownOutcome(id,owner,row.getCreatedAt(),"KOSPI","DOWN",-2.,java.time.LocalDate.parse("2026-09-29"),java.math.BigDecimal.valueOf(100),java.math.BigDecimal.valueOf(98),"덮어쓰기","변경",json,generated)).isZero();
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
     void masteryPersistsOwnerScopedUpdatesAndManualBackfillIsIdempotent() {
         Long user = jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('mastery-ci@test','LOCAL',now()) RETURNING id", Long.class);
         Long news = jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('금리','https://example.test/mastery-ci',now()) RETURNING id", Long.class);
@@ -148,6 +166,7 @@ class ProdMigrationStartupTest {
         jdbc.update("DELETE FROM article_note WHERE user_id=?",user);
         assertThat(recommendations.get(user,java.util.List.of(source)).items().getFirst().reason()).isEqualTo("판단한 '환율 변화'와 비슷해요");
     }
+
     @Test
     @org.springframework.transaction.annotation.Transactional
     void watchlistMigrationOwnerScopeLimitAndRecentNewsWorkOnPostgres() throws Exception {

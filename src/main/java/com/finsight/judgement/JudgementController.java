@@ -75,4 +75,11 @@ public class JudgementController {
         int processed = feedbackScheduler.runNow(userId);
         return "%d건 처리 완료".formatted(processed);
     }
+
+    @PostMapping("/regrade-unknown")
+    @Operation(summary = "본인 UNKNOWN 판단 재채점", description = "기본은 실제 종가 조회·계산만 수행합니다. apply=true일 때만 피드백 생성과 조건부 저장을 수행합니다.")
+    public JudgementRegradeResponse regradeUnknown(@AuthenticationPrincipal Long userId,
+            @RequestParam(defaultValue = "false") boolean apply) {
+        return feedbackScheduler.regradeUnknown(userId, apply);
+    }
 }

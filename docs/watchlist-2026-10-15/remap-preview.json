@@ -1,0 +1,674 @@
+[
+  {
+    "id": 6,
+    "title": "미·중 정상회담 앞두고 트럼프 보란 듯…中, 최강 AI 칩 공개 [강경주의 테크X]",
+    "previous": null,
+    "proposed": "000660",
+    "judgements": 0
+  },
+  {
+    "id": 8,
+    "title": "연속 유가 하락에 美증시 상승…나스닥 개장초 사상최고 경신",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 1
+  },
+  {
+    "id": 12,
+    "title": "연휴 뒤 채권시장 변수는…미중 정상회담·유가·10월 발행물량",
+    "previous": null,
+    "proposed": "006800",
+    "judgements": 0
+  },
+  {
+    "id": 16,
+    "title": "주식·채권도 코인으로…STO 제도화에 조각투자 시대 '성큼'",
+    "previous": null,
+    "proposed": "016360",
+    "judgements": 0
+  },
+  {
+    "id": 24,
+    "title": "美는 물가, 中은 경기…글로벌 증시 변수 쏟아진다",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 28,
+    "title": "한·멕시코, 정상회담 계기 경협 강화…무역협정 개시도 준비",
+    "previous": null,
+    "proposed": "047050",
+    "judgements": 0
+  },
+  {
+    "id": 32,
+    "title": "안산시, ASV 내 첨단로봇 400억원대 대규모 투자 유치",
+    "previous": null,
+    "proposed": "035720",
+    "judgements": 0
+  },
+  {
+    "id": 37,
+    "title": "[마켓인사이트] 추석 연휴서 돌아온 韓증시, 상승흐름 이어갈까",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 42,
+    "title": "전통 제조업에서 반도체·AI로…전남광주 산업지도 다시 그린다",
+    "previous": null,
+    "proposed": "005930",
+    "judgements": 0
+  },
+  {
+    "id": 44,
+    "title": "'역대급 실적' 증권가, 하반기 채용 활기…대형사도 가세",
+    "previous": null,
+    "proposed": "005940",
+    "judgements": 0
+  },
+  {
+    "id": 56,
+    "title": "\"4년뒤 전세계 반도체시장 3100조\"",
+    "previous": null,
+    "proposed": "000660",
+    "judgements": 0
+  },
+  {
+    "id": 57,
+    "title": "반도체 초호황에 성과급 기대감...삼성·SK하닉 육아휴직률 첫 동반 하락",
+    "previous": null,
+    "proposed": "000660",
+    "judgements": 0
+  },
+  {
+    "id": 58,
+    "title": "불량품만 잡아내도 뜬다…몸값 오른 반도체 검사장비기업[반도체 플러스]",
+    "previous": null,
+    "proposed": "042700",
+    "judgements": 0
+  },
+  {
+    "id": 59,
+    "title": "45년간 주가상승 1등 … 엔비디아도 애플도 아닙니다",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 63,
+    "title": "인도네시아, 증시 거래 주가 하한 98% 인하…MSCI 강등 경고 대응",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 66,
+    "title": "IBK증권 \"씨엠티엑스, 성장 기대 실적 입증 구간\"",
+    "previous": null,
+    "proposed": "388210",
+    "judgements": 0
+  },
+  {
+    "id": 71,
+    "title": "한투PE, 1조원 규모 투자 플랫폼 구축…\"데이터센터 등 투자 대상\"",
+    "previous": null,
+    "proposed": "071050",
+    "judgements": 0
+  },
+  {
+    "id": 80,
+    "title": "\"아무리 할인해도 과자가 안팔려요\"…유명 식품기업 주가 '뚝'",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 81,
+    "title": "포스코인터, '알짜' 에너지 사업 투자 확대...美 가스전까지 진출",
+    "previous": null,
+    "proposed": "047050",
+    "judgements": 1
+  },
+  {
+    "id": 89,
+    "title": "한달여 앞 美중간선거, 박스권 韓증시 촉매될까…증권가 촉각",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 92,
+    "title": "ISC \"반도체 테스트소켓 계열사에 297억원 출자\"",
+    "previous": null,
+    "proposed": "095340",
+    "judgements": 0
+  },
+  {
+    "id": 97,
+    "title": "ISC, 1000억 베팅…AI 반도체 소켓 생산 2.5배로",
+    "previous": null,
+    "proposed": "095340",
+    "judgements": 0
+  },
+  {
+    "id": 101,
+    "title": "\"MLCC 커팅기술 앞세워 반도체 시장 공략\"",
+    "previous": null,
+    "proposed": "009150",
+    "judgements": 0
+  },
+  {
+    "id": 110,
+    "title": "유가와 국채수익률 상승에 눌린 美증시…나스닥 1.2%↓",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 111,
+    "title": "코스피, 美국채금리 부담 속 하락출발해 보합권(종합)",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 112,
+    "title": "코스피, 하락 출발 6,800선 중반…코스닥도 내려",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 114,
+    "title": "[마켓뷰] '7천피' 내준 코스피, 美금리 악재에 추가 하락하나",
+    "previous": "000660",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 115,
+    "title": "반도체서 데이터센터로…삼성 6개사, 美 AI 인프라 헬릭스에 10억달러 투자",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 2
+  },
+  {
+    "id": 116,
+    "title": "[밤 사이 해외뉴스] 국채금리 20년 만에 최고인데 증시는 왜 버틸까?",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 117,
+    "title": "[특징주] 한미반도체, 반도체 장비 수주 소식에 강세",
+    "previous": null,
+    "proposed": "042700",
+    "judgements": 1
+  },
+  {
+    "id": 123,
+    "title": "대우건설 컨소시엄, 8천686억원 용인 반도체국가산단 1공구 수주",
+    "previous": null,
+    "proposed": "047040",
+    "judgements": 0
+  },
+  {
+    "id": 126,
+    "title": "삼성 6개사, 미국 헬릭스에 10억달러 투자…AI 인프라 협력(종합)",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 128,
+    "title": "DS증권 \"삼전·닉스 3분기 실적, 시장전망치 하회 전망\"",
+    "previous": "KOSPI",
+    "proposed": "005930",
+    "judgements": 0
+  },
+  {
+    "id": 129,
+    "title": "삼성 6개사, 미국 AI 인프라기업 '헬릭스'에 10억달러 투자",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 130,
+    "title": "모아라이프플러스, 40억원 유상증자…메드투자조합에 제3자배정",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 131,
+    "title": "상반기 '불장'·스페이스X 사태에…금융투자 민원 86% 급증",
+    "previous": "035720",
+    "proposed": "006800",
+    "judgements": 0
+  },
+  {
+    "id": 133,
+    "title": "[속보] 삼성 6개사, 美 AI 인프라 기업 헬릭스에 10억 달러 투자",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 146,
+    "title": "반도체 호황 탄 충북, 2분기 지역성장 12%↑…역대 두 번째",
+    "previous": null,
+    "proposed": "000660",
+    "judgements": 0
+  },
+  {
+    "id": 148,
+    "title": "\"AI 투자 늘어난다\"…韓증시 도약하려면 \"녹슨 배관 정비해야\"",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 3
+  },
+  {
+    "id": 151,
+    "title": "이찬진 \"증권사 이익, 투자자는 손실…주주환원·사회공헌 부족\"",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 152,
+    "title": "\"AI 투자 늘어난다\"…韓증시 도약하려면 \"녹슨 배관 정비해야\"(종합)",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 153,
+    "title": "고용노동부 고객센터, AI 실업급여 상담 서비스 24시간 제공",
+    "previous": "035720",
+    "proposed": null,
+    "judgements": 1
+  },
+  {
+    "id": 154,
+    "title": "엔화 개입 경계에 수출업체 달러화 매도…환율 다시 1,350원대로",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 155,
+    "title": "'美 국채 금리 악재' 코스피, 0.27%↓…이틀 연속 하락(종합)",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 156,
+    "title": "'美국채 금리 악재' 코스피, 0.27% 하락 마감",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 157,
+    "title": "은행들 \"금리 오르기전에 빨리 채권 찍자\"",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 162,
+    "title": "[특징주] 한미반도체, 반도체 장비 수주 소식에 7%대 상승 마감(종합)",
+    "previous": "KOSPI",
+    "proposed": "042700",
+    "judgements": 0
+  },
+  {
+    "id": 163,
+    "title": "MSDI, 20억원 유상증자…케이연투자조합에 제3자배정",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 165,
+    "title": "SK, 회사채 수요예측에 7천200억 몰려…고금리에도 모집액 5배",
+    "previous": null,
+    "proposed": "034730",
+    "judgements": 0
+  },
+  {
+    "id": 167,
+    "title": "전날 5%대 급락했던 삼성전자, 배당락에도 0.9% 상승 마감(종합)",
+    "previous": "KOSPI",
+    "proposed": "005930",
+    "judgements": 0
+  },
+  {
+    "id": 171,
+    "title": "\"돈잔치? 남의 집 얘기\"…'반도체 집중' 한국도 대만도 고민",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 173,
+    "title": "삼성그룹, AI 인프라 베팅…美 헬릭스에 10억달러 투자",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 174,
+    "title": "영광와이케이엠씨, 반도체 부품 일괄 생산…매출 절반이 해외서",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 175,
+    "title": "'마이크론·반도체 수출' 훈풍…코스피 1.95%·코스닥 4.48%↑",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 176,
+    "title": "[속보] '마이크론·반도체 수출' 훈풍…코스피 1.95%·코스닥 4.48%↑",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 177,
+    "title": "마이크론·수출로 확인한 반도체 수요…증시 상승탄력 촉매될까(종합)",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 179,
+    "title": "미국 고금리 장기화 우려에…환율 1,350원대 후반으로 상승",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 185,
+    "title": "핑거 \"푸른재무안정 신기술투자조합 제1호 주식 140억원에 취득\"",
+    "previous": "KOSDAQ",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 189,
+    "title": "퍼플렉시티 기업가치 1년여만 1.7배로…미래에셋 투자성과 주목",
+    "previous": null,
+    "proposed": "006800",
+    "judgements": 0
+  },
+  {
+    "id": 194,
+    "title": "신협 \"포털서 전국 신협 조합 예금 금리 비교하세요\"",
+    "previous": "035420",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 196,
+    "title": "글로벌 운용사 헤이핀 \"유럽 사모대출 시장, 분산투자 기회\"",
+    "previous": null,
+    "proposed": "032830",
+    "judgements": 0
+  },
+  {
+    "id": 201,
+    "title": "전답·비닐하우스 펼쳐진 235만평…'반도체 도시'로 바뀐다",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 207,
+    "title": "[단독] 미소금융도 장기 연체채권 새도약기금에 넘긴다",
+    "previous": "005380",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 211,
+    "title": "DS증권, 현대로템 목표가↓…\"환율 등 영향에 실적전망 하향\"",
+    "previous": "KOSPI",
+    "proposed": "064350",
+    "judgements": 5
+  },
+  {
+    "id": 213,
+    "title": "美 증시,국채금리 올라도 나스닥 사상 최고…엔비디아도 최고치 돌파",
+    "previous": "000660",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 216,
+    "title": "두산에너빌, 스페이스XAI에 가스터빈 1호 출하…첫 해외 수출",
+    "previous": null,
+    "proposed": "034020",
+    "judgements": 0
+  },
+  {
+    "id": 226,
+    "title": "[마켓뷰] 연휴서 돌아온 코스피, '美기술주 훈풍' 이어 받을까",
+    "previous": "KOSDAQ",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 228,
+    "title": "상선까지 덮친 드론 위협…해운사 방어 투자 확대",
+    "previous": "KOSPI",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 229,
+    "title": "머스크 '테라팹'에 TSMC도 참여?…인텔주가 하락",
+    "previous": "005930",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 240,
+    "title": "농식품부, 30일까지 'K-푸드+ 수출탑' 후보 모집",
+    "previous": null,
+    "proposed": "003230",
+    "judgements": 0
+  },
+  {
+    "id": 241,
+    "title": "\"투자유치 성과 구체화\"…세종시장, 100여일만 시청 집무실 복귀",
+    "previous": null,
+    "proposed": "009150",
+    "judgements": 0
+  },
+  {
+    "id": 253,
+    "title": "IBK증권, 이엔에프테크 기업분석 개시…\"사상 최대실적 전망\"",
+    "previous": null,
+    "proposed": "357780",
+    "judgements": 0
+  },
+  {
+    "id": 276,
+    "title": "반도체고 입학 하늘의 별 따기?…교내 입학설명회장마다 '북적'",
+    "previous": null,
+    "proposed": "005930",
+    "judgements": 0
+  },
+  {
+    "id": 295,
+    "title": "삼성·SK '차세대 칩' 총동원…'반도체 인재' 현장 면접도",
+    "previous": null,
+    "proposed": "034730",
+    "judgements": 0
+  },
+  {
+    "id": 302,
+    "title": "코스피·코스닥, 연이틀 급락세…장초반 3~4%대 하락(종합)",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 303,
+    "title": "[마켓뷰] 美반도체 약세에 추가 하락? 반발매수?…코스피 향배는",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 305,
+    "title": "CP금리 하루 상승폭 3년 11개월만 최대…단기자금 수급에 민감 반응?",
+    "previous": "452260",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 310,
+    "title": "[게시판] 유진투자증권, 서울오픈 테니스대회 무료 관람권 이벤트",
+    "previous": "001200",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 312,
+    "title": "KB증권, CJ ENM 목표주가↓…\"업황 반등 가시화 제한적\"",
+    "previous": "035760",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 322,
+    "title": "'검은 화요일' 코스피 추락에 악소리…닷새만에 '7천피→5천피'",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 2
+  },
+  {
+    "id": 324,
+    "title": "코스피, 장중 6% 급락해 '6천피' 밑으로…삼전닉스 7∼8%↓",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 329,
+    "title": "[게시판] 빙그레, 논산시와 장애인 체육선수 고용 활성화 협약",
+    "previous": "005180",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 338,
+    "title": "코스피 연일 급락에 공포지수 23% 급등…시총 5천조원 깨져",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 340,
+    "title": "사상최대 반도체 실적인데 왜…'검은 화요일' 코스피 추락에 악소리(종합)",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 1
+  },
+  {
+    "id": 345,
+    "title": "코스피 연일 급락에 공포지수 19% 급등…시총 5천조원 깨져(종합)",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 346,
+    "title": "코스피, 5.5% 급락 '6천피' 간신히 사수…외국인 4.5조 팔았다(종합)",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 361,
+    "title": "삼전·닉스 급락…中 반도체 굴기에 글로벌 반도체주 '휘청'",
+    "previous": "005930",
+    "proposed": "000660",
+    "judgements": 0
+  },
+  {
+    "id": 370,
+    "title": "인뱅3사, 3년여간 부실채권 9천억 매각…73% 민간 추심업체행",
+    "previous": null,
+    "proposed": "323410",
+    "judgements": 0
+  },
+  {
+    "id": 377,
+    "title": "유진투자증권, 현대오토에버 목표가↓…\"피지컬 AI 매출 지연\"",
+    "previous": "001200",
+    "proposed": "307950",
+    "judgements": 0
+  },
+  {
+    "id": 380,
+    "title": "IBK증권, LG디스플레이 목표가↓…\"3분기 실적 부진 전망\"",
+    "previous": "034220",
+    "proposed": null,
+    "judgements": 0
+  },
+  {
+    "id": 381,
+    "title": "[마켓뷰] 6천피 깨지나 반등하나…'급락' 코스피 향배는",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 383,
+    "title": "모디 8번 만난 정의선 회장…\"인도에 중장기 155억 달러 투자\"",
+    "previous": null,
+    "proposed": "005380",
+    "judgements": 0
+  },
+  {
+    "id": 389,
+    "title": "전날 급락했던 코스피 반등…1~2%대에서 상승폭 조절",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 390,
+    "title": "삼전닉스 주가 뒤흔든 중국 CXMT…실질적 위협 단계까지 왔나",
+    "previous": null,
+    "proposed": "005930",
+    "judgements": 0
+  },
+  {
+    "id": 402,
+    "title": "전날 급락했던 코스피, 상승 출발…1∼2%대 오름세(종합)",
+    "previous": "005930",
+    "proposed": "KOSPI",
+    "judgements": 0
+  },
+  {
+    "id": 406,
+    "title": "HBM4E부터 용인 산단까지…삼성, AI 반도체 청사진 공개",
+    "previous": null,
+    "proposed": "005930",
+    "judgements": 0
+  }
+]

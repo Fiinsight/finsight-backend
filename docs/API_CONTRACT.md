@@ -451,7 +451,18 @@ strongest: effectivePKnown >=0.8 and attempts >=3, highest first, at most3. weak
 
 ## 피드백 설명·과거 채점 표시 (2026-10-14)
 
-- first `reasons[0].detail`은 기사 원문 인용 → 실적/수급/금리/환율/규제 등 가격 연결 원리 → 관측된 방향과의 관계를 2~4문장으로 설명. 다른 reasons/nextTip은 한 문장. 일반 원리는 가능성 설명이며 새 실적·전망·투자자 매매가 발생했다는 사실을 만들지 않음.
+- first `reasons[0].detail`은 기사 원문 인용 → 실적/수급/금리/환율/규제 등 가격 연결 원리 → 관측된 방향과의 관계를 2~4문장으로 설명. 근거 코칭은 1~3문장, 시장 비교는 1~2문장(초보자 종가 풀이 포함 시 3문장), nextTip은 한 문장. 일반 원리는 가능성 설명이며 새 실적·전망·투자자 매매가 발생했다는 사실을 만들지 않음.
 - history/history/page/detail `gradingIssue: TARGET_MISMATCH|LEGACY_COMPARISON|null` 추가. 저장된 target_symbol이 없는 옛 확정 기록에서 현재 strict target과 옛 종목이 다르면 TARGET_MISMATCH, 비교일이 없으면 LEGACY_COMPARISON. 읽기 응답만 보정하고 저장된 choice/direction/percent/feedback은 수정하지 않음.
 - gradingIssue가 있으면 응답의 headline/verdict/reasons/nextTip을 숨기고 feedbackText/unavailableReason에 이전 기록 안내. 클라이언트는 잘못된 칭찬·적중·가격 차트를 표시하지 않으며 다시 읽기 행동 제공.
 - 유효한 기존 구조화 피드백의 옛 1문장 규칙 문구는 응답에서만 가격 연결 원리 한 문장을 덧붙임. 레거시 배열·null 읽기 호환 유지, 새 가격/AI 호출/DB 재생성 없음.
+
+
+## UNKNOWN 재채점과 피드백 전달 보존 (2026-10-21)
+
+`POST /api/judgements/regrade-unknown?apply=false`는 인증 사용자 본인의 `UNKNOWN`이며 `comparisonDate`가 없는 판단만 조회해요. 기본값은 dry-run으로 KIS 종가를 조회하고 AI 호출·DB 갱신은 하지 않아요. 로컬 QA 기사는 제외해요. `apply=true`는 READY 기록만 실제 종가를 재확인한 후 조건부로 저장해요.
+
+응답은 `{dryRun, ready, applied, records}`예요. 각 record는 `judgementId`, `status`, `reason`, `targetSymbol`, `baselineDate`, `comparisonDate`, `judgementClose`, `comparisonClose`, `actualDirection`, `actualChangePercent`, `indexSymbol`, `indexJudgementClose`, `indexComparisonClose`, `indexChangePercent`를 포함해요. 조회가 불가능한 값은 null이에요. status는 READY/APPLIED/CONFLICT/NO_TARGET/NO_TARGET_CLOSES/NO_INDEX_CLOSES/NOT_DUE/SKIPPED/FAILED예요.
+
+다른 사용자·변경된 판단·이미 채점된 기록은 UPDATE 조건으로 차단해요. 적용 성공 시 `feedbackGeneratedAt`도 갱신하고, 가격이 없으면 임의 대체하지 않아요.
+
+AI 응답 본문은 `summary` → `feedback` → `feedbackText` 순서로 null이 아닌 값을 채택해요. 추가 메타데이터는 허용하고, AI 오류나 검증 실패 시 규칙 피드백을 사용해요. 근거의 사실·가격 경로·선택 방향과 시장 비교를 분리해요. `nextTip`은 응답·저장 계약에 유지해요.

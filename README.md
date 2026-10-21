@@ -83,9 +83,72 @@ python3 scripts/regrade_judgements.py --apply
 
 `--apply`도 새 스냅샷으로 계획과 변경 전후를 다시 출력한 뒤 READY만 한 트랜잭션으로 적용합니다. 갱신 컬럼은 `target_symbol`, `actual_direction`, `actual_change_percent`, `comparison_date`, `judgement_close`, `comparison_close`, `feedback_text`, `feedback_headline`, `feedback_reasons`입니다. 기존 `feedback_generated_at`은 보존합니다. 계획 이후 판단·기사가 변경됐거나 다른 실행이 먼저 재채점했다면 전체 적용을 롤백합니다. 기존 도구와 같이 loopback의 `finsight` / `finsight_demo` DB만 허용합니다. READY가 0건이면 DB 쓰기를 하지 않습니다.
 
-대기 중인 NULL 대상 기록은 백엔드 스케줄러가 뉴스에서 대상을 찾아 채점 결과와 함께 고정합니다. 대상 자체가 없는 기사는 비교 시점이 지난 뒤 UNKNOWN과 사유로 종료합니다. 이미 UNKNOWN으로 끝난 기록은 스케줄러가 다시 채점하지 않으며 위 수동 도구를 사용해야 합니다.
+### 저장 종가가 없을 때: KIS 일봉으로 재채점
+
+저장 종가가 없으면 `POST /api/judgements/regrade-unknown` 엔드포인트를 사용하세요. 로그인한 사용자 본인의 `UNKNOWN + comparison_date IS NULL` 기록만 처리하며 `로컬 QA` 제목은 제외합니다. 뉴스에서 대상을 다시 판별하고, 스케줄러와 같은 거래일 기준과 `KisDailyCandleClient`로 대상의 실제 종가를 조회합니다. 개별 종목은 코스피·코스닥 지수 종가도 함께 비교합니다.
+
+아래 명령은 **사용자가 직접 실행**합니다. 먼저 로그인 시 받은 토큰을 `FINSIGHT_TOKEN` 환경 변수에 넣고, 기본 dry-run 응답의 대상·기준일→비교일·종가·방향·등락률을 확인하세요. dry-run은 KIS 시세 조회와 계산만 수행하며 AI 호출과 DB 갱신은 하지 않습니다.
+
+```bash
+curl -fsS -X POST 'http://localhost:8080/api/judgements/regrade-unknown' \
+  -H "Authorization: Bearer $FINSIGHT_TOKEN"
+```
+
+응답은 `dryRun`, `ready`, `applied`, `records`를 포함합니다. 각 기록의 `status`가 `READY`면 계산 가능하며, `NO_TARGET_CLOSES` / `NO_INDEX_CLOSES`는 대상 / 시장 지수 종가 부족, `NO_TARGET`은 대상 없음, `NOT_DUE`는 비교일 장 마감 전, `FAILED`는 조회 등 처리 실패입니다. 부족한 종가를 임의로 만들거나 가까운 다른 날짜로 대체하지 않습니다.
+
+결과를 확인한 뒤에만 `apply=true`로 다시 요청하세요. 이때 종가를 다시 확인하고 READY 기록의 AI 피드백을 생성하며, AI 서버가 응답하지 않거나 검증을 통과하지 못하면 규칙 기반 피드백을 사용합니다.
+
+```bash
+curl -fsS -X POST 'http://localhost:8080/api/judgements/regrade-unknown?apply=true' \
+  -H "Authorization: Bearer $FINSIGHT_TOKEN"
+```
+
+적용은 기록별 조건부 UPDATE입니다. 사용자·판단 시각·`UNKNOWN`·비교일 없음·QA 제외 조건을 저장 직전에도 확인하고, 위 9개 컬럼과 `feedback_generated_at`을 재채점 시각으로 갱신합니다. 성공은 `APPLIED`, 먼저 재채점됐거나 판단이 변경된 기록은 `CONFLICT`로 반환합니다. 일부 기록에 종가가 없거나 실패해도 나머지는 처리합니다. Python 도구와 달리 결과 도착 배지를 위해 생성 시각도 새로 기록합니다. 적용 후 같은 요청은 이미 채점된 기록을 다시 선택하지 않습니다.
+
+KIS 공식 예제는 [종목 과거 일봉](https://github.com/koreainvestment/open-trading-api/blob/main/examples_llm/domestic_stock/inquire_daily_itemchartprice/inquire_daily_itemchartprice.py)과 [코스피 지수 과거 일봉](https://github.com/koreainvestment/open-trading-api/blob/main/examples_llm/domestic_stock/inquire_daily_indexchartprice/inquire_daily_indexchartprice.py) 모두 시작일·종료일을 지정합니다. 최근 2주 제한은 문서에 없으며, 지수는 시장 `U`·코드 `0001`을 사용합니다. 로컬 mock 테스트에서 2026-09-28~30 요청 날짜·종목/지수 파라미터와 종가 필드 매핑을 확인했습니다. **해당 계정에서 그 날짜의 실제 데이터가 반환되는지는 실호출하지 않아 미확인**이며 dry-run 응답으로 확인해야 합니다. KIS에서 반환하지 않으면 다른 검증된 시세 소스나 출처·날짜를 확인한 수동 종가 입력이 대안이며, 이번 엔드포인트는 그런 대체 가격을 자동으로 사용하지 않습니다.
+
+대기 중인 NULL 대상 기록은 백엔드 스케줄러가 뉴스에서 대상을 찾아 채점 결과와 함께 고정합니다. 대상 자체가 없는 기사는 비교 시점이 지난 뒤 UNKNOWN과 사유로 종료합니다. 이미 UNKNOWN으로 끝난 기록은 스케줄러가 다시 채점하지 않으며 위 수동 도구 또는 엔드포인트를 사용해야 합니다.
 
 코드 변경을 실행 중 서비스에 반영하려면 **백엔드(8080)와 AI 서버(8001)를 재시작**해야 합니다. 백엔드는 시작 시 대기 기록 채점을 수행할 수 있으므로, 단순 화면 점검만 할 때는 기존 `finsight.feedback.on-startup=false` 설정을 사용하세요. 과거 UNKNOWN 적용은 서버 재시작으로 실행되지 않습니다.
+
+### Gemini 코칭 반영 및 사용자 직접 실행 순서
+
+AI 응답의 `summary`, `feedback`, `feedbackText`는 별도 필드로 읽고 앞의 값부터 우선합니다. `is_aligned`, `next_learning_point` 같은 추가 메타데이터가 있어도 역직렬화할 수 있습니다. 채택한 코칭의 요약·제목·이유·팁은 기존 조건부 결과 UPDATE에 함께 저장되고 판단 상세에서 표시됩니다. 이미 저장된 피드백을 자동으로 다시 쓰지는 않습니다.
+
+1. 사용자가 비용을 고려해 `finsight-ai/.env`에 `FEEDBACK_WITH_LLM=true`를 추가할지 결정합니다. 기존 `LLM_PROVIDER=gemini`와 Gemini 키 설정이 필요합니다. 이 작업은 환경 파일을 수정하지 않습니다.
+2. 기존 백엔드(8080)와 AI(8001)를 각 실행 터미널에서 `Ctrl+C` 또는 IDE의 Stop으로 중지합니다. **백엔드가 멈춘 상태에서만** 아래 명령을 실행하세요. 실행 중인 서버가 `build/classes`를 사용하므로 `build`의 ` 2` 사본은 직접 삭제하지 않았습니다. `clean`은 중지 후 사용자가 실행합니다.
+
+```bash
+cd /Users/subin/Desktop/Finsight/finsight-backend
+./gradlew clean test
+```
+
+AI 서버를 별도 터미널에서 시작하고, 백엔드는 시작 시 자동 채점을 건너뛰어 아래 수동 순서를 유지합니다. 기존 정기 스케줄은 유지됩니다.
+
+```bash
+cd /Users/subin/Desktop/Finsight/finsight-ai
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+```bash
+cd /Users/subin/Desktop/Finsight/finsight-backend
+./gradlew bootRun --args='--finsight.feedback.on-startup=false'
+```
+
+3. 본인 로그인 토큰을 `FINSIGHT_TOKEN`에 설정한 뒤 dry-run → apply → 대기 기록 채점 순으로 직접 요청합니다. dry-run에서는 사용자가 확인한 값인 **id 3·4 코스피 -0.27% 중립, id 5 047050 -4.39% 하락**과 대상·비교일·종가를 대조하세요. 이 수치는 여기서 실조회한 결과가 아니며 READY 상태와 실제 응답을 먼저 확인해야 합니다.
+
+```bash
+curl -fsS -X POST 'http://localhost:8080/api/judgements/regrade-unknown' \
+  -H "Authorization: Bearer $FINSIGHT_TOKEN"
+
+curl -fsS -X POST 'http://localhost:8080/api/judgements/regrade-unknown?apply=true' \
+  -H "Authorization: Bearer $FINSIGHT_TOKEN"
+
+curl -fsS -X POST 'http://localhost:8080/api/judgements/generate-feedback-now' \
+  -H "Authorization: Bearer $FINSIGHT_TOKEN"
+```
+
+마지막 요청은 본인 계정의 채점 시점이 지난 대기 기록(32·33 등)을 처리합니다. 각 API는 이미 결과가 확정된 기록을 다시 덮어쓰지 않습니다. Gemini 코칭은 KST 기준 **하루 최대 50시도**이며 기존 프로세스 호출 상한(기본 20회)과 간격 제한도 적용됩니다. 동일 입력·프롬프트 버전은 하루 한 번만 AI를 호출하고, 검증에서 탈락하면 그날은 해당 입력의 규칙 문구를 재사용합니다. 과금 여부는 사용자 계정에 따르며 호출·검증 실패도 한도에 포함됩니다.
 
 ## 앞으로의 계획
 

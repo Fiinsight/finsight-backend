@@ -20,6 +20,21 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     int finalizeOutcome(Long id, Instant judgedAt, String direction, Double change, String feedback, Instant generated,
         java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String headline, com.fasterxml.jackson.databind.JsonNode content, String target);
 
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news n JOIN FETCH j.user WHERE j.user.id=:userId "
+        + "AND j.actualDirection='UNKNOWN' AND j.comparisonDate IS NULL AND n.title NOT LIKE '%로컬 QA%' ORDER BY j.id")
+    List<Judgement> findUnknownByOwner(Long userId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Judgement j SET j.targetSymbol=:target, j.actualDirection=:direction, j.actualChangePercent=:change, "
+        + "j.comparisonDate=:comparison, j.judgementClose=:before, j.comparisonClose=:after, j.feedbackText=:feedback, "
+        + "j.feedbackHeadline=:headline, j.feedbackContent=:content, j.feedbackGeneratedAt=:generated "
+        + "WHERE j.id=:id AND j.user.id=:userId AND j.createdAt=:judgedAt AND j.actualDirection='UNKNOWN' AND j.comparisonDate IS NULL "
+        + "AND j.news.id IN (SELECT n.id FROM News n WHERE n.title NOT LIKE '%로컬 QA%')")
+    int regradeUnknownOutcome(Long id, Long userId, Instant judgedAt, String target, String direction, Double change,
+        java.time.LocalDate comparison, java.math.BigDecimal before, java.math.BigDecimal after, String feedback,
+        String headline, com.fasterxml.jackson.databind.JsonNode content, Instant generated);
+
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     java.util.Optional<Judgement> findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(User user, Long newsId);
 
