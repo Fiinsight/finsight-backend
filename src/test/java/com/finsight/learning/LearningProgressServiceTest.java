@@ -27,6 +27,8 @@ class LearningProgressServiceTest {
   assertEquals(LocalDate.of(2026,10,5),response.week().from());assertEquals(1,response.week().answeredCount());
   assertEquals(0.0,response.today().accuracy());assertEquals(3,response.activityStreakDays());
   assertEquals(1,response.weakAreas().size());assertEquals(5,response.weakAreas().get(0).decidedCount());
+  assertEquals(List.of(new LearningProgressService.RelatedArticle(115L,"금리 동결")),response.weakAreas().get(0).recentArticles());
+  assertEquals(List.of(115L),response.weakAreas().get(0).recentNewsIds());
   when(db.queryForList(contains("learning_progress"),eq(1L),any(),any())).thenReturn(List.of(old));
   assertEquals(3,service.get(1L).activityStreakDays()); // quiz re-answer does not rewrite activity dates
   assertEquals(0,service.get(2L).activityStreakDays());assertTrue(service.get(2L).completedNewsIds().isEmpty());

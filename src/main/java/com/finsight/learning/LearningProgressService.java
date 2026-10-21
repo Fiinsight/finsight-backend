@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class LearningProgressService {
     public record Counts(int answeredCount, int correctCount, Double accuracy) {}
     public record Week(LocalDate from, LocalDate to, int answeredCount, int correctCount, Double accuracy) {}
-    public record WeakArea(String category, int decidedCount, int hitCount, List<Long> recentNewsIds, int sampleSize) {}
+    public record RelatedArticle(Long newsId, String title) {}
+    public record WeakArea(String category, int decidedCount, int hitCount, List<Long> recentNewsIds, int sampleSize, List<RelatedArticle> recentArticles) {}
     public record Progress(Counts today, Week week, int activityStreakDays, List<Long> completedNewsIds,
                            int totalDecidedCount, List<WeakArea> weakAreas, Goal goal, String levelSuggestion, TermMasteryService.Overview mastery) {}
     public record Goal(String type, boolean achievedToday, int streakDays) {}
@@ -60,7 +61,9 @@ public class LearningProgressService {
         List<WeakArea> weak = fields.entrySet().stream().filter(entry -> entry.getValue().size()>=5).map(entry -> {
             int hits=(int)entry.getValue().stream().filter(row -> Objects.equals(row.get("choice"),row.get("actual_direction"))).count();
             List<Long> ids=entry.getValue().stream().map(row -> ((Number)row.get("news_id")).longValue()).distinct().limit(2).toList();
-            return new WeakArea(entry.getKey(),entry.getValue().size(),hits,ids,entry.getValue().size());
+            var articles = ids.stream().map(id -> entry.getValue().stream().filter(row -> ((Number)row.get("news_id")).longValue() == id).findFirst().orElseThrow())
+                    .map(row -> new RelatedArticle(((Number)row.get("news_id")).longValue(), (String)row.get("title"))).toList();
+            return new WeakArea(entry.getKey(),entry.getValue().size(),hits,ids,entry.getValue().size(),articles);
         }).filter(area -> (double)area.hitCount()/area.decidedCount()<=0.4)
                 .sorted(Comparator.comparingDouble(area -> (double)area.hitCount()/area.decidedCount())).limit(3).toList();
         var profile = profiles.getOnboarding(userId);
