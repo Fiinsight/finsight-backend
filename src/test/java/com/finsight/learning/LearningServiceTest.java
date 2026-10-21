@@ -29,6 +29,7 @@ class LearningServiceTest {
         var mastery = mock(TermMasteryService.class);
         var service = new LearningService(news, users, terms, progress, profile, ai, extractor, mastery, mock(com.finsight.briefing.BriefingService.class));
         var lesson = service.lesson(1L,115L,null);
+        verify(terms).findAll();
         when(article.getRewriteMode()).thenReturn("REWRITTEN"); when(article.getRewrittenBeginner()).thenReturn("저장된 실제 리라이팅이에요.");
         clearInvocations(ai);
         var storedLesson = service.lesson(1L,115L,"beginner");

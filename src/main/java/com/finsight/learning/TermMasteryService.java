@@ -17,7 +17,7 @@ public class TermMasteryService {
             this(term, pKnown, effectivePKnown, attempts, lastAnsweredAt, level, null);
         }
     }
-    public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts, int learningCount) {}
+    public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts, int learningCount, List<Mastery> learning) {}
     public record BackfillCount(long concepts, long savedAnswers) {}
     private final JdbcTemplate jdbc;
     private Clock clock = Clock.system(ZoneId.of("Asia/Seoul"));
@@ -65,9 +65,10 @@ public class TermMasteryService {
     public static Overview overview(List<Mastery> rows) {
         Comparator<Mastery> byProbability = Comparator.comparingDouble(Mastery::effectivePKnown).thenComparing(Mastery::term);
         return new Overview(rows.stream().filter(TermMasteryService::wellKnown).sorted(byProbability.reversed()).limit(3).toList(),
-                rows.stream().filter(row -> needsReview(row.effectivePKnown(), row.lastCorrect())).sorted(byProbability).limit(3).toList(),
+                rows.stream().filter(row -> needsReview(row.effectivePKnown(), row.lastCorrect())).sorted(byProbability).limit(10).toList(),
                 rows.stream().mapToInt(Mastery::attempts).sum(),
-                (int) rows.stream().filter(row -> !wellKnown(row) && !needsReview(row.effectivePKnown(), row.lastCorrect())).count());
+                (int) rows.stream().filter(row -> !wellKnown(row) && !needsReview(row.effectivePKnown(), row.lastCorrect())).count(),
+                rows.stream().filter(row -> !wellKnown(row) && !needsReview(row.effectivePKnown(), row.lastCorrect())).sorted(byProbability).toList());
     }
 
     public static boolean needsReview(double probability, Boolean lastCorrect) {

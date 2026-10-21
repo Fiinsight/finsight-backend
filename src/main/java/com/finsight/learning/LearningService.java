@@ -72,7 +72,8 @@ public class LearningService {
         boolean usableStored = article.getRewriteMode() != null && stored != null && !stored.isBlank();
         var aid = usableStored || body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
                 : ai.learning(new AiRewriteRequest(article.getTitle(), body, level));
-        List<Term> matchedTerms = articleTerms(article);
+        List<Term> dictionary = terms.findAll();
+        List<Term> matchedTerms = articleTerms(article, dictionary);
         List<Glossary> glossary = matchedTerms.stream().limit(3)
                 .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
         Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
@@ -80,9 +81,9 @@ public class LearningService {
         Map<String,Double> probabilities = new HashMap<>();
         knowledge.forEach((term,row) -> probabilities.put(term,row.effectivePKnown()));
         String quizLevel = level;
-        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm()))) != null).map(Term::getTerm).toList(), probabilities);
+        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm())), dictionary) != null).map(Term::getTerm).toList(), probabilities);
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
-        GradedQuestion quiz = first == null ? null : question(article, first, level, needsConcept(knowledge.get(first.getTerm())));
+        GradedQuestion quiz = first == null ? null : question(article, first, level, needsConcept(knowledge.get(first.getTerm())), dictionary);
         if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
         return new Lesson(newsId, level,
                 usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
@@ -94,10 +95,11 @@ public class LearningService {
     public AnswerResult answer(Long userId, Long newsId, String level, String term, int answerIndex) {
         validateLevel(level);
         News article = article(newsId);
-        Term target = articleTerms(article).stream().filter(t -> t.getTerm().equals(term)).findFirst()
+        List<Term> dictionary = terms.findAll();
+        Term target = articleTerms(article, dictionary).stream().filter(t -> t.getTerm().equals(term)).findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 문항이 아닙니다."));
         var known = mastery.list(userId).stream().filter(row -> row.term().equals(term)).findFirst().orElse(null);
-        GradedQuestion graded = question(article, target, level, needsConcept(known));
+        GradedQuestion graded = question(article, target, level, needsConcept(known), dictionary);
         Question question = graded == null ? null : graded.publicQuestion();
         if (question == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "준비된 퀴즈가 없습니다.");
         if (answerIndex < 0 || answerIndex >= question.options().size()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "잘못된 답변입니다.");
@@ -113,11 +115,12 @@ public class LearningService {
     public List<DailyTerm> dailyTerms(Long userId) {
         Map<String,TermMasteryService.Mastery> known = new HashMap<>();
         mastery.list(userId).forEach(row -> known.put(row.term(), row));
+        List<Term> dictionary = terms.findAll();
         LinkedHashMap<String,DailyTerm> candidates = new LinkedHashMap<>();
-        for (var item : briefing.getTodayBriefing()) news.findById(item.id()).ifPresent(article -> addDailyTerms(candidates, article, known));
+        for (var item : briefing.getTodayBriefing()) news.findById(item.id()).ifPresent(article -> addDailyTerms(candidates, article, known, dictionary));
         if (candidates.size() < 3) {
             for (News article : news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant.now().minus(java.time.Duration.ofHours(24)))) {
-                addDailyTerms(candidates, article, known);
+                addDailyTerms(candidates, article, known, dictionary);
             }
         }
         return candidates.values().stream().sorted(Comparator
@@ -126,10 +129,10 @@ public class LearningService {
                 .thenComparing(DailyTerm::term)).limit(3).toList();
     }
 
-    private void addDailyTerms(Map<String,DailyTerm> candidates, News article, Map<String,TermMasteryService.Mastery> known) {
+    private void addDailyTerms(Map<String,DailyTerm> candidates, News article, Map<String,TermMasteryService.Mastery> known, List<Term> dictionary) {
         if (article.getRawContent() == null || article.getRawContent().isBlank()
                 || Objects.toString(article.getSource(), "").startsWith("SYNTHETIC")) return;
-        for (Term term : articleTerms(article)) {
+        for (Term term : articleTerms(article, dictionary)) {
             if (term.getKind() != Term.Kind.CONCEPT) continue;
             var row = known.get(term.getTerm());
             if (row != null && TermMasteryService.wellKnown(row)) continue;
@@ -158,7 +161,7 @@ public class LearningService {
                 .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
                 .thenComparing(LearningProgress::getTerm)).limit(10)
                 .map(p -> new Review(p.getNews().getId(), p.getNews().getTitle(), p.getTerm(),
-                        terms.findByTermIgnoreCase(p.getTerm()).map(Term::getShortDefinition).orElse("정의를 확인할 수 없습니다."),
+                        dictionary.get(p.getTerm()).getShortDefinition(),
                         p.getLevel(), p.getAnsweredAt())).toList();
     }
     private News article(Long id) { return news.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "뉴스를 찾을 수 없습니다.")); }
@@ -166,13 +169,15 @@ public class LearningService {
     public Glossary feedbackConcept(Long userId, News article, String level) {
         Map<String,Double> known = new HashMap<>();
         mastery.list(userId).forEach(row -> known.put(row.term(),row.effectivePKnown()));
-        return articleTerms(article).stream().filter(term -> term.getKind() == Term.Kind.CONCEPT && question(article,term,level) != null)
+        List<Term> dictionary = terms.findAll();
+        return articleTerms(article, dictionary).stream().filter(term -> term.getKind() == Term.Kind.CONCEPT && question(article,term,level,false,dictionary) != null)
                 .min(Comparator.comparingDouble((Term term) -> known.getOrDefault(term.getTerm(),KnowledgeTracing.P_INIT)).thenComparing(Term::getTerm))
                 .map(term -> new Glossary(term.getTerm(),term.getShortDefinition())).orElse(null);
     }
-    List<Term> articleTerms(News article) {
+    List<Term> articleTerms(News article) { return articleTerms(article, terms.findAll()); }
+    private List<Term> articleTerms(News article, List<Term> dictionary) {
         String content = article.getTitle() + " " + Objects.toString(article.getRawContent(), "");
-        return terms.findAll().stream().filter(t -> content.contains(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
+        return dictionary.stream().filter(t -> content.contains(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
                 .sorted(Comparator.comparingInt((Term t) -> article.getTitle().contains(t.getTerm()) ? 0 : 1)
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();
@@ -185,9 +190,12 @@ public class LearningService {
         return question(article,term,level,false);
     }
     GradedQuestion question(News article, Term term, String level, boolean conceptFirst) {
+        return question(article,term,level,conceptFirst,terms.findAll());
+    }
+    private GradedQuestion question(News article, Term term, String level, boolean conceptFirst, List<Term> dictionary) {
         if (!term.quizEligible(level)) return null;
         if (conceptFirst) {
-            GradedQuestion definition = beginnerQuestion(article, term, level);
+            GradedQuestion definition = beginnerQuestion(article, term, level, dictionary);
             if (definition != null) return definition;
         }
         String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
@@ -195,7 +203,7 @@ public class LearningService {
                 .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
         Random seed = new Random(article.getId() ^ term.getTerm().hashCode());
         if ("normal".equals(level)) {
-            List<Term> matched = articleTerms(article);
+            List<Term> matched = articleTerms(article, dictionary);
             for (String sentence : sentences) {
                 if (sentence.length()>180 || !sentence.contains(term.getTerm()) || !sentence.matches(".*[0-9].*")) continue;
                 if (matched.stream().anyMatch(other -> !other.getTerm().equals(term.getTerm())
@@ -222,7 +230,7 @@ public class LearningService {
                         List.copyOf(options), QuestionType.FACT_CHECK), level, fact);
             }
         }
-        return beginnerQuestion(article, term, level);
+        return beginnerQuestion(article, term, level, dictionary);
     }
 
     static List<String> factVariants(String fact) {
@@ -240,9 +248,9 @@ public class LearningService {
         }
         return variants;
     }
-    private GradedQuestion beginnerQuestion(News article, Term term, String level) {
+    private GradedQuestion beginnerQuestion(News article, Term term, String level, List<Term> dictionary) {
         Set<String> field = TERM_FIELDS.stream().filter(group -> group.contains(term.getTerm())).findFirst().orElse(Set.of());
-        List<String> distractors = new ArrayList<>(terms.findAll().stream()
+        List<String> distractors = new ArrayList<>(dictionary.stream()
                 .filter(t -> t.quizEligible("beginner") && field.contains(t.getTerm()) && !t.getTerm().equals(term.getTerm()))
                 .sorted(Comparator.comparing(Term::getTerm)).map(Term::getShortDefinition)
                 .filter(d -> d != null && !d.isBlank() && !d.equals(term.getShortDefinition())).distinct().toList());

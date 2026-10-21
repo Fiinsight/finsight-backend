@@ -56,8 +56,14 @@ class ConceptPersonalizationTest {
         assertEquals(List.of("3회"),result.strongest().stream().map(TermMasteryService.Mastery::term).toList());
         assertEquals(List.of(".49","마지막오답"),result.weakest().stream().map(TermMasteryService.Mastery::term).toList());
         assertEquals(3,result.learningCount());
+        assertEquals(List.of(".5",".79","2회"),result.learning().stream().map(TermMasteryService.Mastery::term).toList());
         assertTrue(TermMasteryService.overview(List.of()).strongest().isEmpty());
         assertTrue(TermMasteryService.overview(List.of()).weakest().isEmpty());
+    }
+    @Test void reviewOverviewUsesTenConceptsAndKeepsLearningListComplete() {
+        var rows = java.util.stream.IntStream.range(0,12).mapToObj(i -> known("개념"+i,.2,3,false)).toList();
+        assertEquals(10,TermMasteryService.overview(rows).weakest().size());
+        assertEquals(0,TermMasteryService.overview(rows).learning().size());
     }
     @Test void sameCoreNewsProducesDifferentDailyConceptsAndNeverTopicsOrMarkets() {
         when(terms.findAll()).thenReturn(List.of(new Term("금리","이자 비율"),new Term("환율","교환 비율"),new Term("물가","가격 수준"),new Term("수급","수요 공급"),new Term("반도체","부품"),new Term("코스피","지수")));
@@ -66,6 +72,7 @@ class ConceptPersonalizationTest {
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.25,5,false)));
         when(mastery.list(2L)).thenReturn(List.of(known("금리",.9,5,true),known("환율",.7,2,true)));
         var beginner=service.dailyTerms(1L); var investor=service.dailyTerms(2L);
+        verify(terms,times(2)).findAll();
         assertEquals("금리",beginner.getFirst().term()); assertEquals("지난번에 틀린 개념",beginner.getFirst().reason());
         assertFalse(investor.stream().anyMatch(row->row.term().equals("금리")));
         assertEquals("처음 보는 개념",investor.getFirst().reason());
@@ -81,6 +88,7 @@ class ConceptPersonalizationTest {
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.9,3,true)));
         when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(List.of(recent));
         assertEquals(List.of("물가","환율"),service.dailyTerms(1L).stream().map(LearningService.DailyTerm::term).toList());
+        verify(terms).findAll();
         verify(news).findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(argThat(at->at.isAfter(Instant.now().minusSeconds(86405)) && at.isBefore(Instant.now().minusSeconds(86395))));
     }
 
@@ -96,7 +104,11 @@ class ConceptPersonalizationTest {
         when(terms.findAll()).thenReturn(List.of(new Term("금리","이자"),new Term("환율","비율"),new Term("매출","금액"),new Term("반도체","부품")));
         when(progress.findByUser_IdOrderByAnsweredAtDesc(1L)).thenReturn(List.of(half,low,wrong,topic));
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.5,3,true),known("환율",.499,3,true),known("매출",.9,8,false)));
-        assertEquals(List.of("환율","매출"),learning.reviews(1L).stream().map(LearningService.Review::term).toList());
+        var reviews = learning.reviews(1L);
+        assertEquals(List.of("환율","매출"),reviews.stream().map(LearningService.Review::term).toList());
+        assertEquals(List.of("비율","금액"),reviews.stream().map(LearningService.Review::definition).toList());
+        verify(terms).findAll(); verify(terms,never()).findByTermIgnoreCase(any());
+        assertEquals(TermMasteryService.overview(mastery.list(1L)).weakest().stream().map(TermMasteryService.Mastery::term).toList(), reviews.stream().map(LearningService.Review::term).toList());
     }
     @org.junit.jupiter.api.Test void feedbackChoosesLowestMasteryConceptAndNeverATopic() {
         var dictionary=org.mockito.Mockito.mock(com.finsight.term.TermRepository.class);

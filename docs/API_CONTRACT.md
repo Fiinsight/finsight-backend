@@ -195,7 +195,7 @@ The final user instruction is to **keep the schema unchanged**: no learning_atte
 
 `activityStreakDays` counts consecutive KST dates with a judgement creation, article_note creation or the last saved learning_progress answer, anchored at today if active today, otherwise yesterday. No activity today/yesterday yields0. UI label is “학습 활동 연속일” with the explanation “판단·메모·퀴즈를 한 날 기준” Quiz re-answering may replace an older quiz activity date; judgement/note creation dates are retained. Note updates do not count as new creation dates. No `basis` response field is added.
 
-`completedNewsIds` are distinct news IDs answered within the past30days, sorted by latest answer descending and limited to100. `totalDecidedCount` and `weakAreas` use only the current user's judgements created within the recent30days, with feedback/actual percent present, comparison_date nonnull, direction UP/NEUTRAL/DOWN, and a stored related symbol matching the current title/body matching rules. Pending/UNKNOWN/old same-day results/invalid mappings are excluded. Each weak area has `category`, `decidedCount`, `hitCount`, `recentNewsIds`, `sampleSize` (=decidedCount). Return only fields with ≥5 samples and ≥60% mismatches, worst first, maximum3. Empty fields are hidden in the UI.
+`completedNewsIds` are distinct news IDs answered within the past30days, sorted by latest answer descending and limited to100. `totalDecidedCount` and `weakAreas` use only the current user's judgements created within the recent30days, with feedback/actual percent present, comparison_date nonnull, direction UP/NEUTRAL/DOWN, and a stored related symbol matching the current title/body matching rules. Pending/UNKNOWN/old same-day results/invalid mappings are excluded. Each weak area has `category`, `decidedCount`, `hitCount`, `recentNewsIds`, `recentArticles` (`{newsId,title}` in the same order), `sampleSize` (=decidedCount). Return only fields with ≥5 samples and ≥60% mismatches, worst first, maximum3. Empty fields are hidden in the UI. These are areas where judgement results differed, not evidence of missing conceptual knowledge.
 
 `levelSuggestion` is null, normal, or analyst. Recent30day latest answers at the current level must include ≥10 distinct user/news/term questions, ≥5 distinct terms, and ≥80% correct. Analyst has no promotion. Suggestions never change the profile; only an explicit user action calls PUT /api/profile/learning-level.
 
@@ -407,7 +407,7 @@ If synchronization is later approved, propose `article_read(user_id FK app_user,
 
 ## ML1 · BKT 숙련도
 
-`GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts, learningCount}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level,lastCorrect}`이며 각 목록은 최대 3개입니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
+`GET /api/learning/progress`에 `mastery: {strongest, weakest, totalAttempts, learningCount, learning}` 추가. 각 개념은 `{term,pKnown,effectivePKnown,attempts,lastAnsweredAt,level,lastCorrect}`이며 strongest는 최대 3개, weakest는 /learning/reviews와 같은 기준(0.5 미만 또는 최근 개념 오답)·확률 오름차순/용어순으로 최대 10개입니다. learning은 나머지 익히는 중인 개념 전체이며 learningCount와 일치합니다. level은 그 용어의 가장 최근 실제 문항 수준입니다. 확률은 추정이며 effectivePKnown에 한국 날짜 기준 `0.97^경과일` 망각 가중을 적용합니다.
 
 POST 답변은 실제 채점 수준으로 term_mastery를 같은 트랜잭션에서 갱신합니다. 복습은 용어별 최근 기사 하나를 망각 가중 확률 오름차순으로 반환합니다. levelSuggestion은 현재 수준의 서로 다른 용어 5개에서 pKnown≥0.85일 때 다음 수준을 제안하며 자동 변경하지 않습니다. 백필은 자동 실행하지 않습니다. 상세 모델·대상 건수: `docs/ml-personalization.md`.
 
