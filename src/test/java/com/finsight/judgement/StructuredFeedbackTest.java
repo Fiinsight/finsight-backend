@@ -9,6 +9,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class StructuredFeedbackTest {
+    @Test void actualAiJsonKeepsSummaryEvenWithLegacyFieldsAndUnknownMetadata() throws Exception {
+        var mapper=new ObjectMapper();
+        var payload=mapper.readTree(getClass().getResourceAsStream("/ai_feedback_response.json"));
+        var response=mapper.treeToValue(payload,AiFeedbackResponse.class);
+        assertThat(response.summary()).isEqualTo(payload.path("summary").asText());
+        assertThat(response.reasons()).hasSize(3);assertThat(response.mode()).isEqualTo("LLM");
+        assertThat(response.nextTip()).isEqualTo(payload.path("nextTip").asText());
+        var reordered=mapper.createObjectNode();reordered.put("feedback","먼저 나온 호환 문단");
+        reordered.put("feedbackText","마지막 호환 문단");reordered.put("summary","정식 요약");
+        assertThat(mapper.treeToValue(reordered,AiFeedbackResponse.class).summary()).isEqualTo("정식 요약");
+        reordered.putNull("summary");
+        assertThat(mapper.treeToValue(reordered,AiFeedbackResponse.class).summary()).isEqualTo("먼저 나온 호환 문단");
+        reordered.putNull("feedback");
+        assertThat(mapper.treeToValue(reordered,AiFeedbackResponse.class).summary()).isEqualTo("마지막 호환 문단");
+    }
     @Test void aiResponseMapsStructuredFieldsAndLegacySummary() throws Exception {
         var mapper = new ObjectMapper();
         var value = mapper.readValue("{\"verdict\":\"CORRECT\",\"headline\":\"방향 일치\",\"summary\":\"결과\",\"reasons\":[{\"title\":\"기사 근거\",\"detail\":\"기사 사실이에요.\"},{\"title\":\"실제 시장\",\"detail\":\"1.76% 움직였어요.\"}],\"nextTip\":\"기준을 확인해요.\"}", AiFeedbackResponse.class);
@@ -88,8 +103,9 @@ class StructuredFeedbackTest {
         when(repo.findByIdAndUser(1L,owner)).thenReturn(Optional.of(row));
         var view=new JudgementService(repo,mock(NewsRepository.class)).getDetail(owner,1L);
         assertThat(view.reasons()).hasSize(2);assertThat(view.feedbackText()).contains("포스코인터", "성장 기대", "비용 부담");
-        assertThat(view.reasons().get(1).detail()).contains("사업이 커질 것 같아요", "확인한 사실");
+        assertThat(view.reasons().get(1).detail()).contains("사업이 커질 것 같아요", "기사에서 본 사실");
         assertThat(view.reasons().get(1).detail()).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요");
+        assertThat(view.nextTip()).contains("기사에서 확인한 사실");
         assertThat(view.verdict()).isNull();assertThat(view.actualChangePercent()).isNull();assertThat(row.getFeedbackText()).isEqualTo("결과를 비교할 수 없어요");verify(repo,never()).save(any());
     }
     @Test void missingBodyDoesNotInventAPriceExplanation() {

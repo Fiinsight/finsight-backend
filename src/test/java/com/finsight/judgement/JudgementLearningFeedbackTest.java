@@ -31,13 +31,13 @@ class JudgementLearningFeedbackTest {
         var result = JudgementFeedbackRules.generate(request(null,"호실적 발표","매출이 증가했다.",-3.7));
         assertThat(result.headline()+result.summary()+result.reasons()).doesNotContain("정확한 판단", "잘 연결").contains("한 줄 남겨보세요", "시장 전체 하락에 묻혔을 수", "-4.40%", "-3.70%", "시장 전체 흐름과 함께");
         assertThat(result.conceptTerm()).isEqualTo("금리");
-        assertThat(result.nextTip()).contains("코스피 흐름");
+        assertThat(result.nextTip()).contains("판단 근거를 한 줄");
     }
     @Test void suppliedReasonIsQuotedAndNegativeSignalIsLinkedWithoutCausalCertainty() {
-        var result = JudgementFeedbackRules.generate(request("실적 부진을 예상했어요.","실적 부진","매출이 감소했다.",-.2));
-        assertThat(result.reasons().get(1).detail()).contains("남긴 근거 “실적 부진을 예상했어요.”", "탄탄했어요");
+        var result = JudgementFeedbackRules.generate(request("매출 감소로 이익 부진을 예상했어요.","실적 부진","매출이 감소했다.",-.2));
+        assertThat(result.reasons().get(1).detail()).contains("남긴 근거: “매출 감소로 이익 부진을 예상했어요.”", "탄탄했어요");
         assertThat(result.reasons().get(0).detail()).contains("악재 신호", "하락 방향도 같았어요");
-        assertThat(result.summary()).contains("개별 소식의 영향이 더 컸을 수").doesNotContain("때문에 하락");
+        assertThat(result.summary()).contains("개별 소식 등 다른 요인도 확인").doesNotContain("때문에 하락");
         assertThat(result.nextTip()).contains("실적 발표 일정");
     }
     @Test void earningsAndOrderFlowExplainThePriceChannelInsteadOfOnlyAlignment() {
@@ -53,34 +53,35 @@ class JudgementLearningFeedbackTest {
         assertThat(weak.verdict()).isEqualTo("CORRECT");
         assertThat(weak.reasons()).extracting(com.finsight.external.AiFeedbackResponse.Reason::title)
                 .containsExactly("기사 신호와 결과","내 근거 점검","시장 비교");
-        assertThat(weak.reasons().get(1).detail()).contains("남긴 근거 “하락할 것 같아요”", "운이 섞였을 수", "확인한 사실", "가격의 연결");
+        assertThat(weak.reasons().get(1).detail()).contains("남긴 근거: “하락할 것 같아요”", "운이 섞였을 수", "기사에서 본 사실", "그 사실이 이익·수요·금리 중 무엇을 바꾸는지");
         var conflict = JudgementFeedbackRules.generate(request("매출 증가를 예상했어요", "매출 증가", "매출이 증가했다.",-.2));
-        assertThat(conflict.reasons().get(1).detail()).contains("운이 섞였을 수", "모순");
+        assertThat(conflict.reasons().get(1).detail()).contains("운이 섞였을 수", "근거는 상승 쪽 이야기인데 하락을 골랐어요");
     }
     @Test void soundReasoningCanMissTheOutcomeAndExplainsTheSameCauseAsArticleReason() {
         var result = JudgementFeedbackRules.generate(new AiFeedbackRequest(1L,"UP","매출 증가로 이익 개선을 기대해요.","DOWN",
                 "매출 증가","매출이 증가했다.","005930","삼성전자",-4.4,null,null,LocalDate.parse("2026-10-13"),"normal","코스피",-3.7,null,null,null,null,1L));
         assertThat(result.verdict()).isEqualTo("WRONG");
-        assertThat(result.reasons().get(1).detail()).contains("타당한 추론", "시장 전체 하락에 묻혔을 수 있어요", "좋은 근거도");
+        assertThat(result.reasons().get(1).detail()).contains("타당했지만", "시장 전체의 반대 움직임", "좋은 근거도");
         assertThat(result.reasons().getFirst().detail()).contains("시장 전체 하락에 묻혔을 수 있어요");
     }
     @Test void reviewComparesChoiceWithSignalAndChecksFactsAndPriceLinkWithoutGrading() {
         var neutral = article("상담 서비스 안내","고객센터 상담 서비스가 운영된다.");
         var absent = JudgementFeedbackRules.articleReview(neutral,null,JudgementChoice.UP).get(1).detail();
-        assertThat(absent).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요", "다음엔 판단 근거를 한 줄 남겨보세요", "“고객센터 상담 서비스가 운영된다” → 이익·수요·금리 변화 → 예상 방향")
+        assertThat(absent).contains("기사에 뚜렷한 방향 신호가 없는데 상승을 골랐어요", "다음엔 판단 근거를 한 줄 남겨보세요", "“고객센터 상담 서비스 운영” → 이익·수요·금리 변화 → 예상 방향")
                 .doesNotContain("탄탄", "타당", "잘했", "정확한 판단");
         assertThat(absent.split("다음엔 판단 근거를 한 줄 남겨보세요",-1)).hasSize(2);
         assertThat(absent).doesNotContain("순서로 한 줄을 써보세요");
         assertThat(JudgementFeedbackRules.articleReview(neutral,null,JudgementChoice.UP).getFirst().detail()).contains("중립으로 읽혀요");
+        assertThat(JudgementFeedbackRules.articleReviewTip(neutral,null,JudgementChoice.UP)).isEqualTo("다음엔 판단 근거를 한 줄 남겨보세요.");
         var strong = JudgementFeedbackRules.articleReview(article("매출 증가","매출이 증가했다."),"매출 증가로 이익 개선을 기대해요.",JudgementChoice.UP).get(1).detail();
         assertThat(strong).contains("호재 신호와 상승 선택은 같은 방향", "기사 표현과 가격 경로를 연결", "적중 여부는 아직 알 수 없어요");
         var weak = JudgementFeedbackRules.articleReview(neutral,"그냥 상승할 것 같아요",JudgementChoice.UP).get(1).detail();
-        assertThat(weak).contains("확인한 사실", "가격의 연결");
+        assertThat(weak).contains("기사에서 본 사실", "그 사실이 이익·수요·금리 중 무엇을 바꾸는지");
     }
     @Test void interpretationDistinguishesSmallMovesMarketMaskingAndPricedInNews() {
-        assertThat(JudgementFeedbackRules.interpretation("POSITIVE","NEUTRAL",.5,-3.7)).contains("크게 반영하지 않았을 수");
-        assertThat(JudgementFeedbackRules.interpretation("POSITIVE","DOWN",-2.,-.5)).contains("선반영", "다른 악재").doesNotContain("묻혔");
-        assertThat(JudgementFeedbackRules.interpretation("NEGATIVE","UP",2.,0.)).contains("선반영", "안도감");
-        assertThat(JudgementFeedbackRules.interpretation("NEUTRAL","DOWN",-2.,0.)).contains("시장 흐름이나 수급");
+        assertThat(JudgementFeedbackRules.interpretation("POSITIVE","NEUTRAL",.5,-3.7,null,null)).contains("크게 반영하지 않았을 수");
+        assertThat(JudgementFeedbackRules.interpretation("POSITIVE","DOWN",-2.,-.5,null,null)).contains("선반영", "다른 악재").doesNotContain("묻혔");
+        assertThat(JudgementFeedbackRules.interpretation("NEGATIVE","UP",2.,0.,null,null)).contains("선반영", "안도감");
+        assertThat(JudgementFeedbackRules.interpretation("NEUTRAL","DOWN",-2.,0.,null,null)).contains("다른 개별 요인");
     }
 }

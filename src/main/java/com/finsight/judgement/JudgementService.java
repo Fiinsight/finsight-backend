@@ -98,7 +98,7 @@ public class JudgementService {
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
                 reviewOnly ? displayReasons.getFirst().detail() : j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
-                reviewOnly ? null : j.getFeedbackHeadline(), reviewOnly || content == null ? null : content.verdict(), displayReasons, reviewOnly ? "기사 속 사실과 예상 방향을 구분해 근거를 남겨보세요." : content == null ? null : content.nextTip(),
+                reviewOnly ? null : j.getFeedbackHeadline(), reviewOnly || content == null ? null : content.verdict(), displayReasons, reviewOnly ? JudgementFeedbackRules.articleReviewTip(j.getNews(),j.getReasonText(),j.getChoice()) : content == null ? null : content.nextTip(),
                 symbol, symbolName(symbol),
                 j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
