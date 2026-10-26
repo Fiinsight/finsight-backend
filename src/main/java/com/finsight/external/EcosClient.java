@@ -35,7 +35,7 @@ public class EcosClient {
     private static final String BASE_RATE_STAT_CODE = "722Y001"; // 한국은행 기준금리
     private static final String BASE_RATE_ITEM_CODE = "0101000";
 
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration CACHE_TTL = Duration.ofHours(12);
     private static final DateTimeFormatter YYYYMM = DateTimeFormatter.ofPattern("yyyyMM");
 
@@ -50,7 +50,7 @@ public class EcosClient {
         this.apiKey = apiKey;
     }
 
-    @Cacheable(cacheNames = "ecosBaseRate", sync = true)
+    @Cacheable(cacheNames = "ecosBaseRate", unless = "#result.fallback()")
     public EcosRate getBaseRate() {
         CachedRate current = cachedRate;
         if (current != null && current.expiresAt().isAfter(Instant.now())) {
@@ -62,7 +62,7 @@ public class EcosClient {
                 return current.value();
             }
             EcosRate result = fetchBaseRate();
-            cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
+            if (!result.fallback()) cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
             return result;
         }
     }

@@ -29,7 +29,7 @@ public class NaverFxClient {
     private static final Logger log = LoggerFactory.getLogger(NaverFxClient.class);
     private static final String SERIES_NAME = "원/달러 환율";
     private static final double FALLBACK_VALUE = 1380.0;
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration CACHE_TTL = Duration.ofMinutes(5);
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -41,7 +41,7 @@ public class NaverFxClient {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
     }
 
-    @Cacheable(cacheNames = "naverFx", sync = true)
+    @Cacheable(cacheNames = "naverFx", unless = "#result.fallback()")
     public EcosRate getUsdKrwRate() {
         CachedRate current = cachedRate;
         if (current != null && current.expiresAt().isAfter(Instant.now())) {
@@ -53,7 +53,7 @@ public class NaverFxClient {
                 return current.value();
             }
             EcosRate result = fetchUsdKrwRate();
-            cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
+            if (!result.fallback()) cachedRate = new CachedRate(result, Instant.now().plus(CACHE_TTL));
             return result;
         }
     }
