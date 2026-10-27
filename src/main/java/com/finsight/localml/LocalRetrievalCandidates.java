@@ -22,6 +22,7 @@ public class LocalRetrievalCandidates {
         public String getUrl() { return url; }
         public String getSource() { return source; }
     }
+    @SuppressWarnings("unchecked")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<Doc> candidates(Query q, Long userId, Instant start, Instant end) {
         if ("term".equals(q.kind())) {
@@ -39,10 +40,10 @@ public class LocalRetrievalCandidates {
                 userId.toString(), j.getNews().getUrl(), "OWN_JUDGEMENT_NOT_ACTUAL_RETURN", false)).toList();
         }
         var company = ChartCompanyMatcher.get(q.symbol());
-        String companyFilter = q.symbol() == null ? "" : " and n.relatedSymbol=:symbol";
+        String companyFilter = q.symbol() == null ? "" : " and n.related_symbol=:symbol";
         if (company != null) {
             List<String> predicates=new ArrayList<>();
-            for(int i=0;i<company.terms().size();i++) predicates.add("(lower(replace(n.title,' ','')) like :alias"+i+" or lower(replace(n.rawContent,' ','')) like :alias"+i+")");
+            for(int i=0;i<company.terms().size();i++) predicates.add("(lower(replace(n.title,' ','')) like :alias"+i+" or lower(replace(n.raw_content,' ','')) like :alias"+i+")");
             companyFilter=" and ("+String.join(" or ",predicates)+")";
         }
         // Match query words before the bound, rather than truncating all news to the newest 200.
@@ -52,22 +53,40 @@ public class LocalRetrievalCandidates {
         if (!keywords.isEmpty()) {
             List<String> predicates = new ArrayList<>();
             for (int i=0; i<keywords.size(); i++)
-                predicates.add("(lower(n.title) like :keyword"+i+" or lower(coalesce(n.rawContent,'')) like :keyword"+i+")");
+                predicates.add("(lower(n.title) like :keyword"+i+" or lower(coalesce(n.raw_content,'')) like :keyword"+i+")");
             companyFilter += " and (" + String.join(" or ", predicates) + ")";
         }
-        var query = em.createQuery("select new com.finsight.localml.LocalRetrievalCandidates$NewsCandidate(n.id,n.title,substring(n.rawContent,1,8000),n.publishedAt,n.relatedSymbol,n.url,n.source) from News n where (n.source is null or n.source not like 'SYNTHETIC%') and n.url not like '%example.invalid%' and length(trim(coalesce(n.rawContent,''))) > 0 and lower(coalesce(n.rawContent,'')) not like '%google 검색%' and coalesce(n.rawContent,'') not like '%한경 프리미엄9을 구독%' and n.publishedAt>=:start and n.publishedAt<:end" +
-                companyFilter + " order by n.publishedAt desc", NewsCandidate.class)
+        var query = em.createNativeQuery("select n.id,n.title,substring(n.raw_content,1,8000),n.published_at,n.related_symbol,n.url,n.source from news n where (n.source is null or n.source not like 'SYNTHETIC%') and n.url not like '%example.invalid%' and length(trim(coalesce(n.raw_content,''))) > 0 and lower(coalesce(n.raw_content,'')) not like '%google 검색%' and coalesce(n.raw_content,'') not like '%한경 프리미엄9을 구독%' and n.published_at>=:start and n.published_at<:end" +
+                companyFilter + " order by n.published_at desc")
             .setParameter("start", start).setParameter("end", end);
         if (company != null) {
             for(int i=0;i<company.terms().size();i++) query.setParameter("alias"+i,"%"+company.terms().get(i).toLowerCase(Locale.ROOT)+"%");
         } else if (q.symbol() != null) query.setParameter("symbol", q.symbol());
         for (int i=0; i<keywords.size(); i++) query.setParameter("keyword"+i, "%"+keywords.get(i)+"%");
         // Stored article bodies are already cleaned during collection; do not repeat publisher regex work for every candidate.
-        return query.setHint("jakarta.persistence.query.timeout", 2500).setMaxResults(company == null ? 200 : 500).getResultList().stream()
+        return ((List<Object[]>) query.setHint("jakarta.persistence.query.timeout", 2500).setMaxResults(company == null ? 200 : 500).getResultList()).stream().map(LocalRetrievalCandidates::newsCandidate)
             .filter(n -> company == null || ChartCompanyMatcher.reason(q.symbol(),n.getTitle(),n.getRawContent()) != null)
             .limit(company == null ? 200 : 100).map(n -> new Doc(n.getId().toString(), "news", n.getTitle(),
-            company == null ? safe(n.getRawContent()) : ChartCompanyMatcher.excerpt(q.symbol(),n.getRawContent(),4000), n.getPublishedAt(), company == null ? n.getRelatedSymbol() : q.symbol(), null, n.getUrl(), n.getSource(),
+            company == null ? searchExcerpt(n.getRawContent(), keywords) : ChartCompanyMatcher.excerpt(q.symbol(),n.getRawContent(),2000), n.getPublishedAt(), company == null ? n.getRelatedSymbol() : q.symbol(), null, n.getUrl(), n.getSource(),
             n.getSource() != null && n.getSource().startsWith("SYNTHETIC"))).toList();
+    }
+
+    private static NewsCandidate newsCandidate(Object[] row) {
+        Object time = row[3];
+        Instant published = time == null ? null : time instanceof Instant instant ? instant
+                : time instanceof java.time.OffsetDateTime offset ? offset.toInstant() : ((java.util.Date) time).toInstant();
+        return new NewsCandidate(((Number) row[0]).longValue(), (String) row[1], (String) row[2], published,
+                (String) row[4], (String) row[5], (String) row[6]);
+    }
+    static String searchExcerpt(String body, List<String> keywords) {
+        if (body == null) return "";
+        int start = 0;
+        String lower = body.toLowerCase(Locale.ROOT);
+        for (String keyword : keywords) {
+            int match = lower.indexOf(keyword);
+            if (match >= 0) { start = Math.max(0, match - 300); break; }
+        }
+        return body.substring(start, Math.min(body.length(), start + 2000));
     }
 
     private String safe(String text) { return text == null ? "" : text.substring(0, Math.min(20000, text.length())); }

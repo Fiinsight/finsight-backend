@@ -6,7 +6,6 @@ import static org.mockito.Mockito.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finsight.news.News;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.TypedQuery;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -37,11 +36,11 @@ class BundledRetrievalTest {
             server.enqueue(new MockResponse().setHeader("Content-Type", "application/json")
                     .setBody("{\"status\":\"RULE_FALLBACK\",\"results\":[]}"));
             var em = mock(EntityManager.class);
-            TypedQuery<LocalRetrievalCandidates.NewsCandidate> query = mock(TypedQuery.class, RETURNS_SELF);
-            when(em.createQuery(contains("substring(n.rawContent,1,8000)"), eq(LocalRetrievalCandidates.NewsCandidate.class))).thenReturn(query);
+            jakarta.persistence.Query query = mock(jakarta.persistence.Query.class, RETURNS_SELF);
+            when(em.createNativeQuery(contains("substring(n.raw_content,1,8000)"))).thenReturn(query);
             when(query.getResultList()).thenAnswer(call -> {
                 assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
-                return List.of(new LocalRetrievalCandidates.NewsCandidate(1L,"반도체 수출","반도체 수출이 늘었다.",Instant.now(),null,null,null));
+                return java.util.Collections.singletonList(new Object[]{1L,"반도체 수출","반도체 수출이 늘었다.",Instant.now(),null,null,null});
             });
             var mapper = spy(new ObjectMapper().findAndRegisterModules());
             doAnswer(call -> {
@@ -68,10 +67,10 @@ class BundledRetrievalTest {
             server.enqueue(new MockResponse().setHeader("Content-Type", "application/json")
                     .setBody("{\"status\":\"RULE_FALLBACK\",\"results\":[{\"id\":\"1\",\"title\":\"반도체 수출\",\"evidence\":\"수출 증가\",\"score\":1}]}"));
             var em = mock(EntityManager.class);
-            TypedQuery<LocalRetrievalCandidates.NewsCandidate> query = mock(TypedQuery.class, RETURNS_SELF);
-            when(em.createQuery(contains("from News n"), eq(LocalRetrievalCandidates.NewsCandidate.class))).thenReturn(query);
-            var article = new LocalRetrievalCandidates.NewsCandidate(1L,"반도체 수출 증가","반도체 수출이 증가했다.",Instant.parse("2026-10-26T01:00:00Z"),null,"https://fixture.example/news/1",null);
-            when(query.getResultList()).thenReturn(List.of(article));
+            jakarta.persistence.Query query = mock(jakarta.persistence.Query.class, RETURNS_SELF);
+            when(em.createNativeQuery(contains("from news n"))).thenReturn(query);
+            var article = new Object[]{1L,"반도체 수출 증가","반도체 수출이 증가했다.",Instant.parse("2026-10-26T01:00:00Z"),null,"https://fixture.example/news/1",null};
+            when(query.getResultList()).thenReturn(java.util.Collections.singletonList(article));
             try (var context = new AnnotationConfigApplicationContext()) {
                 new org.springframework.boot.env.YamlPropertySourceLoader().load("actual-defaults",
                         new org.springframework.core.io.ClassPathResource("application.yml"))

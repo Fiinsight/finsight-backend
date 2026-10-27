@@ -57,7 +57,7 @@ public class LocalRetrievalController {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(request))).build();
             var response = http.send(call, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) return empty("RULE_FALLBACK", "ADAPTER_HTTP_ERROR");
+            if (response.statusCode() != 200) return newsFallback(query, docs, "ADAPTER_HTTP_ERROR");
             Map<String,Object> result = mapper.readValue(response.body(), new TypeReference<>() {});
             if (!List.of("MODEL", "RULE_FALLBACK", "DATA_UNAVAILABLE", "DISABLED").contains(result.get("status")))
                 return empty("RULE_FALLBACK", "INVALID_ADAPTER_STATUS");
@@ -95,8 +95,28 @@ public class LocalRetrievalController {
             Thread.currentThread().interrupt();
             return empty("RULE_FALLBACK", "ADAPTER_INTERRUPTED");
         } catch (Exception unavailable) {
-            return empty("RULE_FALLBACK", "ADAPTER_UNAVAILABLE");
+            return newsFallback(query, docs, "ADAPTER_UNAVAILABLE");
         }
+    }
+
+    private Map<String,Object> newsFallback(Query query, List<Doc> docs, String reason) {
+        Map<String,Object> result = empty("RULE_FALLBACK", reason);
+        if (!"news".equals(query.kind())) return result;
+        List<String> words = Arrays.stream(query.query().toLowerCase(Locale.ROOT).split("[^a-z0-9가-힣]+"))
+                .filter(word -> word.length() >= 2).toList();
+        List<Map<String,Object>> rows = docs.stream().filter(doc -> query.symbol() != null || words.stream()
+                .anyMatch(word -> (doc.title() + " " + doc.body()).toLowerCase(Locale.ROOT).contains(word)))
+                .limit(3).map(doc -> {
+                    Map<String,Object> row = new LinkedHashMap<>();
+                    row.put("id",doc.id()); row.put("kind",doc.kind()); row.put("title",doc.title());
+                    row.put("evidence",doc.body().substring(0,Math.min(600,doc.body().length())));
+                    row.put("score",0); row.put("url",doc.url()); row.put("source",doc.source());
+                    row.put("publishedAt",doc.publishedAt()); row.put("matchReason","검색어·종목 일치, 최신순");
+                    return row;
+                }).toList();
+        result.put("results",rows); result.put("candidateCount",docs.size());
+        result.put("note","검색 AI가 지연되어 저장된 기사의 검색어·종목 일치 결과를 보여드려요.");
+        return result;
     }
 
     private Map<String,Object> empty(String status, String reason) {
