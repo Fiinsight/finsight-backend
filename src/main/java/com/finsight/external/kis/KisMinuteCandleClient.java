@@ -30,7 +30,7 @@ public class KisMinuteCandleClient {
     private static final String PATH = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice";
     private static final String TR_ID = "FHKST03010200";
     private static final int MAX_PAGES = 14;
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration CACHE_TTL = Duration.ofMinutes(1);
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HHmmss");
@@ -63,8 +63,10 @@ public class KisMinuteCandleClient {
     public KisMinuteCandleResult getCandlesWithStatus(String stockCode, int intervalMinutes, int count) {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
-        return cache.get(stockCode + ":" + interval + ":" + safeCount,
-                key -> fetchCandles(stockCode, interval, safeCount));
+        String key = stockCode + ":" + interval + ":" + safeCount;
+        KisMinuteCandleResult result = cache.get(key, ignored -> fetchCandles(stockCode, interval, safeCount));
+        if (result.fallback()) cache.invalidate(key);
+        return result;
     }
 
     private KisMinuteCandleResult fetchCandles(String stockCode, int interval, int safeCount) {

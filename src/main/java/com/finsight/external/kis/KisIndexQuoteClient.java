@@ -24,7 +24,7 @@ public class KisIndexQuoteClient {
 
     private static final String INDEX_QUOTE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-index-price";
     private static final String INDEX_QUOTE_TR_ID = "FHPUP02100000";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration CACHE_TTL = Duration.ofMinutes(1);
 
     private final WebClient webClient;
@@ -44,7 +44,7 @@ public class KisIndexQuoteClient {
         this.appSecret = appSecret;
     }
 
-    @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", sync = true)
+    @Cacheable(cacheNames = "kisIndexQuotes", key = "#indexCode", unless = "#result.fallback()")
     public KisIndexQuote getIndexQuote(String indexCode) {
         CachedQuote current = cache.get(indexCode);
         if (current != null && current.expiresAt().isAfter(java.time.Instant.now())) {
@@ -56,7 +56,7 @@ public class KisIndexQuoteClient {
                 return current.value();
             }
             KisIndexQuote result = fetchIndexQuote(indexCode);
-            cache.put(indexCode, new CachedQuote(result, java.time.Instant.now().plus(CACHE_TTL)));
+            if (!result.fallback()) cache.put(indexCode, new CachedQuote(result, java.time.Instant.now().plus(CACHE_TTL)));
             return result;
         }
     }

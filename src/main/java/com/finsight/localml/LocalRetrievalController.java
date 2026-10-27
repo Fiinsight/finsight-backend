@@ -12,7 +12,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,10 +22,9 @@ import java.net.http.*;
 import java.time.*;
 import java.util.*;
 
-/** Optional adapter; copies into the original repository without editing existing services. */
+/** Authenticated retrieval through the bundled free AI adapter or an explicit local adapter. */
 @RestController
 @RequestMapping("/api/local-ml")
-@ConditionalOnProperty(name="finsight.local-ml.enabled", havingValue="true")
 public class LocalRetrievalController {
     public record Query(@NotBlank @Size(min=2,max=2000) String query,
                         @Pattern(regexp="news|term|case") @NotBlank String kind,
@@ -41,7 +39,7 @@ public class LocalRetrievalController {
     private final HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(2)).build();
 
     public LocalRetrievalController(EntityManager em, ObjectMapper mapper,
-            @Value("${finsight.local-ml.base-url:http://127.0.0.1:8002}") String url) {
+            @Value("${finsight.local-ml.base-url:${finsight.ai.base-url:http://127.0.0.1:8001}}") String url) {
         this.em = em; this.mapper = mapper;
         endpoint = URI.create(url.replaceAll("/$", "") + "/v1/search");
     }

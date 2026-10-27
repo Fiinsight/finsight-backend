@@ -26,7 +26,7 @@ public class KisDailyCandleClient {
 
     private static final String DAILY_CANDLE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
     private static final String DAILY_CANDLE_TR_ID = "FHKST03010100";
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final WebClient webClient;
@@ -56,14 +56,14 @@ public class KisDailyCandleClient {
         return getCandlesWithStatus(stockCode, count, periodDivCode).candles();
     }
 
-    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", sync = true)
+    @Cacheable(cacheNames = "kisDailyCandles", key = "#stockCode + ':' + #count + ':' + #periodDivCode", unless = "#result.fallback()")
     public KisDailyCandleResult getCandlesWithStatus(String stockCode, int count, String periodDivCode) {
         LocalDate end = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         long days = switch (periodDivCode) { case "W" -> count * 10L; case "M" -> count * 35L; default -> count * 2L; };
         return fetch(stockCode, count, periodDivCode, end.minusDays(days), end);
     }
 
-    @Cacheable(cacheNames = "kisDailyCandles", key = "'close:' + #symbol + ':' + #start + ':' + #end", sync = true)
+    @Cacheable(cacheNames = "kisDailyCandles", key = "'close:' + #symbol + ':' + #start + ':' + #end", unless = "#result.fallback()")
     public KisDailyCandleResult getClosingCandles(String symbol, LocalDate start, LocalDate end) {
         return fetch(symbol, 100, "D", start, end);
     }

@@ -31,16 +31,18 @@ class ExternalClientCacheTest {
     }
 
     @Test
-    void cachesFallbackResponsesToAvoidRepeatedProviderCalls() throws Exception {
+    void retriesFallbackAndCachesTheRecoveredResponse() throws Exception {
         try (MockWebServer server = new MockWebServer()) {
             server.start();
             server.enqueue(json("{}"));
+            server.enqueue(json("{\"exchangeInfo\":{\"closePrice\":\"1350.0\",\"fluctuationsRatio\":\"0.1\"}}"));
             try (var context = context(server)) {
                 NaverFxClient client = context.getBean(NaverFxClient.class);
 
                 assertEquals(true, client.getUsdKrwRate().fallback());
-                assertEquals(true, client.getUsdKrwRate().fallback());
-                assertEquals(1, server.getRequestCount());
+                assertEquals(false, client.getUsdKrwRate().fallback());
+                assertEquals(1350.0, client.getUsdKrwRate().value());
+                assertEquals(2, server.getRequestCount());
             }
         }
     }
