@@ -205,3 +205,14 @@ python3 scripts/remap_news_symbols.py --apply docs/watchlist-2026-10-15/remap-pr
 apply는 현재 계산 결과와 검토한 preview가 완전히 같을 때만 기존 조건부 UPDATE를 수행합니다.
 원문·판단 기록을 수정하지 않지만 뉴스의 related_symbol 변경은 기존 화면의 대상 해석에 영향을 줄 수 있으므로
 판단이 연결된 기사와 종목→지수/미연결 변경도 함께 검토하세요.
+
+## Render 무료 단일 인스턴스 배포
+
+`Dockerfile.render-free`는 Java API와 기존 AI의 무료 경량 모드를 한 인스턴스에서 실행합니다.
+Render의 Dockerfile Path는 `./Dockerfile.render-free`, Docker Command는 `/app/start-free.sh`로 설정합니다.
+`finsight.ai.base-url`은 `http://127.0.0.1:8001`로 지정하며, `SPRING_APPLICATION_JSON`을 쓰면 그 JSON 안의 값을 변경합니다.
+AI의 8001 포트는 외부에 열리지 않습니다. 두 프로세스 중 하나가 종료되면 컨테이너도 종료되어 함께 재시작됩니다.
+
+이 구성은 현재처럼 유료 LLM·대형 모델·Chroma를 사용하지 않는 모드이며, AI 소스 버전은 Dockerfile의 커밋으로 고정합니다.
+AI 코드를 수정하면 해당 커밋도 갱신하고 다시 배포해야 합니다. 독립 `finsight-ai` 서비스는 통합 배포 검증 후 Suspend합니다.
+활성 Free 웹 서비스 하나는 31일 기준 744시간이므로 월 750시간 안에 들어갑니다. 대역폭·빌드 시간 한도와 유휴 절전은 별도입니다.
