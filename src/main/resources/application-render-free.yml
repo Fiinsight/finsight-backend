@@ -1,0 +1,20 @@
+# Keep the shared 512 MB instance bounded; no paid worker or keep-alive service.
+server:
+  tomcat:
+    threads:
+      max: 16
+      min-spare: 2
+    max-connections: 64
+    accept-count: 32
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        # Render checks process liveness; remote DB/Redis latency must not restart it.
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,redis

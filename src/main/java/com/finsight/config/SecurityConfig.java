@@ -31,7 +31,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/kakao",
                                 "/api/auth/kakao/url", "/api/auth/kakao/status", "/api/auth/kakao/callback",
-                                "/actuator/health").permitAll()
+                                "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").access((authentication, context) ->
                                 new org.springframework.security.authorization.AuthorizationDecision(publicApiDocs))
                         .anyRequest().authenticated())

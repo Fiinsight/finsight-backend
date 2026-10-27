@@ -6,7 +6,7 @@ python -m uvicorn app.main:app --app-dir /app/ai --host 127.0.0.1 --port 8001 --
 ai_pid=$!
 java -Xmx192m -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=32m \
     -XX:+ExitOnOutOfMemoryError -XX:MaxDirectMemorySize=16m -Xss512k -XX:+UseSerialGC -XX:ActiveProcessorCount=1 \
-    -jar /app/app.jar &
+    -jar /app/app.jar --spring.profiles.include=render-free &
 java_pid=$!
 
 cleanup() {
