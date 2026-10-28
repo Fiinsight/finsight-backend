@@ -25,7 +25,8 @@ import java.net.URI;
 @Service
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(8);
+    // The shared free CPU can spend over 8 seconds initializing the first TLS connection.
+    private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(20);
     private final com.github.benmanes.caffeine.cache.Cache<String, String> oauthStates = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
             .maximumSize(10000).expireAfterWrite(Duration.ofMinutes(5)).build();
     @jakarta.persistence.PersistenceContext
@@ -98,7 +99,7 @@ public class AuthService {
             log.warn("Kakao token exchange failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
         } catch (RuntimeException e) {
-            log.warn("Kakao token exchange timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            log.warn("Kakao token exchange timed out or failed: elapsedMs={}, cause={}", elapsedMs(startedAt), org.springframework.core.NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
             throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 인증 서버 응답이 지연되고 있습니다.");
         }
         if (token == null || token.get("access_token") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
@@ -110,7 +111,7 @@ public class AuthService {
             log.warn("Kakao profile request failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
         } catch (RuntimeException e) {
-            log.warn("Kakao profile request timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            log.warn("Kakao profile request timed out or failed: elapsedMs={}, cause={}", elapsedMs(startedAt), org.springframework.core.NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
             throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 사용자 정보 응답이 지연되고 있습니다.");
         }
         if (profile == null || profile.get("id") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
