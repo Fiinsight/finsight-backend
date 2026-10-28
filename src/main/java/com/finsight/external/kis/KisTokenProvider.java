@@ -29,7 +29,7 @@ public class KisTokenProvider {
     private static final String TOKEN_PATH = "/oauth2/tokenP";
     private static final String REDIS_TOKEN_KEY = "finsight:kis:access-token";
     private static final Duration TOKEN_TTL = Duration.ofHours(23);
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
 
     private final WebClient webClient;
     private final StringRedisTemplate redisTemplate;
