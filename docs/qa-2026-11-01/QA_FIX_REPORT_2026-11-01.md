@@ -120,3 +120,8 @@ https://github.com/Fiinsight/finsight-frontend/pull/183
 
 - 보고서 PR: https://github.com/Fiinsight/finsight-backend/pull/154
 - CI snapshot: `/Users/subin/Documents/핀사이트/output/finsight-qa-followup-2026-11-01/pr-statuses.json`
+
+
+## 2차 코드 점검 후속
+
+P0-6/P1-6/P2-4/P2-5의 변경·검증·PR·운영 결정은 [2차 보고서](../qa-round2/QA_FIX_REPORT_2026-11-01_ROUND2.md)에 정리했습니다. 로컬 원장 SQL 승인 전에는 새 버전의 BKT 반영이 연습 모드로 일시 중지된다는 배포 조건을 먼저 확인하세요.
