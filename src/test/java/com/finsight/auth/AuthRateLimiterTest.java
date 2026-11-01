@@ -21,10 +21,13 @@ class AuthRateLimiterTest {
         assertThatThrownBy(() -> new AuthRateLimiter(redis).check("kakao", "", "127.0.0.1"))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("429");
     }
-    @Test void redisFailureDoesNotDisableProtection() {
+    @Test void redisFailureFallsBackAndStillRejectsTheSixthAccountAttempt() {
         var redis = mock(StringRedisTemplate.class);
         when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class))).thenThrow(new IllegalStateException("secret"));
-        assertThatThrownBy(() -> new AuthRateLimiter(redis).check("login", "person@example.com", "127.0.0.1"))
-                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("503").hasMessageNotContaining("secret");
+        var limiter=new AuthRateLimiter(redis);
+        for(int i=0;i<5;i++) limiter.check("login","person@example.com","127.0.0.1");
+        assertThatThrownBy(()->limiter.check("login","person@example.com","127.0.0.1"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("429").hasMessageNotContaining("secret");
+        verify(redis,times(1)).execute(any(RedisScript.class),anyList(),any(Object[].class));
     }
 }

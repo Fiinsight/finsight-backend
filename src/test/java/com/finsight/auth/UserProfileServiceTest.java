@@ -12,6 +12,18 @@ import org.junit.jupiter.api.Test;
 class UserProfileServiceTest {
 
     @Test
+    void nicknameUpdateTrimsAndRejectsInvalidValues() {
+        UserRepository users=mock(UserRepository.class);
+        User user=new User("user@example.com",null,"Old",AuthProvider.LOCAL);
+        when(users.findById(7L)).thenReturn(Optional.of(user));
+        var service=new UserProfileService(users,new ObjectMapper());
+        assertEquals("새이름",service.updateNickname(7L," 새이름 ").nickname());
+        assertEquals("새이름",user.getNickname());
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,()->service.updateNickname(7L," "));
+        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.server.ResponseStatusException.class,()->service.updateNickname(7L,"x".repeat(31)));
+    }
+
+    @Test
     void mapsEachPreferenceOnlyFromItsOwnOnboardingQuestion() {
         UserRepository users = mock(UserRepository.class);
         User user = new User("user@example.com", null, "User", AuthProvider.LOCAL);

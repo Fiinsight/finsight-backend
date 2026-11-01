@@ -58,6 +58,16 @@ public class UserProfileService {
         return getOnboarding(userId);
     }
 
+    @Transactional
+    public UserProfileDtos.NicknameResponse updateNickname(Long userId, String nickname) {
+        String value = nickname == null ? "" : nickname.trim();
+        if (value.length() < 2 || value.length() > 30)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "닉네임은 2~30자로 입력하세요.");
+        User user = users.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        user.setNickname(value);
+        return new UserProfileDtos.NicknameResponse(value);
+    }
+
     static String painPoint(String value) {
         return value.contains("정보") ? "overload" : value.contains("근거") ? "evidence"
                 : value.contains("기록") ? "reflection" : "terms";
