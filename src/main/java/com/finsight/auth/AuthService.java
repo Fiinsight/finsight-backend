@@ -31,14 +31,14 @@ public class AuthService {
             .maximumSize(10000).expireAfterWrite(Duration.ofMinutes(5)).build();
     @org.springframework.beans.factory.annotation.Autowired
     private OAuthStateStore sharedOAuthStates;
-    @jakarta.persistence.PersistenceContext
-    private jakarta.persistence.EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AccountDataDeletion accountDataDeletion;
     @org.springframework.transaction.annotation.Transactional
     public void deleteAccount(Long userId) {
         User user = users.findById(userId).orElseThrow(this::unauthorized);
-        for (String entity : java.util.List.of("LearningProgress", "ArticleNote", "DailyNote", "Judgement"))
-            entityManager.createQuery("delete from " + entity + " record where record.user.id = :userId").setParameter("userId", userId).executeUpdate();
+        accountDataDeletion.deleteForUser(userId);
         users.delete(user);
+        users.flush();
     }
     private final UserRepository users;
     private final JwtService jwt;

@@ -40,12 +40,46 @@ class ProdMigrationStartupTest {
     @Autowired Flyway flyway;
     @Autowired Environment environment;
     @Autowired JdbcTemplate jdbc;
+    @Autowired jakarta.persistence.EntityManager entityManager;
     @Autowired com.finsight.learning.TermMasteryService mastery;
     @Autowired com.finsight.learning.LearningService learning;
     @Autowired com.finsight.learning.LearningRecommendationService recommendations;
     @Autowired com.finsight.watchlist.WatchlistService watchlist;
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.finsight.external.AiServiceClient ai;
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void accountDeletionRemovesQuizMasteryAndEveryOwnedTableOnLegacyForeignKey() throws Exception {
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("docs/qa-round2/LEARNING_MASTERY_CREDIT_DRAFT.sql")));
+        jdbc.execute("ALTER TABLE term_mastery DROP CONSTRAINT term_mastery_user_id_fkey");
+        jdbc.execute("ALTER TABLE term_mastery ADD CONSTRAINT term_mastery_user_id_fkey FOREIGN KEY(user_id) REFERENCES app_user(id)");
+        Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('delete-all-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long article=jdbc.queryForObject("INSERT INTO news(title,url,raw_content,created_at) VALUES('금리 환율 물가','https://fixture.test/delete-all','금리가 올랐다. 환율과 물가가 변했다.',now()) RETURNING id",Long.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true);
+        try {
+            var question=learning.lesson(owner,article,"beginner","금리").question();
+            String definition=jdbc.queryForObject("SELECT short_definition FROM term WHERE term='금리'",String.class);
+            learning.answer(owner,article,"beginner","금리",question.options().indexOf(definition));
+        } finally { org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",false); }
+        jdbc.update("INSERT INTO user_watchlist(user_id,symbol,created_at) VALUES(?,'005930',now())",owner);
+        jdbc.update("INSERT INTO article_note(user_id,news_id,content,created_at,updated_at) VALUES(?,?,'메모',now(),now())",owner,article);
+        jdbc.update("INSERT INTO daily_note(user_id,note_date,content,updated_at) VALUES(?,CURRENT_DATE,'메모',now())",owner);
+        jdbc.update("INSERT INTO judgement(user_id,news_id,choice,created_at) VALUES(?,?,'UP',now())",owner,article);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM term_mastery WHERE user_id=?",Integer.class,owner)).isEqualTo(1);
+        var registered=com.finsight.auth.AccountDataDeletion.TABLES.stream().map(com.finsight.auth.AccountDataDeletion.OwnedTable::name).collect(java.util.stream.Collectors.toSet());
+        var foreignTables=jdbc.queryForList("SELECT DISTINCT c.conrelid::regclass::text FROM pg_constraint c WHERE c.contype='f' AND c.confrelid='app_user'::regclass",String.class);
+        assertThat(registered).containsAll(foreignTables);
+        entityManager.flush();
+        entityManager.clear(); // Separate setup persistence context from the deletion request.
+        String token=jwt.issue(users.findById(owner).orElseThrow());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/auth/me").header("Authorization","Bearer "+token)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+        for(var table:com.finsight.auth.AccountDataDeletion.TABLES) {
+            if(jdbc.queryForObject("SELECT to_regclass(?) IS NOT NULL",Boolean.class,table.name()) == Boolean.TRUE)
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table.name()+" WHERE user_id=?",Integer.class,owner)).as(table.name()).isZero();
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_user WHERE id=?",Integer.class,owner)).isZero();
+    }
 
     @Test
     @org.springframework.transaction.annotation.Transactional
@@ -74,6 +108,8 @@ class ProdMigrationStartupTest {
             Long id=jdbc.queryForObject("INSERT INTO judgement(user_id,news_id,choice,created_at,feedback_reasons) VALUES(?,?,'UP',now(),?::jsonb) RETURNING id",Long.class,owner,news,payload);
             if(legacy==null) legacy=id;
         }
+        entityManager.flush();
+        entityManager.clear(); // Separate setup persistence context from the deletion request.
         String token=jwt.issue(users.findById(owner).orElseThrow());
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/history/page").header("Authorization","Bearer "+token))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
@@ -99,7 +135,7 @@ class ProdMigrationStartupTest {
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
-                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17");
+                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM news", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM judgement", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success", Long.class)).isZero();
