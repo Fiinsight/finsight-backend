@@ -18,6 +18,9 @@ public class JudgementService {
     private static final String ACK_FEEDBACK_TEXT =
             "판단이 기록되었습니다. 다음 거래일 장 마감 후 결과를 확인해보세요.";
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private PriceAdjustmentHolds adjustmentHolds;
+
     private final JudgementRepository judgementRepository;
     private final NewsRepository newsRepository;
 
@@ -81,6 +84,14 @@ public class JudgementService {
                 issue = "LEGACY_COMPARISON";
                 notice = "이 기록은 판단한 날의 가격으로 비교돼 다음 거래일 예측의 결과로 해석하기 어려워요. 대상과 비교 종가가 확인된 새 판단에서 설명을 확인해보세요.";
             }
+        }
+        if (j.getActualDirection() == null && adjustmentHolds != null && adjustmentHolds.contains(j.getId())) {
+            issue = "PRICE_ADJUSTMENT";
+            notice = "가격 조정 확인 필요: 종가 등락률이 ±30%를 넘어 채점을 보류했어요.";
+        }
+        if (j.getActualChangePercent() != null && Math.abs(j.getActualChangePercent()) > 30.000000001) {
+            issue = "PRICE_ADJUSTMENT";
+            notice = "가격 조정 확인 필요: 저장된 등락률이 ±30%를 넘어 적중 여부를 표시하지 않아요.";
         }
         if (issue != null) content = null;
         var displayReasons = content == null ? null : content.reasons();
