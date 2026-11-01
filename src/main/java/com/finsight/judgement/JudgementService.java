@@ -31,6 +31,8 @@ public class JudgementService {
         News news = newsRepository.findById(request.newsId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "존재하지 않는 뉴스 id 입니다: " + request.newsId()));
+        if (ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),java.time.Instant.now()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"이 기사는 복습용이에요. 최근 기사에서 판단을 남겨주세요.");
         var target = JudgementTargetResolver.resolve(news);
         if (target.symbol() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사는 판단할 대상이 없어요");
 
