@@ -1,0 +1,202 @@
+[
+  {
+    "headRefOid": "2497240f7ce9426fd33f53db359099d45cc67f24",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:02:03Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324021611/job/124900067144",
+        "name": "test",
+        "startedAt": "2026-11-01T16:00:05Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:16Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324021611/job/124900067247",
+        "name": "prod-migrations",
+        "startedAt": "2026-11-01T16:00:05Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-backend/pull/160"
+  },
+  {
+    "headRefOid": "5fc852876240341dd853f3e5dc0ae77f05514bc6",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:02:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324029962/job/124900089659",
+        "name": "test",
+        "startedAt": "2026-11-01T16:00:09Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:28Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324029962/job/124900089951",
+        "name": "prod-migrations",
+        "startedAt": "2026-11-01T16:00:10Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-backend/pull/161"
+  },
+  {
+    "headRefOid": "8bd329195eeeab6f6abcbd7116127581e1e01cdc",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:02:13Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324037823/job/124900112752",
+        "name": "test",
+        "startedAt": "2026-11-01T16:00:14Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:26Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324037823/job/124900113021",
+        "name": "prod-migrations",
+        "startedAt": "2026-11-01T16:00:15Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-backend/pull/162"
+  },
+  {
+    "headRefOid": "a439a5707bacd94da4763f2b2a94e6072df2e578",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:02:11Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324043860/job/124900128971",
+        "name": "test",
+        "startedAt": "2026-11-01T16:00:18Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:25Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-backend/actions/runs/41324043860/job/124900128764",
+        "name": "prod-migrations",
+        "startedAt": "2026-11-01T16:00:18Z",
+        "status": "COMPLETED",
+        "workflowName": "Backend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-backend/pull/163"
+  },
+  {
+    "headRefOid": "3b5d96d35bfb662c372cdbeac96c0db17674e496",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:21Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324055501/job/124900163053",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:25Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/187"
+  },
+  {
+    "headRefOid": "c0789e95ad5f7df3a74190712e703b3ba3d78bc5",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:25Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324063008/job/124900188031",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:31Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/188"
+  },
+  {
+    "headRefOid": "60ed64a88d5abd99261abe00489529eb8a47220b",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:19Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324071130/job/124900208569",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:35Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/189"
+  },
+  {
+    "headRefOid": "38076b467d7dc6c4ee049ffa778ed11261bde01e",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:36Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324081058/job/124900236822",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:41Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/190"
+  },
+  {
+    "headRefOid": "fe8248db9b15093eba7a439fee610aef07bcc446",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:38Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324090345/job/124900264362",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:48Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/191"
+  },
+  {
+    "headRefOid": "5b37257ac90348bcd54336fefc88da0ca5ecef3c",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-01T16:01:28Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/Fiinsight/finsight-frontend/actions/runs/41324098297/job/124900288979",
+        "name": "Typecheck, tests, and web export",
+        "startedAt": "2026-11-01T16:00:53Z",
+        "status": "COMPLETED",
+        "workflowName": "Frontend CI"
+      }
+    ],
+    "url": "https://github.com/Fiinsight/finsight-frontend/pull/192"
+  }
+]
