@@ -30,7 +30,9 @@ public class ChartDocentService {
         if (!"analyst".equals(r.level())) lead = lead.replaceAll("했다\\.$", "했어요.").replaceAll("된다\\.$", "돼요.").replaceAll("이다\\.$", "이에요.");
         String context="W".equals(r.period())?"이 주간에":"MINUTE".equals(r.period())?"이 시점에":"이날";
         String reason;
-        if (article==null) { lead="이날 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요."; reason="수급이나 시장 전체 요인이 영향을 줬을 수 있어요."; }
+        if (article==null) { lead="이날 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요."; reason=r.indexChangePercent()!=null && r.indexName()!=null
+                ? String.format(java.util.Locale.ROOT,"같은 날 %s는 %+.2f%% 움직였어요. 시장 흐름과 비교하되 원인으로 단정하지 않아요.",r.indexName(),r.indexChangePercent())
+                : "같은 날 지수 종가가 캐시에 없어 시장 등락률을 확인할 수 없어요. 수급이나 시장 전체 요인이 영향을 줬을 수 있어요."; }
         else if ("MARKET".equals(relation)) reason="시장 전체 "+(r.indexChangePercent()!=null && r.indexChangePercent()<0?"하락":r.indexChangePercent()!=null && r.indexChangePercent()>0?"상승":"흐름")+"("+(r.indexName()==null?"관련 지수":r.indexName())
                 +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")과 함께 움직였을 수 있어요.";
         else {
