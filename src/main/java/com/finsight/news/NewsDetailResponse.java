@@ -24,7 +24,8 @@ public record NewsDetailResponse(
         SentimentHint sentimentHint,
         String category,
         List<String> keyTerms,
-        com.finsight.judgement.JudgementTargetResolver.Target judgementTarget
+        com.finsight.judgement.JudgementTargetResolver.Target judgementTarget,
+        java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate
 ) {
     public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
                                           ArticleContentExtractor contentExtractor) {
@@ -52,7 +53,9 @@ public record NewsDetailResponse(
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle(), rawContent),
                 unavailable ? List.of() : news.getKeyTerms(),
-                com.finsight.judgement.JudgementTargetResolver.resolve(news)
+                com.finsight.judgement.JudgementTargetResolver.resolve(news),
+                com.finsight.judgement.KoreanTradingCalendar.onOrBefore(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
+                com.finsight.judgement.KoreanTradingCalendar.next(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")))
         );
     }
 
