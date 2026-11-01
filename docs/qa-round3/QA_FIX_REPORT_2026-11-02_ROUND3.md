@@ -34,11 +34,8 @@ GitHub의 열린 backend #59/#61/#62, frontend #5/#9/#82/#84, AI #24/#25의 본�
 | frontend | `fix/p2-7-request-wait-ux` | https://github.com/Fiinsight/finsight-frontend/pull/190 |
 | frontend | `fix/p3-related-news-cache` | https://github.com/Fiinsight/finsight-frontend/pull/191 |
 | frontend | `fix/p3-price-adjustment-ui` | https://github.com/Fiinsight/finsight-frontend/pull/192 |
-
 | backend | `fix/qa-round3-report` | https://github.com/Fiinsight/finsight-backend/pull/164 |
-
 | backend | `fix/p2-7-liveness-cors` | https://github.com/Fiinsight/finsight-backend/pull/165 |
-
 | backend | `fix/p2-6-production-session-default` | https://github.com/Fiinsight/finsight-backend/pull/166 |
 
 ## 배포 전 사용자 결정
