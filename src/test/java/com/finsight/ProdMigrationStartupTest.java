@@ -49,6 +49,23 @@ class ProdMigrationStartupTest {
 
     @Test
     @org.springframework.transaction.annotation.Transactional
+    void firstDailyAnswerAloneUpdatesMasteryInPostgres() throws Exception {
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("docs/qa-round2/LEARNING_MASTERY_CREDIT_DRAFT.sql")));
+        Long user=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('daily-credit-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long article=jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('금리 기사','https://fixture.test/daily-credit',now()) RETURNING id",Long.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true);
+        try {
+            assertThat(mastery.answer(user,article,"금리","beginner",false,3,com.finsight.learning.QuestionType.DEFINITION)).isTrue();
+            double expected=com.finsight.learning.KnowledgeTracing.update(.3,false,"beginner");
+            assertThat(mastery.answer(user,article,"금리","beginner",true,3,com.finsight.learning.QuestionType.DEFINITION)).isFalse();
+            assertThat(jdbc.queryForObject("SELECT p_known FROM term_mastery WHERE user_id=? AND term='금리'",Double.class,user)).isEqualTo(expected);
+            assertThat(jdbc.queryForObject("SELECT attempts FROM term_mastery WHERE user_id=? AND term='금리'",Integer.class,user)).isEqualTo(1);
+            assertThat(mastery.list(user).getFirst().lastCorrect()).isFalse();
+        } finally { org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",false); }
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
     void mixedLegacyRowsKeepHistoryPageAndDetailAvailable() throws Exception {
         Long owner=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('legacy-ci@test','LOCAL',now()) RETURNING id",Long.class);
         Long news=jdbc.queryForObject("INSERT INTO news(title,url,created_at) VALUES('원문 사실','https://example.test/legacy-ci',now()) RETURNING id",Long.class);
@@ -247,7 +264,7 @@ class ProdMigrationStartupTest {
                 jdbc.update("INSERT INTO "+schema+".learning_progress(user_id,news_id,term,level,correct,answered_at) VALUES(?,?,'금리',?,true,now())",user,entry.getKey(),entry.getValue());
             jdbc.update("INSERT INTO "+schema+".term_mastery(user_id,term,p_known,attempts,last_answered_at) VALUES(?,'금리',0.99,99,now()),(?,'환율',0.99,99,now())",user,user);
             Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
-            assertThat(jdbc.queryForObject("SELECT p_known FROM "+schema+".term_mastery WHERE term='금리'",Double.class)).isCloseTo(com.finsight.learning.KnowledgeTracing.update(.3,true,"beginner"),org.assertj.core.data.Offset.offset(1e-12));
+            assertThat(jdbc.queryForObject("SELECT p_known FROM "+schema+".term_mastery WHERE term='금리'",Double.class)).isCloseTo(0.6080838323353294,org.assertj.core.data.Offset.offset(1e-12)); // V17's historical .33 model remains unchanged.
             assertThat(jdbc.queryForObject("SELECT attempts FROM "+schema+".term_mastery WHERE term='금리'",Integer.class)).isEqualTo(1);
             assertThat(jdbc.queryForObject("SELECT definition_only FROM "+schema+".term_mastery WHERE term='환율'",Boolean.class)).isFalse();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM "+schema+".learning_progress",Integer.class)).isEqualTo(3);
@@ -257,7 +274,10 @@ class ProdMigrationStartupTest {
 
     @Test
     @org.springframework.transaction.annotation.Transactional
-    void normalLearnerCanActuallyEarnAnalystPromotionThroughDefinitionQuestions() {
+    void repeatingTheSameDefinitionsCannotEarnAnalystPromotion() throws Exception {
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("docs/qa-round2/LEARNING_MASTERY_CREDIT_DRAFT.sql")));
+        org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true);
+        try {
         Long user=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at,learning_level) VALUES('promotion-ci@test','LOCAL',now(),'normal') RETURNING id",Long.class);
         var concepts=java.util.List.of("금리","환율","물가","기준금리","국채금리");
         Long news=jdbc.queryForObject("INSERT INTO news(title,url,raw_content,created_at) VALUES('금리 환율 물가 기준금리 국채금리','https://example.test/promotion','금리는 2% 상승했다. 환율은 3% 상승했다. 물가는 1% 상승했다. 기준금리는 4% 상승했다. 국채금리는 5% 상승했다.',now()) RETURNING id",Long.class);
@@ -271,8 +291,10 @@ class ProdMigrationStartupTest {
             }
         }
         assertThat(mastery.list(user)).hasSize(5);
-        assertThat(com.finsight.learning.TermMasteryService.suggestion(mastery.list(user),"normal")).isEqualTo("analyst");
+        assertThat(com.finsight.learning.TermMasteryService.suggestion(mastery.list(user),"normal")).isNull();
+        assertThat(mastery.list(user)).allMatch(row -> row.attempts()==1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM learning_progress WHERE user_id=? AND question_type='DEFINITION'",Integer.class,user)).isEqualTo(5);
+        } finally { org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",false); }
     }
 
 }
