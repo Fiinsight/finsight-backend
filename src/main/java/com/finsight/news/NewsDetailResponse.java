@@ -40,7 +40,7 @@ public record NewsDetailResponse(
                 news.getUrl(),
                 news.getSource(),
                 news.getPublishedAt(),
-                excerpt(rawContent),
+                sourceExcerpt(rawContent),
                 excerpt(beginner),
                 excerpt(normal),
                 excerpt(analyst),
@@ -58,6 +58,14 @@ public record NewsDetailResponse(
                 com.finsight.judgement.KoreanTradingCalendar.next(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
                 com.finsight.judgement.ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),Instant.now())
         );
+    }
+
+    public static String sourceExcerpt(String text) {
+        if(text == null || text.isBlank()) return "";
+        String first = java.util.Arrays.stream(text.strip().split("(?<=[.!?。！？])(?![0-9])\\s+|\\n+"))
+                .limit(3).collect(java.util.stream.Collectors.joining(" "));
+        return first.codePointCount(0,first.length()) <= 300 ? first
+                : first.substring(0,first.offsetByCodePoints(0,299)).stripTrailing() + "…";
     }
 
     public static String excerpt(String text) {
