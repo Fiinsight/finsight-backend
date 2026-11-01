@@ -11,6 +11,22 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class NewsAssemblerTest {
+    @Test void preservesGroundedReasonsAndSourceAcrossAllLevels() {
+        var ai = mock(AiServiceClient.class);
+        var assembler = new NewsAssembler(ai, new NewsCategoryClassifier(), new NewsSymbolMatcher(),
+                new NewsSentimentClassifier(), mock(ArticleContentExtractor.class));
+        var reasons = java.util.Map.of("beginner", "매출 12.5% 증가를 확인해요", "normal", "매출 12.5% 증가, 비교 기준 확인", "analyst", "매출 12.5% 증가, 일회성 요인 확인");
+        when(ai.rewrite(any())).thenReturn(Optional.of(new com.finsight.external.AiRewriteResponse(
+                "기사", "일반", reasons.get("normal"), reasons, List.of(), "초보", "일반", "분석", "EXCERPT")));
+        var date = Instant.parse("2026-10-01T00:00:00Z");
+        var article = assembler.assemble(new NewsCandidate("매출 증가", "https://publisher.test/article", "publisher", date, 1), "매출 12.5% 증가", false);
+        assertThat(article.getImportanceReasonBeginner()).isEqualTo(reasons.get("beginner"));
+        assertThat(article.getImportanceReasonNormal()).isEqualTo(reasons.get("normal"));
+        assertThat(article.getImportanceReasonAnalyst()).isEqualTo(reasons.get("analyst"));
+        assertThat(article.getUrl()).isEqualTo("https://publisher.test/article");
+        assertThat(article.getPublishedAt()).isEqualTo(date);
+    }
+
     @Test void existingNewsMetadataAndRefreshNeverApplyTheNewSymbolMatcher() {
         var ai=mock(AiServiceClient.class);var extractor=mock(ArticleContentExtractor.class);
         var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),extractor);
