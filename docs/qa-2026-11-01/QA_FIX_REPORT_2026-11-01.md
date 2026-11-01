@@ -113,3 +113,10 @@ https://github.com/Fiinsight/finsight-frontend/pull/183
 - 로컬 전체 Gradle 테스트에서 Desktop의 이전 중복 class/report와 XML 결과 쓰기 문제가 있어 원본을 보존하고 새 class 및 `/tmp` 보고서 경로로 검증했다. 코드 실패를 통과로 숨기지 않았으며 최종 실행은 BUILD SUCCESSFUL이다.
 - 안전한 로그·결과 복사본은 `/Users/subin/Documents/핀사이트/output/finsight-qa-followup-2026-11-01/`에 보존한다.
 - 스크린샷·SQL·보고서에 토큰·비밀번호·환경파일을 넣지 않았다. 운영 DB 연결이나 쓰기 명령은 실행하지 않았다.
+
+## GitHub 후속 확인
+
+기능·화면 증거 PR 30개의 최신 head CI가 모두 성공한 것을 확인했다(backend test/prod-migrations, frontend typecheck/tests/web export, AI pytest). 보고서 PR은 아래 링크이며 문서 커밋의 검사 상태는 별도 CI snapshot으로 보존한다.
+
+- 보고서 PR: https://github.com/Fiinsight/finsight-backend/pull/154
+- CI snapshot: `/Users/subin/Documents/핀사이트/output/finsight-qa-followup-2026-11-01/pr-statuses.json`
