@@ -28,6 +28,8 @@ public interface NewsRepository extends JpaRepository<News, Long> {
 
     List<News> findAllByOrderByPublishedAtDesc(Pageable pageable);
 
+    List<News> findByPublishedAtBetweenOrderByPublishedAtDesc(Instant since, Instant until, Pageable pageable);
+
     List<News> findTop100ByOrderByCreatedAtDesc();
 
     List<News> findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant since);
