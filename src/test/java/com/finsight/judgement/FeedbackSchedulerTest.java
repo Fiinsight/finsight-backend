@@ -27,12 +27,24 @@ class FeedbackSchedulerTest {
         var news = spy(new News("학습용 기사", "https://example.invalid/qa", "SYNTHETIC_QA", Instant.now(), "QA"));
         when(news.getId()).thenReturn(115L); news.setRelatedSymbol(symbol);
         var item = spy(new Judgement(mock(User.class), news, JudgementChoice.UP, "근거"));
+        when(item.getId()).thenReturn(1L);
         item.setTargetSymbol(symbol);
         when(item.getCreatedAt()).thenReturn(Instant.parse(date + "T01:00:00Z"));
         when(records.findPendingByOwner(eq(1L), any())).thenReturn(List.of(item));
         return item;
     }
     private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
+    @Test void splitLikePriceMoveDoesNotFinalizeOrCallAi() {
+        var item=pending("005930","2026-09-28");
+        when(item.getId()).thenReturn(77L);
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",50)),false));
+        assertThat(scheduler.runNow(1L)).isZero();
+        assertThat(item.getActualDirection()).isNull();
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verifyNoInteractions(ai);
+        var holds=(PriceAdjustmentHolds)org.springframework.test.util.ReflectionTestUtils.getField(scheduler,"adjustmentHolds");
+        assertThat(holds.contains(77L)).isTrue();
+    }
     @Test void requestedCatchUpIsOwnerScopedCoalescedAndCooledDown() {
         var item = pending("005930", "2026-09-28");
         when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",102)),false));

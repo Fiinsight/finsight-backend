@@ -25,6 +25,9 @@ public class FeedbackScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(FeedbackScheduler.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private PriceAdjustmentHolds adjustmentHolds = new PriceAdjustmentHolds();
+
     private final JudgementRepository judgementRepository;
     private final com.finsight.external.kis.KisDailyCandleClient dailyCandles;
     private final AiServiceClient aiServiceClient;
@@ -134,6 +137,11 @@ public class FeedbackScheduler {
         String indexSymbol = "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(symbol)) ? "KOSDAQ" : "KOSPI";
         var indexPrices = indexTarget ? Optional.<ClosingPrices.Pair>empty() : closingPrices(indexSymbol, baseline, comparison);
         if (!indexTarget && indexPrices.isEmpty()) return false;
+        if (prices.get().needsAdjustmentReview() || indexPrices.map(ClosingPrices.Pair::needsAdjustmentReview).orElse(false)) {
+            adjustmentHolds.mark(judgement.getId());
+            return false;
+        }
+        adjustmentHolds.clear(judgement.getId());
         double actualChangePercent = prices.get().percent();
         String actualDirection = JudgementFeedbackRules.direction(actualChangePercent);
         String indexName = indexTarget ? null : JudgementTargetResolver.name(indexSymbol);
@@ -196,6 +204,8 @@ public class FeedbackScheduler {
         boolean indexTarget = List.of("KOSPI","KOSDAQ").contains(target.symbol());
         String index = indexTarget ? null : "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(target.symbol())) ? "KOSDAQ" : "KOSPI";
         var indexPrices = indexTarget ? null : closingPrices(index,baseline,comparison).orElse(null);
+        if (prices.needsAdjustmentReview() || (indexPrices != null && indexPrices.needsAdjustmentReview()))
+            return row.withStatus("PRICE_ADJUSTMENT","가격 조정 확인 필요: 종가 등락률이 ±30%를 넘어 채점을 보류했어요.");
         boolean ready = indexTarget || indexPrices != null;
         return new JudgementRegradeResponse.Row(judgement.getId(),ready ? "READY" : "NO_INDEX_CLOSES",
                 ready ? null : "시장 지수의 기준일·비교일 실제 종가가 모두 조회되지 않았어요.",target.symbol(),baseline,comparison,

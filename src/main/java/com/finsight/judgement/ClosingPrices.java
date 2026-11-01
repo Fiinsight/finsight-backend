@@ -8,6 +8,7 @@ import org.springframework.cache.Cache;
 /** Read any existing daily/range cache entry before requesting another KIS range. */
 public final class ClosingPrices {
     public record Pair(double before, double after) {
+        public boolean needsAdjustmentReview() { return Math.abs(percent()) > 30.000000001; }
         public double percent() { return (after / before - 1) * 100; }
     }
     private ClosingPrices() {}
