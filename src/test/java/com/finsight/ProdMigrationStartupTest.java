@@ -133,6 +133,8 @@ class ProdMigrationStartupTest {
     @Test
     void emptyPostgresMigratesAndProdHibernateValidates() {
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
+        assertThat(environment.getProperty("finsight.auth.expiration-seconds"))
+                .isEqualTo(System.getenv().getOrDefault("JWT_EXPIRATION_SECONDS","604800"));
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
                 .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
