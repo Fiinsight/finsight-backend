@@ -39,7 +39,11 @@ public class BriefingService {
         this.newsCategoryClassifier = newsCategoryClassifier;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.finsight.news.NewsCollectionScheduler collection;
+
     public List<NewsBriefResponse> getTodayBriefing() {
+        if (collection != null) collection.requestCatchUp();
         return rankedNews().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
     }
 
