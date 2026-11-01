@@ -26,6 +26,8 @@ public class LocalRetrievalController {
                         @Size(max=100) String term) {}
     public record Doc(String id, String kind, String title, String body, Instant publishedAt,
                       String symbol, String owner, String url, String source, boolean synthetic) {}
+    @Value("${AI_INTERNAL_TOKEN:}")
+    private String internalToken = "";
     private final LocalRetrievalCandidates candidates;
     private final ObjectMapper mapper;
     private final URI endpoint;
@@ -53,7 +55,9 @@ public class LocalRetrievalController {
         request.put("startAt", "term".equals(query.kind()) ? null : start);
         request.put("endAt", "term".equals(query.kind()) ? null : end);
         try {
-            var call = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(3))
+            var builder = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(3));
+            if (!internalToken.isBlank()) builder.header("Authorization", "Bearer " + internalToken);
+            var call = builder
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(request))).build();
             var response = http.send(call, HttpResponse.BodyHandlers.ofString());
