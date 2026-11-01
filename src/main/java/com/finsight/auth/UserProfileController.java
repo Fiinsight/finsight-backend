@@ -30,6 +30,12 @@ public class UserProfileController {
         return profileService.setLearningLevel(userId, request.level());
     }
 
+    @PutMapping("/nickname")
+    public UserProfileDtos.NicknameResponse updateNickname(@AuthenticationPrincipal Long userId,
+            @Valid @RequestBody UserProfileDtos.NicknameRequest request) {
+        return profileService.updateNickname(userId, request.nickname());
+    }
+
     @GetMapping("/onboarding")
     public UserProfileDtos.OnboardingResponse getOnboarding(@AuthenticationPrincipal Long userId) {
         return profileService.getOnboarding(userId);

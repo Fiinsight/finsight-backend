@@ -19,7 +19,7 @@ public class JwtService {
     private final long expirationSeconds;
 
     public JwtService(@Value("${finsight.auth.jwt-secret}") String secret,
-                      @Value("${finsight.auth.expiration-seconds:86400}") long expirationSeconds) {
+                      @Value("${finsight.auth.expiration-seconds:604800}") long expirationSeconds) {
         if (!StringUtils.hasText(secret)
                 || PUBLIC_DEFAULT_BASE64.equals(secret.trim())
                 || PUBLIC_DEFAULT_PLAIN.equals(secret.trim())) {
