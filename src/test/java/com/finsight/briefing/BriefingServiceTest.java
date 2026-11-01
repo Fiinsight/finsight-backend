@@ -15,15 +15,16 @@ class BriefingServiceTest {
         var repository = mock(NewsRepository.class);
         var extractor = mock(ArticleContentExtractor.class);
         when(extractor.isUsable(any(), any())).thenReturn(true);
-        Instant today = LocalDate.now(ZoneId.of("Asia/Seoul")).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
-        News newest = news(1L, "투자", today.plusSeconds(400));
-        News high = news(2L, "금리 환율 실적 증시", today.plusSeconds(100));
-        News middle = news(3L, "반도체 수출 주가", today.plusSeconds(200));
-        News tied = news(4L, "금리 실적", today.plusSeconds(300));
+        Instant today = Instant.now();
+        News newest = news(1L, "투자", today.minusSeconds(1));
+        News high = news(2L, "금리 환율 실적 증시", today.minusSeconds(2));
+        News middle = news(3L, "반도체 수출 주가", today.minusSeconds(3));
+        News tied = news(4L, "금리 실적", today.minusSeconds(4));
         News synthetic = news(6L, "금리 환율 실적 증시 물가 수출 반도체", today);
         when(synthetic.getSource()).thenReturn("SYNTHETIC_TEST");
-        News old = news(5L, "금리 환율 실적 증시 물가 수출", today.minusSeconds(1));
-        when(repository.findAllByOrderByPublishedAtDesc(any(Pageable.class))).thenReturn(List.of(newest, tied, middle, high, old, synthetic));
+        News old = news(5L, "금리 환율 실적 증시 물가 수출", today.minusSeconds(86400));
+        News undated = news(99L,"금리",null);
+        when(repository.findByPublishedAtBetweenOrderByPublishedAtDesc(any(),any(),any(Pageable.class))).thenReturn(List.of(newest, tied, middle, high, old, synthetic, undated));
         var service = new BriefingService(repository, extractor, new NewsCategoryClassifier(), new NewsRelevanceScorer());
         assertEquals(List.of(2L, 3L, 4L), service.getTodayBriefing().stream().map(NewsBriefResponse::id).toList());
         assertEquals(List.of(1L, 5L), service.getMoreBriefing(0, 10).stream().map(NewsBriefResponse::id).toList());
@@ -31,7 +32,7 @@ class BriefingServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.getMoreBriefing(-1, 10));
         assertThrows(ResponseStatusException.class, () -> service.getMoreBriefing(0, 101));
         assertTrue(service.getTodayBriefing().get(0).summary().contains("확인할 수 없습니다"));
-        verify(repository, times(1)).findAllByOrderByPublishedAtDesc(any(Pageable.class));
+        verify(repository, times(1)).findByPublishedAtBetweenOrderByPublishedAtDesc(any(),any(),any(Pageable.class));
         assertTrue(NewsDetailResponse.excerpt("본문".repeat(1000)).length() < 650);
     }
     @Test void samePublisherHeadlineVariantsDoNotFillMultipleSlots() {
