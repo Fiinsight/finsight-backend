@@ -10,6 +10,8 @@
 
 ## main보다 앞선 커밋과 운영 포함 여부
 
+2차 작업 시작 시점의 기존 QA PR 스택을 기준으로 대조했습니다. 이번 2차 수정 자체도 아직 미배포이며 별도 PR 목록에 기록합니다.
+
 | 저장소 | 커밋 | 내용 | 운영 포함 | 판단 근거 | 결정 |
 |---|---|---|---|---|---|
 | frontend | `1b145d7` | fix: use configured API URL for hosted demo | 반영 | 현재 운영 커밋/번들의 조상 | 사용자 결정 필요 |
@@ -37,8 +39,6 @@
 | frontend | `b350a18` | fix: use one bounded home loading state with delayed wake-up copy | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | frontend | `199a321` | fix: start overdue polling when a visible pending result becomes due | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | frontend | `a3b45fd` | docs: attach local responsive UI before-after and navigation evidence | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
-| frontend | `bf51ec9` | fix: reshuffle quiz retries without changing server answer indices | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
-| frontend | `f4f9e42` | fix: disclose device-local reading attendance and streaks | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | backend | `3203bd5` | Fix deploy QA issues: enable bundled retrieval and recover KIS failures | 반영 | 현재 운영 커밋/번들의 조상 | 사용자 결정 필요 |
 | backend | `3f37307` | Stabilize free instance health checks and bundled news retrieval | 반영 | 현재 운영 커밋/번들의 조상 | 사용자 결정 필요 |
 | backend | `6c62089` | Bound related-news query cost and retain keyword results on AI delay | 반영 | 현재 운영 커밋/번들의 조상 | 사용자 결정 필요 |
@@ -59,9 +59,6 @@
 | backend | `d702d03` | fix: show cached index movement when chart news is missing | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | backend | `b0d4330` | docs: record issue fixes, test evidence, PRs and remaining decisions | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | backend | `879cb78` | docs: record successful code PR checks and report review link | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
-| backend | `dc1314c` | fix: credit only the first daily quiz response toward BKT | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
-| backend | `ef5137b` | fix: enforce two-trading-day review-only articles in UI metadata and submissions | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
-| backend | `58de57d` | docs: draft owner-scoped server reading attendance without applying schema | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | ai | `78b71b0` | fix: bound and authenticate internal AI service | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | ai | `863471d` | fix: ground investment points in quoted article facts | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
 | ai | `514a47e` | fix: make excerpt levels distinct and preserve explicit article risks | 미반영 | 현재 운영 커밋의 조상이 아님 | 사용자 결정 필요 |
@@ -85,3 +82,5 @@
 - 다중 토큰 불일치 테스트는 MockWebServer/FastAPI TestClient만 사용하며 외부 LLM을 호출하지 않습니다.
 - EXCERPT 상태는 재작성 성공이 아닙니다. AI 전체 인증이 실패하면 읽기 설명은 UNAVAILABLE로 안내될 수 있고 원문 링크는 남습니다.
 - 이번 점검은 체크리스트만 작성했으며 Render 환경변수·서비스 배포는 변경하지 않았습니다.
+
+- 구 AI `6aa00e9`는 인증 경계 자체가 없으므로 신규 백엔드가 토큰을 보내도 성공할 수 있습니다. 요청 성공만으로 보호 적용을 판단하지 말고 Docker pin·AI 버전을 함께 확인해야 합니다.
