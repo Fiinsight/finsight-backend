@@ -20,7 +20,7 @@
 
 ## 이슈와 PR
 
-GitHub의 열린 backend #59/#61/#62, frontend #5/#9/#82/#84, AI #24/#25의 본문까지 다시 조회했다. OAuth/검색/기사 근거/수준별 투자 포인트는 선행 QA 스택에 이어 이번 변경을 쌓았다. 실기기 딥링크(#9)와 실기기 화면·네트워크·접근성(#5)은 시뮬레이션/단위 테스트만으로 완료 처리하지 않는다. 이슈를 닫거나 main에 머지하지 않았다. npm audit 재확인 결과 high/critical 0개, moderate 13개가 남는다. glob/minimatch(Expo CLI·config·metro 경유)와 uuid(@expo/ngrok 경유) 권고가 포함된다. audit 자동 제안에는 Expo 58→51의 호환성을 깨는 변경도 포함되어 적용하지 않았다. #82는 해결 완료로 닫지 않으며, 지원되는 Expo 도구 체인 갱신과 Expo Go 검증이 남는다.
+GitHub의 열린 backend #59/#61/#62, frontend #5/#9/#82/#84, AI #24/#25의 본문까지 다시 조회했다. OAuth/검색/기사 근거/수준별 투자 포인트는 선행 QA 스택에 이어 이번 변경을 쌓았다. 실기기 딥링크(#9)와 실기기 화면·네트워크·접근성(#5)은 시뮬레이션/단위 테스트만으로 완료 처리하지 않는다. 이슈를 닫거나 main에 머지하지 않았다. npm audit 재확인 결과 전체 high/critical 0개·moderate 13개, --omit=dev 기준 high/critical 0개·moderate 11개가 남는다. glob/minimatch(Expo CLI·config·metro 경유)와 uuid(@expo/ngrok 경유) 권고가 포함된다. audit 자동 제안에는 Expo 58→51의 호환성을 깨는 변경도 포함되어 적용하지 않았다. #82는 해결 완료로 닫지 않으며, 지원되는 Expo 도구 체인 갱신과 Expo Go 검증이 남는다.
 
 | 저장소 | 브랜치 | PR |
 |---|---|---|
