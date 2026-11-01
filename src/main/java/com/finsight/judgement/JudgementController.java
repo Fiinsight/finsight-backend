@@ -42,7 +42,9 @@ public class JudgementController {
     @GetMapping("/{id}")
     public JudgementHistoryResponse detail(@AuthenticationPrincipal Long userId,
             @org.springframework.web.bind.annotation.PathVariable Long id) {
-        return judgementService.getDetail(user(userId), id);
+        var detail = judgementService.getDetail(user(userId), id);
+        feedbackScheduler.requestCatchUp(userId);
+        return detail;
     }
 
     @GetMapping("/history")
@@ -51,6 +53,7 @@ public class JudgementController {
             @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
         var range = RecordDateRange.parse(from, to);
         User owner = user(userId);
+        feedbackScheduler.requestCatchUp(userId);
         if (range == null) return ResponseEntity.ok(judgementService.getHistory(owner));
         var response = ResponseEntity.ok();
         String previous = judgementService.previousRecord(owner, range);
@@ -64,6 +67,7 @@ public class JudgementController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @AuthenticationPrincipal Long userId) {
+        feedbackScheduler.requestCatchUp(userId);
         return judgementService.getHistoryPage(user(userId), page, size);
     }
 

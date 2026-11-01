@@ -72,6 +72,33 @@ public class FeedbackScheduler {
         return process(judgementRepository.findPendingByOwner(userId, cutoff));
     }
 
+    private final com.github.benmanes.caffeine.cache.Cache<Long, Instant> catchUps =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(10000)
+                    .expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
+    private final java.util.Set<Long> runningCatchUps = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private java.util.concurrent.Executor catchUpExecutor = java.util.concurrent.ForkJoinPool.commonPool();
+
+    public void requestCatchUp(Long userId) {
+        if (userId == null || !runningCatchUps.add(userId)) return;
+        Instant now = clock.instant();
+        Instant last = catchUps.asMap().putIfAbsent(userId, now);
+        if (last != null && last.plusSeconds(300).isAfter(now)) { runningCatchUps.remove(userId); return; }
+        catchUps.put(userId, now);
+        try {
+            catchUpExecutor.execute(() -> {
+                try {
+                    var cutoff = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+                    boolean due = judgementRepository.findPendingByOwner(userId, cutoff).stream().anyMatch(j ->
+                            j.getActualDirection() == null && j.getFeedbackGeneratedAt() == null
+                            && !KoreanTradingCalendar.next(j.getCreatedAt().atZone(clock.getZone()).toLocalDate())
+                            .atTime(15,40).atZone(clock.getZone()).toInstant().isAfter(clock.instant()));
+                    if (due) runNow(userId);
+                } catch (Exception error) { log.warn("Requested feedback catch-up failed: {}", error.getClass().getSimpleName()); }
+                finally { runningCatchUps.remove(userId); }
+            });
+        } catch (RuntimeException rejected) { runningCatchUps.remove(userId); catchUps.invalidate(userId); }
+    }
+
     private int process(List<Judgement> pending) {
         if (pending.isEmpty()) {
             log.info("Feedback scheduler: no pending judgements to process");
