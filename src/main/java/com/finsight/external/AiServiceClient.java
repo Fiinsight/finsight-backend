@@ -34,8 +34,16 @@ public class AiServiceClient {
 
     private final WebClient webClient;
 
-    public AiServiceClient(WebClient.Builder webClientBuilder, @Value("${finsight.ai.base-url}") String baseUrl) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+    public AiServiceClient(WebClient.Builder webClientBuilder, String baseUrl) {
+        this(webClientBuilder, baseUrl, "");
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiServiceClient(WebClient.Builder webClientBuilder, @Value("${finsight.ai.base-url}") String baseUrl,
+            @Value("${AI_INTERNAL_TOKEN:}") String internalToken) {
+        var builder = webClientBuilder.clone().baseUrl(baseUrl);
+        if (!internalToken.isBlank()) builder.defaultHeader("Authorization", "Bearer " + internalToken);
+        this.webClient = builder.build();
     }
 
     public record ReadingAid(String level, String summary, String readingGuide, String mode) {}
