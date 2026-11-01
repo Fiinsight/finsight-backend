@@ -33,6 +33,35 @@ class FeedbackSchedulerTest {
         return item;
     }
     private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
+    @Test void requestedCatchUpIsOwnerScopedCoalescedAndCooledDown() {
+        var item = pending("005930", "2026-09-28");
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",102)),false));
+        var jobs = new java.util.ArrayList<Runnable>();
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"catchUpExecutor", (java.util.concurrent.Executor) jobs::add);
+        java.util.stream.IntStream.range(0,20).parallel().forEach(i -> scheduler.requestCatchUp(1L));
+        assertThat(jobs).hasSize(1);
+        jobs.removeFirst().run();
+        scheduler.requestCatchUp(1L);
+        assertThat(jobs).isEmpty();
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock", Clock.fixed(Instant.parse("2026-10-06T07:06:00Z"),ZoneId.of("Asia/Seoul")));
+        scheduler.requestCatchUp(1L);
+        assertThat(jobs).hasSize(1); jobs.removeFirst().run();
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+    }
+
+    @Test void missingCloseOnFallbackCalendarStaysPendingAndRetries() {
+        var item=pending("KOSPI","2028-01-07");
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock",Clock.fixed(Instant.parse("2028-01-11T07:00:00Z"),ZoneId.of("Asia/Seoul")));
+        when(candles.getClosingCandles(eq("KOSPI"),any(),any())).thenReturn(
+                new KisDailyCandleResult(List.of(bar("2028-01-07",100)),false),
+                new KisDailyCandleResult(List.of(bar("2028-01-07",100),bar("2028-01-10",102)),false));
+        assertThat(scheduler.runNow(1L)).isZero(); assertThat(item.getActualDirection()).isNull();
+        assertThat(scheduler.runNow(1L)).isEqualTo(1);
+        assertThat(scheduler.runNow(1L)).isZero();
+        verify(records,times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+    }
+
     @Test void startupFinalizesUnresolvablePastButSkipsFutureComparison() {
         var past = pending(null, "2026-09-28");
         var future = pending("005930", "2026-10-06");
