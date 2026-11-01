@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class KnowledgeTracingTest {
     @Test void deterministicCorrectWrongAndMixedSequences() {
-        assertEquals(0.6080838323353294, KnowledgeTracing.update(.3,true,"beginner"), 1e-12);
-        assertEquals(0.20110220440881762, KnowledgeTracing.update(.3,false,"beginner"), 1e-12);
-        assertEquals(0.943553210468873, sequence(true,true,true), 1e-12);
-        assertEquals(0.17710298120755572, sequence(false,false,false), 1e-12);
-        assertEquals(0.6178592476463163, sequence(true,false,true), 1e-12);
-        assertTrue(KnowledgeTracing.update(.3,true,"analyst") > KnowledgeTracing.update(.3,true,"beginner"));
+        assertEquals(0.6059602649006623, KnowledgeTracing.update(.3,true,"beginner"), 1e-12);
+        assertEquals(0.20134228187919462, KnowledgeTracing.update(.3,false,"beginner"), 1e-12);
+        assertEquals(0.942040831459841, sequence(true,true,true), 1e-12);
+        assertEquals(0.17726848639984688, sequence(false,false,false), 1e-12);
+        assertEquals(0.6152443390315941, sequence(true,false,true), 1e-12);
+        assertTrue(KnowledgeTracing.update(.3,true,"analyst") < KnowledgeTracing.update(.3,true,"beginner")); // Same 1/3 guess; analyst retains its larger slip.
         assertThrows(IllegalArgumentException.class, () -> KnowledgeTracing.update(Double.NaN,true,"beginner"));
         assertThrows(IllegalArgumentException.class, () -> KnowledgeTracing.update(.3,true,"invalid"));
     }

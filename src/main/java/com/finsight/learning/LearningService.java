@@ -25,7 +25,7 @@ public class LearningService {
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
     record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
-    public record AnswerResult(boolean correct, String definition, String message, String termDefinition) {}
+    public record AnswerResult(boolean correct, String definition, String message, String termDefinition, boolean practice) {}
     public record Review(Long newsId, String title, String term, String definition, String level, Instant answeredAt) {}
     private static final List<Set<String>> TERM_FIELDS = List.of(
             Set.of("금리", "기준금리", "국채금리", "환율", "원화", "원달러", "물가", "인플레이션", "양적완화"),
@@ -94,6 +94,7 @@ public class LearningService {
     @Transactional
     public AnswerResult answer(Long userId, Long newsId, String level, String term, int answerIndex) {
         validateLevel(level);
+        users.lockWatchlistOwner(userId);
         News article = article(newsId);
         List<Term> dictionary = terms.findAll();
         Term target = articleTerms(article, dictionary).stream().filter(t -> t.getTerm().equals(term)).findFirst()
@@ -106,10 +107,10 @@ public class LearningService {
         boolean correct = question.options().get(answerIndex).equals(graded.correctAnswer());
         LearningProgress record = progress.findByUser_IdAndNews_IdAndTermAndQuestionType(userId, newsId, term, question.type())
                 .orElseGet(() -> new LearningProgress(users.findById(userId).orElseThrow(), article, term));
+        boolean counted = mastery.answer(userId,newsId,term,graded.level(),correct,question.options().size(),question.type());
         record.answer(graded.level(), correct, question.type());
         progress.save(record);
-        if (question.type() == QuestionType.DEFINITION) mastery.answer(userId, term, graded.level(), correct);
-        return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition());
+        return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition(), !counted);
     }
     @Transactional(readOnly = true)
     public List<DailyTerm> dailyTerms(Long userId) {

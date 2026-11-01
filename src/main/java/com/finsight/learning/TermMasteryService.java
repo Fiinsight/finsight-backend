@@ -20,24 +20,43 @@ public class TermMasteryService {
     public record Overview(List<Mastery> strongest, List<Mastery> weakest, int totalAttempts, int learningCount, List<Mastery> learning) {}
     public record BackfillCount(long concepts, long savedAnswers) {}
     private final JdbcTemplate jdbc;
+    @org.springframework.beans.factory.annotation.Value("${finsight.learning.daily-credit-enabled:false}")
+    private boolean dailyCreditEnabled;
     private Clock clock = Clock.system(ZoneId.of("Asia/Seoul"));
     public TermMasteryService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Transactional(readOnly = true)
     public List<Mastery> list(Long userId) {
         Instant now = clock.instant();
+        String source = dailyCreditEnabled
+                ? "SELECT level,correct FROM learning_mastery_credit WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC LIMIT 1"
+                : "SELECT level,correct FROM learning_progress WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC, id DESC LIMIT 1";
         return jdbc.query("""
                 SELECT m.*, q.level, q.correct FROM term_mastery m
                 JOIN term t ON t.term=m.term
-                LEFT JOIN LATERAL (SELECT level,correct FROM learning_progress
-                    WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC, id DESC LIMIT 1) q ON true
+                LEFT JOIN LATERAL (%s) q ON true
                 WHERE m.user_id=? AND m.definition_only AND (t.kind='CONCEPT' OR (t.kind='MARKET' AND q.level='beginner')) ORDER BY m.term
-                """, (rs, index) -> {
+                """.formatted(source), (rs, index) -> {
             Instant at = rs.getTimestamp("last_answered_at") == null ? null : rs.getTimestamp("last_answered_at").toInstant();
             long days = at == null ? 0 : ChronoUnit.DAYS.between(at.atZone(clock.getZone()).toLocalDate(), now.atZone(clock.getZone()).toLocalDate());
             double p = rs.getDouble("p_known");
             return new Mastery(rs.getString("term"), p, KnowledgeTracing.decay(p, days), rs.getInt("attempts"), at, rs.getString("level"), rs.getObject("correct", Boolean.class));
         }, userId);
+    }
+
+    /** Schema is a reviewed draft; until enabled, answers remain practice and cannot inflate mastery. */
+    @Transactional
+    public boolean answer(Long userId, Long newsId, String term, String level, boolean correct, int optionCount, QuestionType type) {
+        if (!dailyCreditEnabled) return false;
+        if (optionCount != 3) throw new IllegalArgumentException("Expected three quiz options");
+        // One PostgreSQL uniqueness decision, in the same transaction as progress and BKT.
+        int first = jdbc.update("""
+                INSERT INTO learning_mastery_credit(user_id,news_id,term,quiz_day,level,correct,question_type,answered_at)
+                VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,news_id,term,quiz_day) DO NOTHING
+                """,userId,newsId,term,LocalDate.now(clock),level,correct,type.name(),java.sql.Timestamp.from(clock.instant()));
+        if (first == 0 || type != QuestionType.DEFINITION) return false;
+        answer(userId,term,level,correct);
+        return true;
     }
 
     @Transactional
