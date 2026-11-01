@@ -104,7 +104,7 @@ public class JudgementService {
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
                 content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
                 content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(),
-                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue);
+                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue, reviewOnly ? "RULE" : content == null ? null : content.mode());
     }
 
     private String symbolName(String symbol) {

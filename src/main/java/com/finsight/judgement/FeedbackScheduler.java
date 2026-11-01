@@ -141,7 +141,7 @@ public class FeedbackScheduler {
         var feedback = generateFeedback(judgement, symbol, comparison, prices.get(), indexName, indexChange);
         String feedbackText = feedback.feedbackText();
         var content = new Judgement.FeedbackContent(feedback.verdict(), feedback.reasons(), feedback.nextTip(),
-                indexName, indexChange, feedback.conceptTerm(), feedback.conceptDefinition());
+                indexName, indexChange, feedback.conceptTerm(), feedback.conceptDefinition(), feedback.mode());
         // Atomic conditional update: concurrent scheduler/manual runs or a revised judgement cannot overwrite an outcome.
         int updated = judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), actualDirection,
             actualChangePercent, feedbackText, clock.instant(), comparison, java.math.BigDecimal.valueOf(prices.get().before()), java.math.BigDecimal.valueOf(prices.get().after()), feedback.headline(), Judgement.feedbackJson(content), symbol);
@@ -208,7 +208,7 @@ public class FeedbackScheduler {
         String indexName = row.indexSymbol() == null ? null : JudgementTargetResolver.name(row.indexSymbol());
         var feedback = generateFeedback(judgement,row.targetSymbol(),row.comparisonDate(),prices,indexName,row.indexChangePercent());
         var content = new Judgement.FeedbackContent(feedback.verdict(),feedback.reasons(),feedback.nextTip(),indexName,
-                row.indexChangePercent(),feedback.conceptTerm(),feedback.conceptDefinition());
+                row.indexChangePercent(),feedback.conceptTerm(),feedback.conceptDefinition(),feedback.mode());
         int updated = judgementRepository.regradeUnknownOutcome(judgement.getId(),userId,judgement.getCreatedAt(),row.targetSymbol(),
                 row.actualDirection(),row.actualChangePercent(),row.comparisonDate(),java.math.BigDecimal.valueOf(row.judgementClose()),
                 java.math.BigDecimal.valueOf(row.comparisonClose()),feedback.feedbackText(),feedback.headline(),Judgement.feedbackJson(content),clock.instant());

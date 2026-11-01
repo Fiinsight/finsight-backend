@@ -31,7 +31,7 @@ public final class FeedbackContentDeserializer extends JsonDeserializer<Judgemen
                 }
             }
             return new Judgement.FeedbackContent(text(node.get("verdict")), values == null || values.isNull() ? null : java.util.List.copyOf(reasons), text(node.get("nextTip")),
-                    text(node.get("indexName")), index == null || index.isNull() ? null : index.doubleValue(), text(node.get("conceptTerm")), text(node.get("conceptDefinition")));
+                    text(node.get("indexName")), index == null || index.isNull() ? null : index.doubleValue(), text(node.get("conceptTerm")), text(node.get("conceptDefinition")), java.util.Set.of("RULE","LLM").contains(node.path("mode").asText()) ? node.path("mode").asText() : null);
         } catch (Exception invalid) { return null; }
     }
     private static boolean textOrNull(JsonNode value) { return value == null || value.isNull() || value.isTextual(); }
