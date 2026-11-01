@@ -24,22 +24,24 @@ public class AuthRateLimiter {
     }
 
     public void check(String action, String email, String ipAddress) {
-        String key = "finsight:auth:attempts:" + action + ":" + ipAddress + ":" + sha256(email.trim().toLowerCase());
+        checkKey("finsight:auth:attempts:" + action + ":ip:" + sha256(ipAddress), 30);
+        if (email != null && !email.isBlank())
+            checkKey("finsight:auth:attempts:" + action + ":account:" + sha256(email.trim().toLowerCase(java.util.Locale.ROOT)), MAX_ATTEMPTS);
+    }
+
+    private void checkKey(String key, long limit) {
+        Long attempts;
         try {
-            Long attempts = redis.opsForValue().increment(key);
-            if (attempts != null && attempts == 1L) {
-                redis.expire(key, WINDOW);
-            }
-            if (attempts != null && attempts > MAX_ATTEMPTS) {
-                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                        "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
-            }
-        } catch (ResponseStatusException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            // Redis is a safety layer; a Redis outage must not turn the demo into an auth outage.
-            log.warn("Auth rate limiter unavailable; allowing request: {}", exception.getMessage());
+            attempts = redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+                    "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class),
+                    java.util.List.of(key), Long.toString(WINDOW.toSeconds()));
+            if (attempts == null) throw new IllegalStateException("Missing counter");
+        } catch (RuntimeException unavailable) {
+            log.warn("Auth rate limiter unavailable: {}", unavailable.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "로그인 연결을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
         }
+        if (attempts > limit)
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
     }
 
     private String sha256(String value) {
