@@ -16,6 +16,11 @@ class ChartDocentTest {
         var news = "NONE".equals(relation) ? List.<AiDocentRequest.Article>of() : List.of(new AiDocentRequest.Article(1L, "삼성전자 호실적 발표", "영업이익이 12.5% 증가했다. 다음 사실입니다.", Instant.parse("2026-10-07T00:00:00Z"), relation, "보도"));
         return new AiDocentRequest("005930", "삼성전자", "2026-10-07T00:00:00", 3.25, period, news, level, "코스피", null);
     }
+    @Test void missingNewsShowsCachedSameDayIndexWithoutClaimingACause() {
+        var r = new AiDocentRequest("005930","삼성전자","2026-10-15T00:00:00",-9.48,"D",List.of(),"normal","코스피",-2.5);
+        var text=ChartDocentService.rule(r).possibleReason();
+        assertThat(text).contains("코스피","-2.50%","원인으로 단정하지");
+    }
     @Test void rulesCoverThreeRelationsWithoutCausalClaims() {
         for (String relation : List.of("DIRECT", "MARKET", "NONE")) {
             var result = ChartDocentService.rule(request(relation, "D", "beginner"));
