@@ -98,7 +98,7 @@ public class ChartService {
         return getChart(symbol, period, 5);
     }
 
-    @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", sync = true)
+    @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", unless = "#result.fallback()")
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         var quote = cachedQuote(symbol);
         if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {

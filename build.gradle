@@ -89,3 +89,9 @@ tasks.register('testJudgementRegrade', Exec) {
     commandLine 'python3', '-m', 'unittest', '-v', 'test_regrade_judgements.py'
 }
 tasks.named('test') { dependsOn 'testJudgementRegrade' }
+
+tasks.register('testFreeEntrypoint', Exec) {
+    workingDir 'scripts'
+    commandLine 'python3', '-m', 'unittest', '-v', 'test_start_free.py'
+}
+tasks.named('test') { dependsOn 'testFreeEntrypoint' }

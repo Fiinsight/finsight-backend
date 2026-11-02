@@ -65,7 +65,9 @@ public class MarketSummaryService {
                 new RateView(baseRate.value(), baseRate.asOfPeriod(), baseRate.changePercent(), baseRate.fallback()),
                 new RateView(usdKrwRate.value(), usdKrwRate.asOfPeriod(), usdKrwRate.changePercent(), usdKrwRate.fallback())
         );
-        cachedSummary = new CachedSummary(result, Instant.now().plus(CACHE_TTL));
+        if (!kospi.fallback() && !kosdaq.fallback() && !baseRate.fallback() && !usdKrwRate.fallback()) {
+            cachedSummary = new CachedSummary(result, Instant.now().plus(CACHE_TTL));
+        }
         return result;
     }
 

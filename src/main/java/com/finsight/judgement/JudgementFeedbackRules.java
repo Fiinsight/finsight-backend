@@ -178,10 +178,11 @@ public final class JudgementFeedbackRules {
     public static AiFeedbackResponse generate(AiFeedbackRequest request) {
         boolean aligned = request.userChoice().equals(request.marketResult());
         double percent = request.actualChangePercent();
-        String verdict = aligned && Math.abs(percent) <= 1.0 + 1e-9 ? "PARTIAL" : aligned ? "CORRECT" : "WRONG";
+        boolean neutralCorrect = aligned && "NEUTRAL".equals(request.userChoice());
+        String verdict = aligned && !neutralCorrect && Math.abs(percent) <= 1.0 + 1e-9 ? "PARTIAL" : aligned ? "CORRECT" : "WRONG";
         String reason = java.util.Objects.toString(request.userReason(), "").strip();
         String headline = "PARTIAL".equals(verdict) ? "방향은 맞았지만 변동이 작았어요" : "WRONG".equals(verdict)
-                ? "다르게 움직였어요" : "예측 방향이 같았어요";
+                ? "다르게 움직였어요" : neutralCorrect ? "중립 예측이 맞았어요" : "예측 방향이 같았어요";
         String result = request.relatedSymbolName() + " " + request.comparisonDate() + " 종가 기준 " + signed(percent) + ".";
         boolean indexTarget = List.of("KOSPI", "KOSDAQ").contains(request.relatedSymbol());
         boolean hasIndex = !indexTarget && request.indexChangePercent() != null;
@@ -192,6 +193,7 @@ public final class JudgementFeedbackRules {
                 : "시장과의 차이가 커 개별 소식 등 다른 요인도 확인해야 해요.";
         String summary = result + " 예측(" + label(request.userChoice()) + ")은 실제 결과(" + label(request.marketResult()) + ")와 "
                 + (aligned ? "같은" : "다른") + " 방향이에요. " + comparison;
+        if (neutralCorrect) summary += " 중립 예측대로 등락이 ±0.5% 이내에 머물렀어요.";
         if ("PARTIAL".equals(verdict)) summary += " 방향은 맞았지만 변동이 작아 우연일 수 있어요.";
         if (reason.isBlank()) summary += " 다음엔 판단 근거를 한 줄 남겨보세요.";
         summary += " 가격 변화가 이 뉴스 때문에 생겼다고 단정할 수는 없어요.";

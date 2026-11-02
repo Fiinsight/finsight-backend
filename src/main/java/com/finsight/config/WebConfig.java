@@ -21,6 +21,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/actuator/health/liveness")
+                .allowedOriginPatterns(allowedOriginPatterns.split(","))
+                .allowedMethods("GET", "OPTIONS");
         registry.addMapping("/api/**")
                 .allowedOriginPatterns(allowedOriginPatterns.split(","))
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")

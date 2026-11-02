@@ -10,8 +10,19 @@ import java.util.List;
 class ChartCacheTest {
  @Configuration @EnableCaching static class Config {
   @Bean ConcurrentMapCacheManager cacheManager() { return new ConcurrentMapCacheManager("chartResponses", "kisStockQuotes", "popularStockQuotes", "kisDailyCandles"); }
-  @Bean KisDailyCandleClient daily() { var client = mock(KisDailyCandleClient.class); when(client.getCandlesWithStatus(anyString(),anyInt(),anyString())).thenReturn(new KisDailyCandleResult(List.of(), true)); return client; }
+  @Bean KisDailyCandleClient daily() { var client = mock(KisDailyCandleClient.class); when(client.getCandlesWithStatus(anyString(),anyInt(),anyString())).thenReturn(new KisDailyCandleResult(List.of(), false)); return client; }
   @Bean ChartService service(KisDailyCandleClient daily) { return new ChartService(daily, null, null, null, null); }
+ }
+ @Test void failureDoesNotPreventARecoveredChartBeforeCacheExpiry() {
+  try (var context = new AnnotationConfigApplicationContext(Config.class)) {
+   KisDailyCandleClient daily = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(context.getBean(KisDailyCandleClient.class));
+   when(daily.getCandlesWithStatus("005930",30,"D")).thenReturn(new KisDailyCandleResult(List.of(),true),new KisDailyCandleResult(List.of(),false));
+   var service = context.getBean(ChartService.class);
+   assertThat(service.getChart("005930","D",5).fallback()).isTrue();
+   assertThat(service.getChart("005930","D",5).fallback()).isFalse();
+   assertThat(service.getChart("005930","D",5).fallback()).isFalse();
+   verify(daily,times(2)).getCandlesWithStatus("005930",30,"D");
+  }
  }
  @Test void dailyIntervalsShareOneCacheEntry() {
   try (var context = new AnnotationConfigApplicationContext(Config.class)) {

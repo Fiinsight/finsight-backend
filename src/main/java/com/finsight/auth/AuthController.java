@@ -30,7 +30,8 @@ public class AuthController {
     @DeleteMapping("/me") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteAccount(@AuthenticationPrincipal Long userId) { auth.deleteAccount(userId); }
     @GetMapping("/kakao/url")
-    public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String redirectUri) {
+    public AuthDtos.KakaoUrlResponse kakaoUrl(@RequestParam(required = false) String redirectUri, HttpServletRequest httpRequest) {
+        rateLimiter.check("kakao", "", httpRequest.getRemoteAddr());
         return new AuthDtos.KakaoUrlResponse(auth.kakaoUrl(redirectUri));
     }
     @GetMapping("/kakao/status")
@@ -41,7 +42,8 @@ public class AuthController {
     public ResponseEntity<Void> kakaoCallback(@RequestParam(required = false) String code,
                                               @RequestParam(required = false) String state,
                                               @RequestParam(required = false) String error,
-                                              @RequestParam(name = "error_description", required = false) String errorDescription) {
+                                              @RequestParam(name = "error_description", required = false) String errorDescription, HttpServletRequest httpRequest) {
+        rateLimiter.check("kakao", "", httpRequest.getRemoteAddr());
         if ((code == null || code.isBlank()) && (error == null || error.isBlank())) {
             error = "invalid_callback";
             errorDescription = "카카오 인증 결과가 비어 있습니다.";
@@ -51,5 +53,8 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.FOUND).headers(headers).build();
     }
     @PostMapping("/kakao")
-    public AuthDtos.AuthResponse kakao(@Valid @RequestBody AuthDtos.KakaoRequest request) { return auth.kakao(request.code()); }
+    public AuthDtos.AuthResponse kakao(@Valid @RequestBody AuthDtos.KakaoRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check("kakao", "", httpRequest.getRemoteAddr());
+        return auth.kakao(request.code());
+    }
 }

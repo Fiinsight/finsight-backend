@@ -39,7 +39,11 @@ public class BriefingService {
         this.newsCategoryClassifier = newsCategoryClassifier;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.finsight.news.NewsCollectionScheduler collection;
+
     public List<NewsBriefResponse> getTodayBriefing() {
+        if (collection != null) collection.requestCatchUp();
         return rankedNews().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
     }
 
@@ -57,15 +61,19 @@ public class BriefingService {
 
     private List<News> loadRankedNews() {
         Instant today = LocalDate.now(KOREA_ZONE).atStartOfDay(KOREA_ZONE).toInstant();
-        // ponytail: rank the latest 1000 candidates; use DB scoring if the archive grows beyond this window.
-        List<News> ranked = NewsDeduplicator.distinctArticles(newsRepository.findAllByOrderByPublishedAtDesc(PageRequest.of(0, 1000)).stream()
+        record Scored(News news, int score) {}
+        Instant now = Instant.now();
+        List<News> ranked = NewsDeduplicator.distinctArticles(newsRepository.findByPublishedAtBetweenOrderByPublishedAtDesc(
+                    today.minus(java.time.Duration.ofDays(7)), now, PageRequest.of(0,300)).stream()
+                .filter(n -> n.getPublishedAt() != null && !n.getPublishedAt().isAfter(now))
                 .filter(this::isUsable)
-                .filter(news -> relevanceScorer.scoreArticle(news.getTitle(), news.getRawContent()) > 0)
-                .sorted(Comparator.comparing((News n) -> n.getPublishedAt() != null && !n.getPublishedAt().isBefore(today)).reversed()
-                        .thenComparing(Comparator.comparingInt((News n) -> relevanceScorer.scoreArticle(n.getTitle(), n.getRawContent())).reversed())
-                        .thenComparing(News::getPublishedAt, Comparator.nullsLast(Comparator.reverseOrder()))
-                        .thenComparing(News::getId, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList());
+                .map(n -> new Scored(n,relevanceScorer.scoreArticle(n.getTitle(),n.getRawContent())))
+                .filter(row -> row.score() > 0)
+                .sorted(Comparator.comparing((Scored row) -> !row.news().getPublishedAt().isBefore(today)).reversed()
+                        .thenComparing(Comparator.comparingInt(Scored::score).reversed())
+                        .thenComparing(row -> row.news().getPublishedAt(), Comparator.reverseOrder())
+                        .thenComparing(row -> row.news().getId(), Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(Scored::news).toList());
         java.util.Set<String> categories = new java.util.HashSet<>();
         java.util.List<News> selected = new java.util.ArrayList<>();
         boolean hasToday = ranked.stream().anyMatch(n -> !n.getPublishedAt().isBefore(today));

@@ -47,7 +47,9 @@ class LearningProgressServiceTest {
   when(db.queryForList(contains("JOIN news"),eq(1L),any(),any())).thenReturn(List.of(wrong,wrong,wrong,wrong,wrong));
   assertEquals(0,service.get(1L).totalDecidedCount());
   verify(db,atLeastOnce()).queryForList(contains("j.created_at>=?"),eq(1L),any(),any());
-  var readGoal=service.get(1L,List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4)));
+  assertFalse(service.get(1L,List.of(LocalDate.of(2026,10,5))).goal().achievedToday()); // Client dates alone are not server evidence.
+  when(db.query(contains("FROM reading_attendance"),any(RowMapper.class),eq(1L),any())).thenReturn(List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4)));
+  var readGoal=service.get(1L,List.of());
   assertTrue(readGoal.goal().achievedToday()); assertEquals(2,readGoal.goal().streakDays());
   verify(db,atLeastOnce()).queryForList(contains("JOIN news"),eq(2L),any(),any());
  }
@@ -65,5 +67,17 @@ class LearningProgressServiceTest {
    when(db.queryForList(contains("activities"),eq(1L),eq(1L),eq(1L),any(),eq(type),any())).thenReturn(List.of());
    assertEquals(type.equals("reviewJudgement"),service.get(1L,List.of(),List.of(date,date.plusDays(1))).goal().achievedToday());
   }
+ }
+
+ @Test void neutralMatchingDirectionAlreadyCountsAsAHitIndependentOfFeedbackVerdict() {
+  var db=mock(JdbcTemplate.class);var profiles=mock(com.finsight.auth.UserProfileService.class);
+  when(profiles.getOnboarding(anyLong())).thenReturn(new com.finsight.auth.UserProfileDtos.OnboardingResponse(List.of(),"beginner","short","news","뉴스 하나 읽기",null));
+  var symbols=mock(com.finsight.news.collect.NewsSymbolMatcher.class);when(symbols.match(any(),any())).thenReturn("KOSPI");
+  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,symbols,mock(TermMasteryService.class));
+  var wrong=Map.<String,Object>of("choice","UP","actual_direction","DOWN","news_id",1L,"related_symbol","KOSPI","title","금리 동결","raw_content","금리 환경");
+  var neutral=new HashMap<>(wrong);neutral.put("choice","NEUTRAL");neutral.put("actual_direction","NEUTRAL");
+  when(db.queryForList(contains("JOIN news"),eq(1L),any(),any())).thenReturn(List.of(wrong,wrong,wrong,wrong,neutral));
+  var progress=service.get(1L);
+  assertEquals(5,progress.totalDecidedCount());assertEquals(1,progress.weakAreas().getFirst().hitCount());
  }
 }

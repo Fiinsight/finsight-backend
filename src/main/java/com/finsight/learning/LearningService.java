@@ -25,7 +25,7 @@ public class LearningService {
     public record Lesson(Long newsId, String level, String summary, String readingGuide, String mode,
                          List<Glossary> glossary, Question question) {}
     record GradedQuestion(Question publicQuestion, String level, String correctAnswer) {}
-    public record AnswerResult(boolean correct, String definition, String message, String termDefinition) {}
+    public record AnswerResult(boolean correct, String definition, String message, String termDefinition, boolean practice) {}
     public record Review(Long newsId, String title, String term, String definition, String level, Instant answeredAt) {}
     private static final List<Set<String>> TERM_FIELDS = List.of(
             Set.of("금리", "기준금리", "국채금리", "환율", "원화", "원달러", "물가", "인플레이션", "양적완화"),
@@ -94,6 +94,7 @@ public class LearningService {
     @Transactional
     public AnswerResult answer(Long userId, Long newsId, String level, String term, int answerIndex) {
         validateLevel(level);
+        users.lockWatchlistOwner(userId);
         News article = article(newsId);
         List<Term> dictionary = terms.findAll();
         Term target = articleTerms(article, dictionary).stream().filter(t -> t.getTerm().equals(term)).findFirst()
@@ -106,10 +107,10 @@ public class LearningService {
         boolean correct = question.options().get(answerIndex).equals(graded.correctAnswer());
         LearningProgress record = progress.findByUser_IdAndNews_IdAndTermAndQuestionType(userId, newsId, term, question.type())
                 .orElseGet(() -> new LearningProgress(users.findById(userId).orElseThrow(), article, term));
+        boolean counted = mastery.answer(userId,newsId,term,graded.level(),correct,question.options().size(),question.type());
         record.answer(graded.level(), correct, question.type());
         progress.save(record);
-        if (question.type() == QuestionType.DEFINITION) mastery.answer(userId, term, graded.level(), correct);
-        return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition());
+        return new AnswerResult(correct, graded.correctAnswer(), correct ? "정답이에요!" : "아쉬워요", target.getShortDefinition(), !counted);
     }
     @Transactional(readOnly = true)
     public List<DailyTerm> dailyTerms(Long userId) {
@@ -147,8 +148,10 @@ public class LearningService {
     }
     @Transactional(readOnly = true)
     public List<Review> reviews(Long userId) {
+        Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
+        mastery.list(userId).forEach(row -> knowledge.put(row.term(),row));
         Map<String,Double> probabilities = new HashMap<>();
-        mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
+        knowledge.forEach((term,row) -> probabilities.put(term,row.effectivePKnown()));
         LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
         progress.findByUser_IdOrderByAnsweredAtDesc(userId).stream().filter(row -> row.getQuestionType() == QuestionType.DEFINITION).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
         Map<String,Term> dictionary = new HashMap<>();
@@ -156,7 +159,7 @@ public class LearningService {
         return latest.values().stream()
                 .filter(row -> row.getQuestionType() == QuestionType.DEFINITION)
                 .filter(row -> dictionary.containsKey(row.getTerm()) && dictionary.get(row.getTerm()).quizEligible(row.getLevel()))
-                .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), row.isCorrect()))
+                .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), knowledge.containsKey(row.getTerm()) && knowledge.get(row.getTerm()).lastCorrect() != null ? knowledge.get(row.getTerm()).lastCorrect() : row.isCorrect()))
                 .sorted(Comparator
                 .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
                 .thenComparing(LearningProgress::getTerm)).limit(10)

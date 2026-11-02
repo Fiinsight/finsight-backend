@@ -11,3 +11,4 @@ target/
 # Local Python script bytecode
 scripts/__pycache__/
 scripts/seed_demo_personas/__pycache__/
+*.local

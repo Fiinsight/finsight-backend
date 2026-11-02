@@ -19,6 +19,8 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      timeout: 2s
+      connect-timeout: 2s
 
 finsight:
   news:
@@ -26,7 +28,7 @@ finsight:
       enabled: ${FINSIGHT_NEWS_COLLECTION_ENABLED:true}
   auth:
     jwt-secret: ${JWT_SECRET:}
-    expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:604800}
     kakao-client-id: ${KAKAO_CLIENT_ID:}
     kakao-client-secret: ${KAKAO_CLIENT_SECRET:}
     # 웹 브라우저 데모는 localhost로 고정하고, 운영 환경에서는 KAKAO_REDIRECT_URI로 덮어쓴다.
@@ -47,7 +49,7 @@ finsight:
     base-url: ${AI_BASE_URL:http://localhost:8001}
   local-ml:
     enabled: ${FINSIGHT_LOCAL_ML_ENABLED:false}
-    base-url: ${FINSIGHT_LOCAL_ML_BASE_URL:http://127.0.0.1:8002}
+    base-url: ${FINSIGHT_LOCAL_ML_BASE_URL:${AI_BASE_URL:http://127.0.0.1:8001}}
   kis:
     base-url: ${KIS_BASE_URL:https://openapivts.koreainvestment.com:29443}
     app-key: ${KIS_APP_KEY:}

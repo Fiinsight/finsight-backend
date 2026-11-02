@@ -16,6 +16,9 @@ public final class UserProfileDtos {
 
     public record OnboardingRequest(@NotEmpty @Size(max = 10) List<@Valid OnboardingAnswer> answers) {}
 
+    public record NicknameRequest(@NotBlank @Size(min = 2, max = 30) String nickname) {}
+    public record NicknameResponse(String nickname) {}
+
     public record LearningLevelRequest(@NotBlank @jakarta.validation.constraints.Pattern(regexp = "beginner|normal|analyst") String level) {}
 
     public record OnboardingResponse(List<OnboardingAnswer> answers, String learningLevel,

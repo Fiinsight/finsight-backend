@@ -16,10 +16,12 @@ server:
   forward-headers-strategy: framework
 
 finsight:
+  learning:
+    daily-credit-enabled: ${LEARNING_DAILY_CREDIT_ENABLED:true}
   auth:
     # Production must provide a private, base64-encoded secret; never use the
     # development fallback from application.yml in a deployed environment.
     jwt-secret: ${JWT_SECRET}
-    expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:604800}
   cors:
     allowed-origin-patterns: ${FRONTEND_ORIGIN}

@@ -51,7 +51,7 @@ public class LearningProgressService {
                 (rs,index) -> rs.getDate("day").toLocalDate(), userId, java.sql.Timestamp.from(now.toInstant()), userId, java.sql.Timestamp.from(now.toInstant()), userId, java.sql.Timestamp.from(now.toInstant())));
         LocalDate day = activity.contains(today) ? today : today.minusDays(1);
         int streak=0; while (activity.contains(day)) { streak++; day=day.minusDays(1); }
-        var decisions = jdbc.queryForList("SELECT j.choice,j.actual_direction,n.id AS news_id,n.title,n.raw_content,n.related_symbol,j.target_symbol FROM judgement j JOIN news n ON n.id=j.news_id WHERE j.user_id=? AND j.feedback_generated_at IS NOT NULL AND j.actual_direction IN ('UP','NEUTRAL','DOWN') AND j.actual_change_percent IS NOT NULL AND j.comparison_date IS NOT NULL AND j.created_at>=? AND j.created_at<=? ORDER BY j.created_at DESC", userId, java.sql.Timestamp.from(now.minusDays(30).toInstant()), java.sql.Timestamp.from(now.toInstant())).stream()
+        var decisions = jdbc.queryForList("SELECT j.choice,j.actual_direction,n.id AS news_id,n.title,n.raw_content,n.related_symbol,j.target_symbol FROM judgement j JOIN news n ON n.id=j.news_id WHERE j.user_id=? AND j.feedback_generated_at IS NOT NULL AND j.actual_direction IN ('UP','NEUTRAL','DOWN') AND j.actual_change_percent IS NOT NULL AND j.comparison_date IS NOT NULL AND COALESCE(j.feedback_text,'') NOT LIKE '%[시연용 가상 결과]%' AND j.created_at>=? AND j.created_at<=? ORDER BY j.created_at DESC", userId, java.sql.Timestamp.from(now.minusDays(30).toInstant()), java.sql.Timestamp.from(now.toInstant())).stream()
                 .filter(row -> com.finsight.judgement.JudgementTargetResolver.valid((String) row.get("target_symbol")) || (Objects.equals(row.get("related_symbol"), symbols.match((String)row.get("title"), (String)row.get("raw_content"))) && row.get("related_symbol") != null)).toList();
         Map<String,List<Map<String,Object>>> fields = new LinkedHashMap<>();
         for (var row:decisions) {
@@ -70,7 +70,7 @@ public class LearningProgressService {
         String type = profile.goalType() == null ? "read1" : profile.goalType();
         Set<LocalDate> achieved = new HashSet<>();
         if ("read1".equals(type)) {
-            readDays.stream().filter(date -> !date.isAfter(today)).forEach(achieved::add);
+            jdbc.query("SELECT read_day FROM reading_attendance WHERE user_id=? AND read_day<=? AND cardinality(news_ids)>0",(rs,index)->rs.getDate("read_day").toLocalDate(),userId,today).forEach(achieved::add);
         } else {
             String activitySql = "SELECT (at AT TIME ZONE 'Asia/Seoul')::date AS day, COUNT(*) AS count FROM ("
                 + "SELECT created_at AS at,'judgement' AS kind FROM judgement WHERE user_id=? UNION ALL "

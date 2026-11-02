@@ -18,6 +18,11 @@ public class JudgementService {
     private static final String ACK_FEEDBACK_TEXT =
             "판단이 기록되었습니다. 다음 거래일 장 마감 후 결과를 확인해보세요.";
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private PriceAdjustmentHolds adjustmentHolds;
+
+    private java.time.Clock clock = java.time.Clock.system(java.time.ZoneId.of("Asia/Seoul"));
+
     private final JudgementRepository judgementRepository;
     private final NewsRepository newsRepository;
 
@@ -31,6 +36,8 @@ public class JudgementService {
         News news = newsRepository.findById(request.newsId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "존재하지 않는 뉴스 id 입니다: " + request.newsId()));
+        if (ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),java.time.Instant.now()))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"이 기사는 복습용이에요. 최근 기사에서 판단을 남겨주세요.");
         var target = JudgementTargetResolver.resolve(news);
         if (target.symbol() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사는 판단할 대상이 없어요");
 
@@ -54,8 +61,7 @@ public class JudgementService {
     }
 
     static java.time.LocalDate expectedResultDate(java.time.Instant judgedAt) {
-        try { return KoreanTradingCalendar.next(judgedAt.atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate()); }
-        catch (IllegalArgumentException unsupportedCalendar) { return null; }
+        return JudgementPendingReason.comparisonDate(judgedAt);
     }
     static java.time.Instant expectedResultAt(java.time.Instant judgedAt) {
         var date=expectedResultDate(judgedAt);
@@ -79,6 +85,14 @@ public class JudgementService {
                 issue = "LEGACY_COMPARISON";
                 notice = "이 기록은 판단한 날의 가격으로 비교돼 다음 거래일 예측의 결과로 해석하기 어려워요. 대상과 비교 종가가 확인된 새 판단에서 설명을 확인해보세요.";
             }
+        }
+        if (j.getActualDirection() == null && adjustmentHolds != null && adjustmentHolds.contains(j.getId())) {
+            issue = "PRICE_ADJUSTMENT";
+            notice = "가격 조정 확인 필요: 종가 등락률이 ±30%를 넘어 채점을 보류했어요.";
+        }
+        if (j.getActualChangePercent() != null && Math.abs(j.getActualChangePercent()) > 30.000000001) {
+            issue = "PRICE_ADJUSTMENT";
+            notice = "가격 조정 확인 필요: 저장된 등락률이 ±30%를 넘어 적중 여부를 표시하지 않아요.";
         }
         if (issue != null) content = null;
         var displayReasons = content == null ? null : content.reasons();
@@ -104,7 +118,7 @@ public class JudgementService {
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
                 content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
                 content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(),
-                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue);
+                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue, reviewOnly ? "RULE" : content == null ? null : content.mode(), JudgementPendingReason.of(j,clock.instant()));
     }
 
     private String symbolName(String symbol) {

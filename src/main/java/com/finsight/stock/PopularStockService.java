@@ -41,7 +41,7 @@ public class PopularStockService {
         this.kisStockQuoteClient = kisStockQuoteClient;
     }
 
-    @Cacheable(cacheNames = "popularStockQuotes", key = "'all'", sync = true)
+    @Cacheable(cacheNames = "popularStockQuotes", key = "'all'", unless = "#result.?[!fallback()].isEmpty()")
     public List<PopularStockView> getPopularStocks() {
         return POPULAR_SYMBOLS.entrySet().stream()
                 .map(entry -> {

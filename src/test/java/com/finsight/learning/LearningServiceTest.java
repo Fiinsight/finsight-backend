@@ -52,7 +52,7 @@ class LearningServiceTest {
         assertEquals(target.getShortDefinition(),right.termDefinition());
         assertFalse(java.util.Arrays.stream(LearningService.AnswerResult.class.getRecordComponents()).anyMatch(field -> field.getName().equals("correctIndex")));
         verify(progress,times(2)).findByUser_IdAndNews_IdAndTermAndQuestionType(1L,115L,"환율",QuestionType.DEFINITION);
-        verify(mastery).answer(1L,"환율","beginner",true); verify(mastery).answer(1L,"환율","beginner",false);
+        verify(mastery).answer(1L,115L,"환율","beginner",true,3,QuestionType.DEFINITION); verify(mastery).answer(1L,115L,"환율","beginner",false,3,QuestionType.DEFINITION);
         when(article.getRawContent()).thenReturn("환율과 금리가 변했다.");
         when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.9,.45,5,java.time.Instant.now(),"beginner"), new TermMasteryService.Mastery("금리",.55,.55,2,java.time.Instant.now(),"beginner")));
         assertEquals("환율",service.lesson(1L,115L,"beginner").question().term());
@@ -121,8 +121,8 @@ class LearningServiceTest {
         service.answer(1L,1L,"normal","환율",fallback.options().indexOf("통화 교환 비율"));
         var saved=org.mockito.ArgumentCaptor.forClass(LearningProgress.class); verify(progress,times(3)).save(saved.capture());
         assertEquals(List.of("normal","analyst","normal"),saved.getAllValues().stream().map(LearningProgress::getLevel).toList());
-        verify(mastery).answer(1L,"환율","normal",true);
-        verify(mastery, times(1)).answer(any(),any(),any(),anyBoolean());
+        verify(mastery).answer(1L,1L,"환율","normal",true,3,QuestionType.DEFINITION);
+        verify(mastery, times(1)).answer(any(),any(),any(),any(),anyBoolean(),anyInt(),eq(QuestionType.DEFINITION));
         assertEquals(List.of(QuestionType.DIRECTION,QuestionType.FACT_CHECK,QuestionType.DEFINITION),
                 saved.getAllValues().stream().map(LearningProgress::getQuestionType).toList());
         verify(ai,never()).generateFeedback(any());

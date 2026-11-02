@@ -38,6 +38,17 @@ class KisMinuteCandleClientTest {
         server.shutdown();
     }
 
+    @Test void failedMinuteLoadDoesNotHideRecoveryForOneMinute() {
+        server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("{\"rt_cd\":\"1\"}"));
+        server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("""
+                {"rt_cd":"0","output2":[{"stck_bsop_date":"20261026","stck_cntg_hour":"090000","stck_oprc":"100","stck_hgpr":"110","stck_lwpr":"90","stck_prpr":"105"}]}
+                """));
+        assertTrue(client.getCandlesWithStatus("005930", 5, 120).fallback());
+        assertFalse(client.getCandlesWithStatus("005930", 5, 120).fallback());
+        assertFalse(client.getCandlesWithStatus("005930", 5, 120).fallback());
+        assertEquals(2, server.getRequestCount());
+    }
+
     @Test
     void sendsRequiredKisCursorAndParsesLiveCandleShape() throws Exception {
         server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("""

@@ -12,11 +12,12 @@ public final class KnowledgeTracing {
 
     public static double update(double prior, boolean correct, String level) {
         if (!Double.isFinite(prior) || prior < 0 || prior > 1) throw new IllegalArgumentException("Invalid probability");
-        double guess, slip;
+        double guess = 1.0 / 3;
+        double slip;
         switch (level) {
-            case "beginner" -> { guess = 0.33; slip = 0.1; }
-            case "normal" -> { guess = 0.30; slip = 0.15; }
-            case "analyst" -> { guess = 0.25; slip = 0.20; }
+            case "beginner" -> { slip = 0.1; }
+            case "normal" -> { slip = 0.15; }
+            case "analyst" -> { slip = 0.20; }
             default -> throw new IllegalArgumentException("Invalid level");
         }
         double known = prior * (correct ? 1 - slip : slip);

@@ -25,17 +25,20 @@ import java.net.URI;
 @Service
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-    private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(8);
+    // The shared free CPU can spend over 8 seconds initializing the first TLS connection.
+    private static final Duration KAKAO_CALL_TIMEOUT = Duration.ofSeconds(20);
     private final com.github.benmanes.caffeine.cache.Cache<String, String> oauthStates = com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
             .maximumSize(10000).expireAfterWrite(Duration.ofMinutes(5)).build();
-    @jakarta.persistence.PersistenceContext
-    private jakarta.persistence.EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired
+    private OAuthStateStore sharedOAuthStates;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AccountDataDeletion accountDataDeletion;
     @org.springframework.transaction.annotation.Transactional
     public void deleteAccount(Long userId) {
         User user = users.findById(userId).orElseThrow(this::unauthorized);
-        for (String entity : java.util.List.of("LearningProgress", "ArticleNote", "DailyNote", "Judgement"))
-            entityManager.createQuery("delete from " + entity + " record where record.user.id = :userId").setParameter("userId", userId).executeUpdate();
+        accountDataDeletion.deleteForUser(userId);
         users.delete(user);
+        users.flush();
     }
     private final UserRepository users;
     private final JwtService jwt;
@@ -98,7 +101,7 @@ public class AuthService {
             log.warn("Kakao token exchange failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
         } catch (RuntimeException e) {
-            log.warn("Kakao token exchange timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            log.warn("Kakao token exchange timed out or failed: elapsedMs={}, cause={}", elapsedMs(startedAt), org.springframework.core.NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
             throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 인증 서버 응답이 지연되고 있습니다.");
         }
         if (token == null || token.get("access_token") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 토큰 발급에 실패했습니다.");
@@ -110,7 +113,7 @@ public class AuthService {
             log.warn("Kakao profile request failed: status={}, elapsedMs={}", e.getStatusCode().value(), elapsedMs(startedAt));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
         } catch (RuntimeException e) {
-            log.warn("Kakao profile request timed out or failed: elapsedMs={}", elapsedMs(startedAt));
+            log.warn("Kakao profile request timed out or failed: elapsedMs={}, cause={}", elapsedMs(startedAt), org.springframework.core.NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
             throw new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "카카오 사용자 정보 응답이 지연되고 있습니다.");
         }
         if (profile == null || profile.get("id") == null) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "카카오 사용자 정보를 가져오지 못했습니다.");
@@ -142,7 +145,7 @@ public class AuthService {
             user.setEmail(resolvedEmail);
         }
         users.save(user);
-        log.info("Kakao login completed: providerId={}, elapsedMs={}", kakaoId, elapsedMs(startedAt));
+        log.info("Kakao login completed: elapsedMs={}", elapsedMs(startedAt));
         return response(user);
     }
     public String kakaoUrl(String redirectUri) {
@@ -150,7 +153,8 @@ public class AuthService {
         String destination = redirectUri == null || redirectUri.isBlank() ? kakaoAppRedirectUri : redirectUri;
         if (!isAllowedAppRedirect(destination)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "허용되지 않은 로그인 복귀 주소입니다.");
         String state = java.util.UUID.randomUUID().toString();
-        oauthStates.put(state, destination);
+        if (sharedOAuthStates != null) sharedOAuthStates.put(state, destination);
+        else oauthStates.put(state, destination);
         String url = "https://kauth.kakao.com/oauth/authorize?client_id=" + encode(kakaoClientId)
                 + "&redirect_uri=" + encode(kakaoRedirectUri) + "&response_type=code"
                 + (kakaoScopes.isBlank() ? "" : "&scope=" + encode(kakaoScopes));
@@ -162,7 +166,8 @@ public class AuthService {
         return new AuthDtos.KakaoConfigStatus(!kakaoClientId.isBlank() && !kakaoRedirectUri.isBlank(), kakaoRedirectUri, kakaoAppRedirectUri);
     }
     public String kakaoCallbackUri(String code, String state, String error, String errorDescription) {
-        String destination = state == null ? null : oauthStates.asMap().remove(state);
+        String destination = state == null ? null : sharedOAuthStates != null
+                ? sharedOAuthStates.consume(state) : oauthStates.asMap().remove(state);
         if (destination == null) return kakaoAppRedirectUri + "?error=invalid_state";
         String separator = destination.contains("?") ? "&" : "?";
         if (error != null && !error.isBlank()) {

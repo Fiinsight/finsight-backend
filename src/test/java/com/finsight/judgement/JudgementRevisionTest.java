@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class JudgementRevisionTest {
     @Test void pendingRevisionPreservesIdAndConfirmedResultReturns409() {
         var records=mock(JudgementRepository.class); var newsRepo=mock(NewsRepository.class);
-        var owner=mock(User.class); var news=mock(News.class); when(news.getTitle()).thenReturn("삼성전자 실적 발표"); when(news.getRawContent()).thenReturn("삼성전자 매출이 증가했다. 영업이익이 늘었다."); when(news.getId()).thenReturn(211L);
+        var owner=mock(User.class); var news=mock(News.class); when(news.getTitle()).thenReturn("삼성전자 실적 발표"); when(news.getRawContent()).thenReturn("삼성전자 매출이 증가했다. 영업이익이 늘었다."); when(news.getId()).thenReturn(211L);when(news.getPublishedAt()).thenReturn(java.time.Instant.now());
         when(newsRepo.findById(211L)).thenReturn(Optional.of(news));
         var existing=new Judgement(owner,news,JudgementChoice.UP,"最初");
         when(records.findFirstByUserAndNewsIdOrderByCreatedAtDescIdDesc(owner,211L)).thenReturn(Optional.of(existing));

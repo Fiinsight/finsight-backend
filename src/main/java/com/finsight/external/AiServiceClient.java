@@ -34,8 +34,16 @@ public class AiServiceClient {
 
     private final WebClient webClient;
 
-    public AiServiceClient(WebClient.Builder webClientBuilder, @Value("${finsight.ai.base-url}") String baseUrl) {
-        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
+    public AiServiceClient(WebClient.Builder webClientBuilder, String baseUrl) {
+        this(webClientBuilder, baseUrl, "");
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiServiceClient(WebClient.Builder webClientBuilder, @Value("${finsight.ai.base-url}") String baseUrl,
+            @Value("${AI_INTERNAL_TOKEN:}") String internalToken) {
+        var builder = webClientBuilder.clone().baseUrl(baseUrl);
+        if (!internalToken.isBlank()) builder.defaultHeader("Authorization", "Bearer " + internalToken);
+        this.webClient = builder.build();
     }
 
     public record ReadingAid(String level, String summary, String readingGuide, String mode) {}
@@ -60,7 +68,7 @@ public class AiServiceClient {
                     .bodyToMono(AiRewriteResponse.class)
                     .timeout(CALL_TIMEOUT)
                     .block();
-            return Optional.ofNullable(response);
+            return Optional.ofNullable(response).filter(value -> "EXCERPT".equals(value.mode()) || "REWRITTEN".equals(value.mode()) || "UNAVAILABLE".equals(value.mode()));
         } catch (Exception e) {
             log.warn("AI service rewrite call failed, skipping: {}", e.getMessage());
             return Optional.empty();

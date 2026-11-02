@@ -19,19 +19,24 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
 class LocalRetrievalControllerTest {
+    @Test void boundedSearchExcerptKeepsLateQueryEvidence() {
+        String body = "앞부분 ".repeat(700) + "반도체 수출 실적 증가 " + "뒷부분 ".repeat(700);
+        String excerpt = LocalRetrievalCandidates.searchExcerpt(body, List.of("반도체"));
+        assertTrue(excerpt.contains("반도체 수출 실적 증가"));
+        assertEquals(2000, excerpt.length());
+    }
+
     @Test @SuppressWarnings("unchecked") void chartFindsBodyMentionRegardlessOfLegacySingleTicker() throws Exception {
         var requestBody = new AtomicReference<String>();
         var server = server(200, "{\"status\":\"MODEL\",\"results\":[{\"id\":\"1\"}]}", requestBody);
         try {
             var em=mock(EntityManager.class);
-            TypedQuery<News> q=mock(TypedQuery.class,RETURNS_SELF);
-            when(em.createQuery(contains("select n from News"),eq(News.class))).thenReturn(q);
-            News n=mock(News.class); when(n.getId()).thenReturn(1L); when(n.getTitle()).thenReturn("증시 동향");
-            when(n.getRawContent()).thenReturn("삼성전자와 SK 하이닉스 실적 전망. 제보는 카카오톡 okjebo");
-            when(n.getRelatedSymbol()).thenReturn("KOSPI");
-            when(q.getResultList()).thenReturn(List.of(n));
+            jakarta.persistence.Query q=mock(jakarta.persistence.Query.class,RETURNS_SELF);
+            when(em.createNativeQuery(contains("from news n"))).thenReturn(q);
+            var n=new Object[]{1L,"증시 동향","삼성전자와 SK 하이닉스 실적 전망. 제보는 카카오톡 okjebo",null,"KOSPI",null,null};
+            when(q.getResultList()).thenReturn(java.util.Collections.singletonList(n));
             var mapper=new ObjectMapper().findAndRegisterModules();
-            var controller=new LocalRetrievalController(em,mapper,endpoint(server));
+            var controller=new LocalRetrievalController(new LocalRetrievalCandidates(em),mapper,endpoint(server));
             var request=new LocalRetrievalController.Query("하이닉스 실적","news",null,null,"000660",null);
             var response=controller.search(7L,request);
             assertEquals("MODEL",response.get("status"));
@@ -46,10 +51,10 @@ class LocalRetrievalControllerTest {
     }
     @Test @SuppressWarnings("unchecked") void appliesQueryWordsBeforeCandidateLimitAndDoesNotForcePastOnly() {
         var em = mock(EntityManager.class);
-        TypedQuery<News> q = mock(TypedQuery.class, RETURNS_SELF);
-        when(em.createQuery(contains("lower(n.title) like :keyword0"), eq(News.class))).thenReturn(q);
+        jakarta.persistence.Query q = mock(jakarta.persistence.Query.class, RETURNS_SELF);
+        when(em.createNativeQuery(contains("lower(n.title) like :keyword0"))).thenReturn(q);
         when(q.getResultList()).thenReturn(List.of());
-        var c = new LocalRetrievalController(em, new ObjectMapper(), "http://127.0.0.1:1");
+        var c = new LocalRetrievalController(new LocalRetrievalCandidates(em), new ObjectMapper(), "http://127.0.0.1:1");
         c.search(7L, new LocalRetrievalController.Query("현대로템 환율", "news", null, null, null, null));
         verify(q).setParameter("keyword0", "%현대로템%");
         verify(q).setParameter("keyword1", "%환율%");
@@ -63,7 +68,7 @@ class LocalRetrievalControllerTest {
     }
     @Test void rejectsAnonymousBeforeReadingAnyData() {
         var em=mock(EntityManager.class);
-        var c=new LocalRetrievalController(em,new ObjectMapper().findAndRegisterModules(),"http://127.0.0.1:1");
+        var c=new LocalRetrievalController(new LocalRetrievalCandidates(em),new ObjectMapper().findAndRegisterModules(),"http://127.0.0.1:1");
         assertThrows(ResponseStatusException.class,()->c.search(null,query("news")));
         verifyNoInteractions(em);
     }
@@ -72,7 +77,7 @@ class LocalRetrievalControllerTest {
         TypedQuery<Judgement> q=mock(TypedQuery.class,RETURNS_SELF);
         when(em.createQuery(contains("j.user.id=:owner"),eq(Judgement.class))).thenReturn(q);
         when(q.getResultList()).thenReturn(List.of());
-        var c=new LocalRetrievalController(em,new ObjectMapper(),"http://127.0.0.1:1");
+        var c=new LocalRetrievalController(new LocalRetrievalCandidates(em),new ObjectMapper(),"http://127.0.0.1:1");
         assertEquals("DATA_UNAVAILABLE",c.search(7L,query("case")).get("status"));
         verify(q).setParameter("owner",7L);
         verify(q).setParameter("end",Instant.parse("2026-09-28T00:00:00Z"));
@@ -81,12 +86,11 @@ class LocalRetrievalControllerTest {
         var server = server(200, "{\"status\":\"MODEL\",\"results\":[{\"id\":\"other-user-item\"}]}", new AtomicReference<>());
         try {
             var em=mock(EntityManager.class);
-            TypedQuery<News> q=mock(TypedQuery.class,RETURNS_SELF);
-            when(em.createQuery(contains("select n from News"),eq(News.class))).thenReturn(q);
-            News n=mock(News.class); when(n.getId()).thenReturn(1L); when(n.getTitle()).thenReturn("HBM 공급");
-            when(n.getPublishedAt()).thenReturn(Instant.parse("2026-09-02T00:00:00Z"));
-            when(q.getResultList()).thenReturn(List.of(n));
-            var c=new LocalRetrievalController(em,new ObjectMapper().findAndRegisterModules(),endpoint(server));
+            jakarta.persistence.Query q=mock(jakarta.persistence.Query.class,RETURNS_SELF);
+            when(em.createNativeQuery(contains("from news n"))).thenReturn(q);
+            var n=new Object[]{1L,"HBM 공급","HBM 공급이 늘었다.",Instant.parse("2026-09-02T00:00:00Z"),null,null,null};
+            when(q.getResultList()).thenReturn(java.util.Collections.singletonList(n));
+            var c=new LocalRetrievalController(new LocalRetrievalCandidates(em),new ObjectMapper().findAndRegisterModules(),endpoint(server));
             assertEquals("INVALID_RESULT_ID",c.search(7L,query("news")).get("fallbackReason"));
         } finally {
             server.stop(0);
@@ -96,12 +100,15 @@ class LocalRetrievalControllerTest {
         var server = server(503, "", new AtomicReference<>());
         try {
             var em=mock(EntityManager.class);
-            TypedQuery<News> q=mock(TypedQuery.class,RETURNS_SELF);
-            when(em.createQuery(contains("select n from News"),eq(News.class))).thenReturn(q);
-            News n=mock(News.class); when(n.getId()).thenReturn(1L); when(n.getTitle()).thenReturn("HBM");
-            when(q.getResultList()).thenReturn(List.of(n));
-            var c=new LocalRetrievalController(em,new ObjectMapper().findAndRegisterModules(),endpoint(server));
-            assertEquals("RULE_FALLBACK",c.search(7L,query("news")).get("status"));
+            jakarta.persistence.Query q=mock(jakarta.persistence.Query.class,RETURNS_SELF);
+            when(em.createNativeQuery(contains("from news n"))).thenReturn(q);
+            var n=new Object[]{1L,"HBM","HBM 공급",null,null,null,null};
+            when(q.getResultList()).thenReturn(java.util.Collections.singletonList(n));
+            var c=new LocalRetrievalController(new LocalRetrievalCandidates(em),new ObjectMapper().findAndRegisterModules(),endpoint(server));
+            var result = c.search(7L,query("news"));
+            assertEquals("RULE_FALLBACK",result.get("status"));
+            assertEquals("ADAPTER_HTTP_ERROR",result.get("fallbackReason"));
+            assertEquals(1,((List<?>)result.get("results")).size());
         } finally {
             server.stop(0);
         }

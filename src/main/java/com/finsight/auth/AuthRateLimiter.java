@@ -17,6 +17,9 @@ public class AuthRateLimiter {
     private static final long MAX_ATTEMPTS = 5;
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
+    private final com.github.benmanes.caffeine.cache.Cache<String,java.util.concurrent.atomic.AtomicLong> local =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(10000).expireAfterWrite(WINDOW).build();
+    private volatile java.time.Instant retryRedisAt=java.time.Instant.EPOCH;
     private final StringRedisTemplate redis;
 
     public AuthRateLimiter(StringRedisTemplate redis) {
@@ -24,22 +27,32 @@ public class AuthRateLimiter {
     }
 
     public void check(String action, String email, String ipAddress) {
-        String key = "finsight:auth:attempts:" + action + ":" + ipAddress + ":" + sha256(email.trim().toLowerCase());
+        checkKey("finsight:auth:attempts:" + action + ":ip:" + sha256(ipAddress), 30);
+        if (email != null && !email.isBlank())
+            checkKey("finsight:auth:attempts:" + action + ":account:" + sha256(email.trim().toLowerCase(java.util.Locale.ROOT)), MAX_ATTEMPTS);
+    }
+
+    private void checkKey(String key, long limit) {
+        long localAttempts=local.get(key,ignored->new java.util.concurrent.atomic.AtomicLong()).incrementAndGet();
+        Long attempts=localAttempts;
         try {
-            Long attempts = redis.opsForValue().increment(key);
-            if (attempts != null && attempts == 1L) {
-                redis.expire(key, WINDOW);
+            if(java.time.Instant.now().isBefore(retryRedisAt)) {
+                if(localAttempts>limit) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+                return;
             }
-            if (attempts != null && attempts > MAX_ATTEMPTS) {
-                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                        "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
-            }
-        } catch (ResponseStatusException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            // Redis is a safety layer; a Redis outage must not turn the demo into an auth outage.
-            log.warn("Auth rate limiter unavailable; allowing request: {}", exception.getMessage());
+            attempts = redis.execute(new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+                    "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", Long.class),
+                    java.util.List.of(key), Long.toString(WINDOW.toSeconds()));
+            if (attempts == null) throw new IllegalStateException("Missing counter");
+            attempts=Math.max(attempts,localAttempts);
+        } catch (ResponseStatusException limited) { throw limited;
+        } catch (RuntimeException unavailable) {
+            log.warn("Auth rate limiter unavailable: {}", unavailable.getClass().getSimpleName());
+            retryRedisAt=java.time.Instant.now().plusSeconds(60);
+            attempts=localAttempts;
         }
+        if (attempts > limit)
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
     }
 
     private String sha256(String value) {

@@ -51,4 +51,17 @@ class MarketSummaryServiceTest {
         verify(ecosClient, times(1)).getBaseRate();
         verify(naverFxClient, times(1)).getUsdKrwRate();
     }
+    @Test
+    void failedSummaryCanRecoverImmediatelyInsteadOfCachingFallback() {
+        when(kisIndexQuoteClient.getIndexQuote("0001")).thenReturn(
+                new KisIndexQuote("0001", 0, 0, true), new KisIndexQuote("0001", 2650, 0.5, false));
+        when(kisIndexQuoteClient.getIndexQuote("1001")).thenReturn(new KisIndexQuote("1001", 850, -0.2, false));
+        when(ecosClient.getBaseRate()).thenReturn(new EcosRate("기준금리", 3.25, "2026-09", 0.0, false));
+        when(naverFxClient.getUsdKrwRate()).thenReturn(new EcosRate("원/달러", 1350, "2026-09-22", 0.1, false));
+        assertThat(service.getSummary().kospi().fallback()).isTrue();
+        var recovered = service.getSummary();
+        assertThat(recovered.kospi().fallback()).isFalse();
+        assertThat(service.getSummary()).isSameAs(recovered);
+        verify(kisIndexQuoteClient, times(2)).getIndexQuote("0001");
+    }
 }

@@ -25,6 +25,9 @@ public class FeedbackScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(FeedbackScheduler.class);
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private PriceAdjustmentHolds adjustmentHolds = new PriceAdjustmentHolds();
+
     private final JudgementRepository judgementRepository;
     private final com.finsight.external.kis.KisDailyCandleClient dailyCandles;
     private final AiServiceClient aiServiceClient;
@@ -72,6 +75,33 @@ public class FeedbackScheduler {
         return process(judgementRepository.findPendingByOwner(userId, cutoff));
     }
 
+    private final com.github.benmanes.caffeine.cache.Cache<Long, Instant> catchUps =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(10000)
+                    .expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
+    private final java.util.Set<Long> runningCatchUps = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private java.util.concurrent.Executor catchUpExecutor = java.util.concurrent.ForkJoinPool.commonPool();
+
+    public void requestCatchUp(Long userId) {
+        if (userId == null || !runningCatchUps.add(userId)) return;
+        Instant now = clock.instant();
+        Instant last = catchUps.asMap().putIfAbsent(userId, now);
+        if (last != null && last.plusSeconds(300).isAfter(now)) { runningCatchUps.remove(userId); return; }
+        catchUps.put(userId, now);
+        try {
+            catchUpExecutor.execute(() -> {
+                try {
+                    var cutoff = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
+                    boolean due = judgementRepository.findPendingByOwner(userId, cutoff).stream().anyMatch(j ->
+                            j.getActualDirection() == null && j.getFeedbackGeneratedAt() == null
+                            && !KoreanTradingCalendar.next(j.getCreatedAt().atZone(clock.getZone()).toLocalDate())
+                            .atTime(15,40).atZone(clock.getZone()).toInstant().isAfter(clock.instant()));
+                    if (due) runNow(userId);
+                } catch (Exception error) { log.warn("Requested feedback catch-up failed: {}", error.getClass().getSimpleName()); }
+                finally { runningCatchUps.remove(userId); }
+            });
+        } catch (RuntimeException rejected) { runningCatchUps.remove(userId); catchUps.invalidate(userId); }
+    }
+
     private int process(List<Judgement> pending) {
         if (pending.isEmpty()) {
             log.info("Feedback scheduler: no pending judgements to process");
@@ -93,7 +123,8 @@ public class FeedbackScheduler {
     private boolean processOne(Judgement judgement) {
         var now = java.time.ZonedDateTime.now(clock);
         if (judgement.getFeedbackGeneratedAt() != null || judgement.getActualDirection() != null) return false;
-        if (java.util.Objects.toString(judgement.getNews().getTitle(), "").contains("로컬 QA")) return false;
+        var pendingReason = JudgementPendingReason.of(judgement,clock.instant());
+        if (pendingReason == JudgementPendingReason.EXCLUDED_QA || pendingReason == JudgementPendingReason.CALENDAR_UNSUPPORTED) return false;
         LocalDate judgementDay = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
         LocalDate comparison = KoreanTradingCalendar.next(judgementDay);
         LocalDate baseline = KoreanTradingCalendar.onOrBefore(judgementDay);
@@ -107,6 +138,11 @@ public class FeedbackScheduler {
         String indexSymbol = "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(symbol)) ? "KOSDAQ" : "KOSPI";
         var indexPrices = indexTarget ? Optional.<ClosingPrices.Pair>empty() : closingPrices(indexSymbol, baseline, comparison);
         if (!indexTarget && indexPrices.isEmpty()) return false;
+        if (prices.get().needsAdjustmentReview() || indexPrices.map(ClosingPrices.Pair::needsAdjustmentReview).orElse(false)) {
+            adjustmentHolds.mark(judgement.getId());
+            return false;
+        }
+        adjustmentHolds.clear(judgement.getId());
         double actualChangePercent = prices.get().percent();
         String actualDirection = JudgementFeedbackRules.direction(actualChangePercent);
         String indexName = indexTarget ? null : JudgementTargetResolver.name(indexSymbol);
@@ -114,7 +150,7 @@ public class FeedbackScheduler {
         var feedback = generateFeedback(judgement, symbol, comparison, prices.get(), indexName, indexChange);
         String feedbackText = feedback.feedbackText();
         var content = new Judgement.FeedbackContent(feedback.verdict(), feedback.reasons(), feedback.nextTip(),
-                indexName, indexChange, feedback.conceptTerm(), feedback.conceptDefinition());
+                indexName, indexChange, feedback.conceptTerm(), feedback.conceptDefinition(), feedback.mode());
         // Atomic conditional update: concurrent scheduler/manual runs or a revised judgement cannot overwrite an outcome.
         int updated = judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), actualDirection,
             actualChangePercent, feedbackText, clock.instant(), comparison, java.math.BigDecimal.valueOf(prices.get().before()), java.math.BigDecimal.valueOf(prices.get().after()), feedback.headline(), Judgement.feedbackJson(content), symbol);
@@ -159,6 +195,8 @@ public class FeedbackScheduler {
         var target = JudgementTargetResolver.resolve(judgement.getNews());
         var now = java.time.ZonedDateTime.now(clock);
         var judged = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
+        if (JudgementPendingReason.comparisonDate(judgement.getCreatedAt()) == null)
+            return new JudgementRegradeResponse.Row(judgement.getId(),"CALENDAR_UNSUPPORTED","휴장일 달력 확인 필요",target.symbol(),null,null);
         LocalDate baseline = KoreanTradingCalendar.onOrBefore(judged), comparison = KoreanTradingCalendar.next(judged);
         var row = new JudgementRegradeResponse.Row(judgement.getId(),"NO_TARGET",target.unavailableReason(),target.symbol(),baseline,comparison);
         if (!JudgementTargetResolver.valid(target.symbol())) return row;
@@ -169,6 +207,8 @@ public class FeedbackScheduler {
         boolean indexTarget = List.of("KOSPI","KOSDAQ").contains(target.symbol());
         String index = indexTarget ? null : "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(target.symbol())) ? "KOSDAQ" : "KOSPI";
         var indexPrices = indexTarget ? null : closingPrices(index,baseline,comparison).orElse(null);
+        if (prices.needsAdjustmentReview() || (indexPrices != null && indexPrices.needsAdjustmentReview()))
+            return row.withStatus("PRICE_ADJUSTMENT","가격 조정 확인 필요: 종가 등락률이 ±30%를 넘어 채점을 보류했어요.");
         boolean ready = indexTarget || indexPrices != null;
         return new JudgementRegradeResponse.Row(judgement.getId(),ready ? "READY" : "NO_INDEX_CLOSES",
                 ready ? null : "시장 지수의 기준일·비교일 실제 종가가 모두 조회되지 않았어요.",target.symbol(),baseline,comparison,
@@ -181,7 +221,7 @@ public class FeedbackScheduler {
         String indexName = row.indexSymbol() == null ? null : JudgementTargetResolver.name(row.indexSymbol());
         var feedback = generateFeedback(judgement,row.targetSymbol(),row.comparisonDate(),prices,indexName,row.indexChangePercent());
         var content = new Judgement.FeedbackContent(feedback.verdict(),feedback.reasons(),feedback.nextTip(),indexName,
-                row.indexChangePercent(),feedback.conceptTerm(),feedback.conceptDefinition());
+                row.indexChangePercent(),feedback.conceptTerm(),feedback.conceptDefinition(),feedback.mode());
         int updated = judgementRepository.regradeUnknownOutcome(judgement.getId(),userId,judgement.getCreatedAt(),row.targetSymbol(),
                 row.actualDirection(),row.actualChangePercent(),row.comparisonDate(),java.math.BigDecimal.valueOf(row.judgementClose()),
                 java.math.BigDecimal.valueOf(row.comparisonClose()),feedback.feedbackText(),feedback.headline(),Judgement.feedbackJson(content),clock.instant());

@@ -60,7 +60,11 @@ public class Judgement {
     private com.fasterxml.jackson.databind.JsonNode feedbackContent;
     @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = FeedbackContentDeserializer.class)
     public record FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip,
-            String indexName, Double indexChangePercent, String conceptTerm, String conceptDefinition) {
+            String indexName, Double indexChangePercent, String conceptTerm, String conceptDefinition, String mode) {
+        public FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip,
+                String indexName, Double indexChangePercent, String conceptTerm, String conceptDefinition) {
+            this(verdict,reasons,nextTip,indexName,indexChangePercent,conceptTerm,conceptDefinition,null);
+        }
         public FeedbackContent(String verdict, java.util.List<com.finsight.external.AiFeedbackResponse.Reason> reasons, String nextTip) {
             this(verdict,reasons,nextTip,null,null,null,null);
         }

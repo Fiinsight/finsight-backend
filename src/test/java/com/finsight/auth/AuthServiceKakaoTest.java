@@ -141,6 +141,24 @@ class AuthServiceKakaoTest {
         }
     }
 
+    @Test
+    void acceptsAValidTokenResponseAfterColdConnectionDelayWithoutReusingCode() throws Exception {
+        try (MockWebServer kakao = new MockWebServer()) {
+            kakao.start();
+            kakao.enqueue(json("{\"access_token\":\"mock-kakao-token\"}")
+                    .setBodyDelay(9, java.util.concurrent.TimeUnit.SECONDS));
+            kakao.enqueue(json("{\"id\":54321,\"kakao_account\":{}}"));
+            UserRepository users = mock(UserRepository.class);
+            JwtService jwt = mock(JwtService.class);
+            when(jwt.issue(any(User.class))).thenReturn("app-jwt");
+            when(users.save(any(User.class))).thenAnswer(call -> call.getArgument(0));
+            AuthService auth = new AuthService(users, jwt, WebClient.builder(), "client-id", "", "https://app.test/callback",
+                    "finsight://auth/kakao", "", kakao.url("/oauth/token").toString(), kakao.url("/v2/user/me").toString());
+            assertEquals("app-jwt", auth.kakao("single-use-code").accessToken());
+            assertEquals(2, kakao.getRequestCount(), "One token exchange and one profile lookup; do not retry single-use codes");
+        }
+    }
+
     private MockResponse json(String body) {
         return new MockResponse().setHeader("Content-Type", "application/json").setBody(body);
     }

@@ -27,12 +27,50 @@ class FeedbackSchedulerTest {
         var news = spy(new News("학습용 기사", "https://example.invalid/qa", "SYNTHETIC_QA", Instant.now(), "QA"));
         when(news.getId()).thenReturn(115L); news.setRelatedSymbol(symbol);
         var item = spy(new Judgement(mock(User.class), news, JudgementChoice.UP, "근거"));
+        when(item.getId()).thenReturn(1L);
         item.setTargetSymbol(symbol);
         when(item.getCreatedAt()).thenReturn(Instant.parse(date + "T01:00:00Z"));
         when(records.findPendingByOwner(eq(1L), any())).thenReturn(List.of(item));
         return item;
     }
     private KisDailyCandle bar(String date, double close) { return new KisDailyCandle(LocalDate.parse(date), close, close, close, close); }
+    @Test void splitLikePriceMoveDoesNotFinalizeOrCallAi() {
+        var item=pending("005930","2026-09-28");
+        when(item.getId()).thenReturn(77L);
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",50)),false));
+        assertThat(scheduler.runNow(1L)).isZero();
+        assertThat(item.getActualDirection()).isNull();
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verifyNoInteractions(ai);
+        var holds=(PriceAdjustmentHolds)org.springframework.test.util.ReflectionTestUtils.getField(scheduler,"adjustmentHolds");
+        assertThat(holds.contains(77L)).isTrue();
+    }
+    @Test void requestedCatchUpIsOwnerScopedCoalescedAndCooledDown() {
+        var item = pending("005930", "2026-09-28");
+        when(candles.getClosingCandles(eq("005930"),any(),any())).thenReturn(new KisDailyCandleResult(List.of(bar("2026-09-28",100),bar("2026-09-29",102)),false));
+        var jobs = new java.util.ArrayList<Runnable>();
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"catchUpExecutor", (java.util.concurrent.Executor) jobs::add);
+        java.util.stream.IntStream.range(0,20).parallel().forEach(i -> scheduler.requestCatchUp(1L));
+        assertThat(jobs).hasSize(1);
+        jobs.removeFirst().run();
+        scheduler.requestCatchUp(1L);
+        assertThat(jobs).isEmpty();
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock", Clock.fixed(Instant.parse("2026-10-06T07:06:00Z"),ZoneId.of("Asia/Seoul")));
+        scheduler.requestCatchUp(1L);
+        assertThat(jobs).hasSize(1); jobs.removeFirst().run();
+        verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+    }
+
+    @Test void unsupportedHolidayCalendarStaysPendingWithoutRequestingPrices() {
+        var item=pending("KOSPI","2028-01-07");
+        org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock",Clock.fixed(Instant.parse("2028-01-11T07:00:00Z"),ZoneId.of("Asia/Seoul")));
+        assertThat(scheduler.runNow(1L)).isZero();
+        assertThat(item.getActualDirection()).isNull();
+        verifyNoInteractions(candles,ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+    }
+
     @Test void startupFinalizesUnresolvablePastButSkipsFutureComparison() {
         var past = pending(null, "2026-09-28");
         var future = pending("005930", "2026-10-06");
