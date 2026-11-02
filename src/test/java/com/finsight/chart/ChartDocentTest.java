@@ -86,4 +86,21 @@ class ChartDocentTest {
         assertThat(ChartService.cachedIndexChange(cache, "KOSPI", day)).isNull();
     }
 
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"POSITIVE,3,false","POSITIVE,-3,true","NEGATIVE,3,true","NEGATIVE,-3,false"})
+    void directionDisagreementIsExplicit(String sentiment,double change,boolean opposite) {
+        var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"실적 발표","영업이익 발표",Instant.now(),"DIRECT","보도",sentiment,.9)),"beginner","코스피",0.);
+        var text=ChartDocentService.rule(r).possibleReason();
+        if(opposite) assertThat(text).contains("소식에도 주가는","다른 요인").doesNotContain("받아들여졌을 가능성");
+        else assertThat(text).contains("받아들여졌을 가능성");
+    }
+    @Test void marketDisagreementAndPriceSensitiveCacheKey() {
+        var r=request("MARKET","D","beginner");
+        var other=new AiDocentRequest(r.symbol(),r.symbolName(),r.date(),-3.25,r.period(),r.news(),r.level(),"코스피",2.);
+        assertThat(ChartDocentService.rule(other).possibleReason()).contains("시장과 반대로");
+        assertThat(ChartDocentService.cacheKey(other)).isNotEqualTo(ChartDocentService.cacheKey(r));
+        var slight=new AiDocentRequest(r.symbol(),r.symbolName(),r.date(),3.254,r.period(),r.news(),r.level(),r.indexName(),r.indexChangePercent());
+        assertThat(ChartDocentService.cacheKey(slight)).isEqualTo(ChartDocentService.cacheKey(r));
+    }
 }

@@ -76,4 +76,14 @@ class NewsAssemblerTest {
         }
         verifyNoInteractions(ai);
     }
+
+    @Test void tabularUnavailableResponseIsNotPersistedAsARewriteOrRetried() {
+        var ai=mock(AiServiceClient.class);
+        when(ai.rewrite(any())).thenReturn(Optional.of(new com.finsight.external.AiRewriteResponse("외국환시세","",null,java.util.Map.of(),List.of(),"","","","UNAVAILABLE",false)));
+        var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),mock(ArticleContentExtractor.class));
+        var news=assembler.assemble(new NewsCandidate("외국환시세","https://fixture.test/fx","보도",Instant.now(),1),"USD 1400 1410 EUR 1500 1510",false);
+        assertThat(news.getRewriteMode()).isEqualTo("UNAVAILABLE");
+        assertThat(news.isRewriteRetryPending()).isFalse();
+        assertThat(news.getRewrittenBeginner()).isNull();
+    }
 }

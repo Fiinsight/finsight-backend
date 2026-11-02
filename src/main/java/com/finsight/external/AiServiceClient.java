@@ -68,7 +68,7 @@ public class AiServiceClient {
                     .bodyToMono(AiRewriteResponse.class)
                     .timeout(CALL_TIMEOUT)
                     .block();
-            return Optional.ofNullable(response);
+            return Optional.ofNullable(response).filter(value -> "EXCERPT".equals(value.mode()) || "REWRITTEN".equals(value.mode()) || "UNAVAILABLE".equals(value.mode()));
         } catch (Exception e) {
             log.warn("AI service rewrite call failed, skipping: {}", e.getMessage());
             return Optional.empty();

@@ -87,6 +87,11 @@ public class NewsAssembler {
             return;
         }
         var result = response.get();
+        if ("UNAVAILABLE".equals(result.mode())) {
+            news.setRewriteRetryPending(false);
+            news.setRewriteMode("UNAVAILABLE");
+            return;
+        }
         news.setRewriteRetryPending(result.retryable());
         news.setRewrittenBeginner(result.beginner());
         news.setRewrittenNormal(result.normal());

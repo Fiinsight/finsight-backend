@@ -66,4 +66,16 @@ class LearningProgressServiceTest {
    assertEquals(type.equals("reviewJudgement"),service.get(1L,List.of(),List.of(date,date.plusDays(1))).goal().achievedToday());
   }
  }
+
+ @Test void neutralMatchingDirectionAlreadyCountsAsAHitIndependentOfFeedbackVerdict() {
+  var db=mock(JdbcTemplate.class);var profiles=mock(com.finsight.auth.UserProfileService.class);
+  when(profiles.getOnboarding(anyLong())).thenReturn(new com.finsight.auth.UserProfileDtos.OnboardingResponse(List.of(),"beginner","short","news","뉴스 하나 읽기",null));
+  var symbols=mock(com.finsight.news.collect.NewsSymbolMatcher.class);when(symbols.match(any(),any())).thenReturn("KOSPI");
+  var service=new LearningProgressService(db,new NewsCategoryClassifier(),profiles,symbols,mock(TermMasteryService.class));
+  var wrong=Map.<String,Object>of("choice","UP","actual_direction","DOWN","news_id",1L,"related_symbol","KOSPI","title","금리 동결","raw_content","금리 환경");
+  var neutral=new HashMap<>(wrong);neutral.put("choice","NEUTRAL");neutral.put("actual_direction","NEUTRAL");
+  when(db.queryForList(contains("JOIN news"),eq(1L),any(),any())).thenReturn(List.of(wrong,wrong,wrong,wrong,neutral));
+  var progress=service.get(1L);
+  assertEquals(5,progress.totalDecidedCount());assertEquals(1,progress.weakAreas().getFirst().hitCount());
+ }
 }
