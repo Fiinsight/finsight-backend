@@ -148,8 +148,10 @@ public class LearningService {
     }
     @Transactional(readOnly = true)
     public List<Review> reviews(Long userId) {
+        Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
+        mastery.list(userId).forEach(row -> knowledge.put(row.term(),row));
         Map<String,Double> probabilities = new HashMap<>();
-        mastery.list(userId).forEach(row -> probabilities.put(row.term(),row.effectivePKnown()));
+        knowledge.forEach((term,row) -> probabilities.put(term,row.effectivePKnown()));
         LinkedHashMap<String,LearningProgress> latest = new LinkedHashMap<>();
         progress.findByUser_IdOrderByAnsweredAtDesc(userId).stream().filter(row -> row.getQuestionType() == QuestionType.DEFINITION).forEach(row -> latest.putIfAbsent(row.getTerm(),row));
         Map<String,Term> dictionary = new HashMap<>();
@@ -157,7 +159,7 @@ public class LearningService {
         return latest.values().stream()
                 .filter(row -> row.getQuestionType() == QuestionType.DEFINITION)
                 .filter(row -> dictionary.containsKey(row.getTerm()) && dictionary.get(row.getTerm()).quizEligible(row.getLevel()))
-                .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), row.isCorrect()))
+                .filter(row -> TermMasteryService.needsReview(probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT), knowledge.containsKey(row.getTerm()) && knowledge.get(row.getTerm()).lastCorrect() != null ? knowledge.get(row.getTerm()).lastCorrect() : row.isCorrect()))
                 .sorted(Comparator
                 .comparingDouble((LearningProgress row) -> probabilities.getOrDefault(row.getTerm(), KnowledgeTracing.P_INIT))
                 .thenComparing(LearningProgress::getTerm)).limit(10)

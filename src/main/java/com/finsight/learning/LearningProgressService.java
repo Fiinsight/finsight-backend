@@ -70,7 +70,7 @@ public class LearningProgressService {
         String type = profile.goalType() == null ? "read1" : profile.goalType();
         Set<LocalDate> achieved = new HashSet<>();
         if ("read1".equals(type)) {
-            readDays.stream().filter(date -> !date.isAfter(today)).forEach(achieved::add);
+            jdbc.query("SELECT read_day FROM reading_attendance WHERE user_id=? AND read_day<=? AND cardinality(news_ids)>0",(rs,index)->rs.getDate("read_day").toLocalDate(),userId,today).forEach(achieved::add);
         } else {
             String activitySql = "SELECT (at AT TIME ZONE 'Asia/Seoul')::date AS day, COUNT(*) AS count FROM ("
                 + "SELECT created_at AS at,'judgement' AS kind FROM judgement WHERE user_id=? UNION ALL "
