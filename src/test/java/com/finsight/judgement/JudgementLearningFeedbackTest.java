@@ -84,4 +84,14 @@ class JudgementLearningFeedbackTest {
         assertThat(JudgementFeedbackRules.interpretation("NEGATIVE","UP",2.,0.,null,null)).contains("선반영", "안도감");
         assertThat(JudgementFeedbackRules.interpretation("NEUTRAL","DOWN",-2.,0.,null,null)).contains("다른 개별 요인");
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles={-.5,0,.5})
+    void neutralPredictionInsideTheBandIsCorrect(double percent) {
+        var request=new AiFeedbackRequest(1L,"NEUTRAL","지수 관망세를 예상했어요.","NEUTRAL","지수 관망","지수가 보합권에 머물렀다.","KOSPI","코스피",percent,null,null,LocalDate.of(2026,11,2));
+        var response=JudgementFeedbackRules.generate(request);
+        assertThat(response.verdict()).isEqualTo("CORRECT");
+        assertThat(response.headline()).contains("중립 예측");
+        assertThat(response.summary()).contains("중립 예측대로").doesNotContain("변동이 작아 우연");
+    }
 }

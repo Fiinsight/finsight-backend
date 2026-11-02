@@ -86,4 +86,38 @@ class ChartDocentTest {
         assertThat(ChartService.cachedIndexChange(cache, "KOSPI", day)).isNull();
     }
 
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"POSITIVE,3,false","POSITIVE,-3,true","NEGATIVE,3,true","NEGATIVE,-3,false"})
+    void directionDisagreementIsExplicit(String sentiment,double change,boolean opposite) {
+        var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"실적 발표","영업이익 발표",Instant.now(),"DIRECT","보도",sentiment,.9)),"beginner","코스피",0.);
+        var text=ChartDocentService.rule(r).possibleReason();
+        if(opposite) assertThat(text).contains("소식에도 주가는","다른 요인").doesNotContain("받아들여졌을 가능성");
+        else assertThat(text).contains("받아들여졌을 가능성");
+    }
+    @Test void marketDisagreementAndPriceSensitiveCacheKey() {
+        var r=request("MARKET","D","beginner");
+        var other=new AiDocentRequest(r.symbol(),r.symbolName(),r.date(),-3.25,r.period(),r.news(),r.level(),"코스피",2.);
+        assertThat(ChartDocentService.rule(other).possibleReason()).contains("시장과 반대로");
+        assertThat(ChartDocentService.cacheKey(other)).isNotEqualTo(ChartDocentService.cacheKey(r));
+        var slight=new AiDocentRequest(r.symbol(),r.symbolName(),r.date(),3.254,r.period(),r.news(),r.level(),r.indexName(),r.indexChangePercent());
+        assertThat(ChartDocentService.cacheKey(slight)).isEqualTo(ChartDocentService.cacheKey(r));
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(doubles={-.51,-.5,0,.5,.51})
+    void neutralBandIncludesBoundariesBeforeSentimentAndMarketDirection(double change) {
+        for(String relation:List.of("DIRECT","MARKET")) for(String sentiment:List.of("POSITIVE","NEGATIVE")) {
+            var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"실적 발표","영업이익 발표",Instant.now(),relation,"보도",sentiment,.9)),"beginner","코스피",-1.2);
+            var text=ChartDocentService.rule(r).possibleReason();
+            if(Math.abs(change)<=.5) {
+                assertThat(text).contains("DIRECT".equals(relation)?"소식이 나왔지만 주가는 거의 움직이지 않았어요":"시장이 움직인 날에도 주가는 거의 변하지 않았어요")
+                    .doesNotContain("받아들여졌을 가능성","시장과 반대로","소식에도 주가는");
+                assertThat(text).contains("DIRECT".equals(relation)?String.format(Locale.ROOT,"%+.2f%%",change):"코스피 -1.20%");
+            } else {
+                assertThat(text).doesNotContain("거의");
+                boolean opposite="MARKET".equals(relation)?change>0:"POSITIVE".equals(sentiment)?change<0:change>0;
+                assertThat(text).contains("MARKET".equals(relation)?(opposite?"시장과 반대로":"함께 움직였을"):(opposite?"소식에도 주가는":"받아들여졌을 가능성"));
+            }
+        }
+    }
 }
