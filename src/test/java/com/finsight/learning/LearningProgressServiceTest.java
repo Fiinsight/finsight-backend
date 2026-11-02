@@ -47,7 +47,9 @@ class LearningProgressServiceTest {
   when(db.queryForList(contains("JOIN news"),eq(1L),any(),any())).thenReturn(List.of(wrong,wrong,wrong,wrong,wrong));
   assertEquals(0,service.get(1L).totalDecidedCount());
   verify(db,atLeastOnce()).queryForList(contains("j.created_at>=?"),eq(1L),any(),any());
-  var readGoal=service.get(1L,List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4)));
+  assertFalse(service.get(1L,List.of(LocalDate.of(2026,10,5))).goal().achievedToday()); // Client dates alone are not server evidence.
+  when(db.query(contains("FROM reading_attendance"),any(RowMapper.class),eq(1L),any())).thenReturn(List.of(LocalDate.of(2026,10,5),LocalDate.of(2026,10,4)));
+  var readGoal=service.get(1L,List.of());
   assertTrue(readGoal.goal().achievedToday()); assertEquals(2,readGoal.goal().streakDays());
   verify(db,atLeastOnce()).queryForList(contains("JOIN news"),eq(2L),any(),any());
  }

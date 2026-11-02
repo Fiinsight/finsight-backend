@@ -15,8 +15,10 @@ public class AccountDataDeletion {
             new OwnedTable("daily_note",false),
             new OwnedTable("judgement",false),
             new OwnedTable("user_watchlist",false),
-            new OwnedTable("learning_mastery_credit",true),
-            new OwnedTable("reading_attendance",true));
+            new OwnedTable("learning_mastery_credit",false),
+            new OwnedTable("reading_attendance",false),
+            new OwnedTable("reading_record",false),
+            new OwnedTable("reading_import",false));
     private final JdbcTemplate jdbc;
     public AccountDataDeletion(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     public void deleteForUser(Long userId) {

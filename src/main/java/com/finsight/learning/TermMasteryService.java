@@ -29,7 +29,7 @@ public class TermMasteryService {
     public List<Mastery> list(Long userId) {
         Instant now = clock.instant();
         String source = dailyCreditEnabled
-                ? "SELECT level,correct FROM learning_mastery_credit WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC LIMIT 1"
+                ? "SELECT level,correct FROM learning_mastery_credit WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC,id DESC LIMIT 1"
                 : "SELECT level,correct FROM learning_progress WHERE user_id=m.user_id AND term=m.term AND question_type='DEFINITION' ORDER BY answered_at DESC, id DESC LIMIT 1";
         return jdbc.query("""
                 SELECT m.*, q.level, q.correct FROM term_mastery m
@@ -44,7 +44,7 @@ public class TermMasteryService {
         }, userId);
     }
 
-    /** Schema is a reviewed draft; until enabled, answers remain practice and cannot inflate mastery. */
+    /** Credits only the first daily article/concept answer; disabled mode keeps practice without BKT writes. */
     @Transactional
     public boolean answer(Long userId, Long newsId, String term, String level, boolean correct, int optionCount, QuestionType type) {
         if (!dailyCreditEnabled) return false;

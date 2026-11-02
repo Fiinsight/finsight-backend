@@ -16,6 +16,8 @@ server:
   forward-headers-strategy: framework
 
 finsight:
+  learning:
+    daily-credit-enabled: ${LEARNING_DAILY_CREDIT_ENABLED:true}
   auth:
     # Production must provide a private, base64-encoded secret; never use the
     # development fallback from application.yml in a deployed environment.
