@@ -499,3 +499,13 @@ V17은 기존 `level=beginner`로 저장된 정의형 최종 답변만 재생해
 재시도 화면은 보기의 표시 인덱스를 섞지만 `answerIndex`는 서버가 내려준 원래 options 배열의 인덱스입니다. 정답 설명 공개는 유지합니다. 서버 배열을 임의로 새로 섞어 채점하지 않습니다.
 
 뉴스 상세의 `judgementReviewOnly`는 서버의 공통 거래일 정책 결과입니다. true이면 뉴스는 복습용이며 판단 제출도 400으로 거절합니다. 발행 후 두 번째 거래일 KST 00:00부터 복습용이고, 발행 시각이 없거나 미래인 기사도 새 판단을 받지 않습니다. 프런트는 이 필드가 없는 구 API를 판단 허용으로 추정하지 않습니다.
+
+### Judgement pending reason (QA P2-8)
+
+History/detail/page responses include optional `pendingReason` (null for graded records):
+- `NOT_DUE`: before the verified comparison day's 15:40 KST; use `expectedResultDate`/`expectedResultAt`.
+- `PRICE_UNAVAILABLE`: due, but outcome prices are not yet confirmed (includes a pending first catch-up attempt); the scheduler retries stock and benchmark closes. History reads do not perform synchronous KIS calls.
+- `EXCLUDED_QA`: title contains `로컬 QA`; omit from waiting counts/polling and display as test history.
+- `CALENDAR_UNSUPPORTED`: judgement/comparison year lacks a holiday calendar; expected date/time are null and grading is deferred until the calendar is supplied.
+
+Current holiday calendars cover 2026 and 2027. The generic weekday helper remains available for other non-grading callers, but grading never relies on an unsupported calendar. Existing `gradingIssue=PRICE_ADJUSTMENT` takes display precedence over `PRICE_UNAVAILABLE`; the separate ±30% guard remains active.

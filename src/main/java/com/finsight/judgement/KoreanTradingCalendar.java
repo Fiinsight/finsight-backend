@@ -22,6 +22,7 @@ public final class KoreanTradingCalendar {
         "2027-08-15", "2027-08-16", "2027-09-14", "2027-09-15", "2027-09-16", "2027-10-03", "2027-10-04",
         "2027-10-09", "2027-10-11", "2027-12-25", "2027-12-27", "2027-12-31"
     ).stream().map(LocalDate::parse).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    public static boolean supports(int year) { return year == 2026 || year == 2027; }
     public static boolean isTradingDay(LocalDate day) {
         if (day.getYear() != 2026 && day.getYear() != 2027 && WARNED_YEARS.add(day.getYear()))
             log.warn("Trading holidays unavailable for {}; using weekdays until official calendar is added", day.getYear());

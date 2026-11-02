@@ -62,16 +62,13 @@ class FeedbackSchedulerTest {
         verify(records, times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
 
-    @Test void missingCloseOnFallbackCalendarStaysPendingAndRetries() {
+    @Test void unsupportedHolidayCalendarStaysPendingWithoutRequestingPrices() {
         var item=pending("KOSPI","2028-01-07");
         org.springframework.test.util.ReflectionTestUtils.setField(scheduler,"clock",Clock.fixed(Instant.parse("2028-01-11T07:00:00Z"),ZoneId.of("Asia/Seoul")));
-        when(candles.getClosingCandles(eq("KOSPI"),any(),any())).thenReturn(
-                new KisDailyCandleResult(List.of(bar("2028-01-07",100)),false),
-                new KisDailyCandleResult(List.of(bar("2028-01-07",100),bar("2028-01-10",102)),false));
-        assertThat(scheduler.runNow(1L)).isZero(); assertThat(item.getActualDirection()).isNull();
-        assertThat(scheduler.runNow(1L)).isEqualTo(1);
         assertThat(scheduler.runNow(1L)).isZero();
-        verify(records,times(1)).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
+        assertThat(item.getActualDirection()).isNull();
+        verifyNoInteractions(candles,ai);
+        verify(records,never()).finalizeOutcome(any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any(),any());
     }
 
     @Test void startupFinalizesUnresolvablePastButSkipsFutureComparison() {

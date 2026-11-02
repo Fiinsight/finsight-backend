@@ -123,7 +123,8 @@ public class FeedbackScheduler {
     private boolean processOne(Judgement judgement) {
         var now = java.time.ZonedDateTime.now(clock);
         if (judgement.getFeedbackGeneratedAt() != null || judgement.getActualDirection() != null) return false;
-        if (java.util.Objects.toString(judgement.getNews().getTitle(), "").contains("로컬 QA")) return false;
+        var pendingReason = JudgementPendingReason.of(judgement,clock.instant());
+        if (pendingReason == JudgementPendingReason.EXCLUDED_QA || pendingReason == JudgementPendingReason.CALENDAR_UNSUPPORTED) return false;
         LocalDate judgementDay = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
         LocalDate comparison = KoreanTradingCalendar.next(judgementDay);
         LocalDate baseline = KoreanTradingCalendar.onOrBefore(judgementDay);
@@ -194,6 +195,8 @@ public class FeedbackScheduler {
         var target = JudgementTargetResolver.resolve(judgement.getNews());
         var now = java.time.ZonedDateTime.now(clock);
         var judged = judgement.getCreatedAt().atZone(now.getZone()).toLocalDate();
+        if (JudgementPendingReason.comparisonDate(judgement.getCreatedAt()) == null)
+            return new JudgementRegradeResponse.Row(judgement.getId(),"CALENDAR_UNSUPPORTED","휴장일 달력 확인 필요",target.symbol(),null,null);
         LocalDate baseline = KoreanTradingCalendar.onOrBefore(judged), comparison = KoreanTradingCalendar.next(judged);
         var row = new JudgementRegradeResponse.Row(judgement.getId(),"NO_TARGET",target.unavailableReason(),target.symbol(),baseline,comparison);
         if (!JudgementTargetResolver.valid(target.symbol())) return row;
