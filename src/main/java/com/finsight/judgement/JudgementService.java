@@ -21,6 +21,8 @@ public class JudgementService {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private PriceAdjustmentHolds adjustmentHolds;
 
+    private java.time.Clock clock = java.time.Clock.system(java.time.ZoneId.of("Asia/Seoul"));
+
     private final JudgementRepository judgementRepository;
     private final NewsRepository newsRepository;
 
@@ -59,8 +61,7 @@ public class JudgementService {
     }
 
     static java.time.LocalDate expectedResultDate(java.time.Instant judgedAt) {
-        try { return KoreanTradingCalendar.next(judgedAt.atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate()); }
-        catch (IllegalArgumentException unsupportedCalendar) { return null; }
+        return JudgementPendingReason.comparisonDate(judgedAt);
     }
     static java.time.Instant expectedResultAt(java.time.Instant judgedAt) {
         var date=expectedResultDate(judgedAt);
@@ -117,7 +118,7 @@ public class JudgementService {
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,
                 content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
                 content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(),
-                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue, reviewOnly ? "RULE" : content == null ? null : content.mode());
+                notice != null ? notice : "UNKNOWN".equals(j.getActualDirection()) ? "판단 대상이 정해지지 않은 기사예요" : null, issue, reviewOnly ? "RULE" : content == null ? null : content.mode(), JudgementPendingReason.of(j,clock.instant()));
     }
 
     private String symbolName(String symbol) {
