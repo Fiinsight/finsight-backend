@@ -26,7 +26,8 @@ public class RssFeedFetcher {
     private static final List<String> RSS_FEED_URLS = List.of(
             "https://www.yna.co.kr/rss/economy.xml",
             "https://www.hankyung.com/feed/economy",
-            "https://www.mk.co.kr/rss/50100032/"
+            "https://www.mk.co.kr/rss/50100032/",
+            "https://www.mk.co.kr/rss/50200011/"
     );
 
     public List<NewsCandidate> fetchAll() {
@@ -50,7 +51,7 @@ public class RssFeedFetcher {
                 if ("http://search.yahoo.com/mrss/".equals(media.getNamespaceURI()) && "content".equals(media.getName())
                         && ("image".equals(media.getAttributeValue("medium")) || java.util.Objects.toString(media.getAttributeValue("type"), "").startsWith("image/")
                         || java.util.Objects.toString(media.getAttributeValue("url"), "").matches("(?i).*\\.(jpg|jpeg|png|webp)(?:[?].*)?"))) {
-                    String url = NewsImageUrl.sanitize(media.getAttributeValue("url"), entry.getLink());
+                    String url = NewsImageUrl.sanitize(media.getAttributeValue("url"), entry.getLink(),media.getAttributeValue("width"),media.getAttributeValue("height"));
                     if (url != null) return url;
                 }
             }

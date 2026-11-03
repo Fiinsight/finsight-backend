@@ -62,7 +62,9 @@ public class ArticleContentExtractor {
     private static String imageUrl(Document doc, String url) {
         for (String property : java.util.List.of("og:image:secure_url", "og:image")) {
             for (var element : doc.select("meta[property=" + property + "]")) {
-                String image = NewsImageUrl.sanitize(element.attr("content"), url);
+                var width=doc.selectFirst("meta[property=og:image:width]");
+                var height=doc.selectFirst("meta[property=og:image:height]");
+                String image = NewsImageUrl.sanitize(element.attr("content"), url, width==null?null:width.attr("content"),height==null?null:height.attr("content"));
                 if (image != null) return image;
             }
         }

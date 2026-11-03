@@ -17,13 +17,34 @@ public class NewsRelevanceScorer {
             "기준금리", "채권", "유가", "고용"
     );
 
+    /**
+     * Ranks within each source, then takes turns across sources so the feed
+     * with the most entries (Yonhap: ~120 vs ~50) cannot fill every slot.
+     */
     public List<NewsCandidate> rank(List<NewsCandidate> candidates, int topN) {
-        return candidates.stream()
+        java.util.Map<String, java.util.ArrayDeque<NewsCandidate>> bySource = new java.util.LinkedHashMap<>();
+        candidates.stream()
                 .map(this::score)
                 .filter(candidate -> candidate.score() > 0)
                 .sorted(Comparator.comparingInt(NewsCandidate::score).reversed())
-                .limit(topN)
-                .toList();
+                .forEach(candidate -> bySource.computeIfAbsent(publisher(candidate), ignored -> new java.util.ArrayDeque<>()).add(candidate));
+        List<NewsCandidate> ranked = new java.util.ArrayList<>();
+        while (ranked.size() < topN && bySource.values().stream().anyMatch(queue -> !queue.isEmpty())) {
+            for (var queue : bySource.values()) {
+                if (!queue.isEmpty() && ranked.size() < topN) ranked.add(queue.poll());
+            }
+        }
+        return List.copyOf(ranked);
+    }
+
+    private static String publisher(NewsCandidate candidate) {
+        try {
+            String host = java.net.URI.create(candidate.url()).getHost();
+            if (host != null) return host.replaceFirst("^www\\.", "");
+        } catch (IllegalArgumentException ignored) {
+            // Fall back to the feed title for malformed links.
+        }
+        return String.valueOf(candidate.source());
     }
 
     private NewsCandidate score(NewsCandidate candidate) {

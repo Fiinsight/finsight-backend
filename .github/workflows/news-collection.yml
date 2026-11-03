@@ -1,0 +1,37 @@
+name: Scheduled news collection
+on:
+  schedule:
+    # UTC -> KST 06, 09, 12, 15, 18, 21. GitHub may delay scheduled runs.
+    - cron: '0 0,3,6,9,12,21 * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: finsight-news-collection
+  cancel-in-progress: false
+jobs:
+  collect:
+    # Explicit opt-in only: merging this workflow alone does not wake or collect.
+    if: ${{ vars.FINSIGHT_COLLECTION_CRON_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      BACKEND_URL: ${{ vars.FINSIGHT_BACKEND_URL }}
+      COLLECTION_TOKEN: ${{ secrets.FINSIGHT_COLLECTION_TRIGGER_TOKEN }}
+    steps:
+      - name: Validate automation configuration
+        shell: bash
+        run: |
+          test -n "$BACKEND_URL" && test -n "$COLLECTION_TOKEN"
+          [[ "$BACKEND_URL" == https://* ]]
+      - name: Wake service and request protected collection
+        shell: bash
+        run: |
+          curl --silent --show-error --fail --connect-timeout 10 --max-time 30 \
+            --retry 8 --retry-delay 10 --retry-max-time 240 --retry-connrefused \
+            --output /dev/null "${BACKEND_URL%/}/actuator/health/liveness"
+          # 503 is retried while the scheduler's 45-second startup guard is active.
+          # The response contains collection counters only; token values are never printed.
+          curl --silent --show-error --fail --connect-timeout 10 --max-time 30 \
+            --retry 8 --retry-delay 10 --retry-max-time 180 --retry-connrefused \
+            --request POST --header "X-Collection-Token: ${COLLECTION_TOKEN}" \
+            "${BACKEND_URL%/}/api/internal/news/collect"
