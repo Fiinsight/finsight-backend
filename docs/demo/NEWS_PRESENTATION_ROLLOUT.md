@@ -32,8 +32,8 @@ python scripts/backfill_news_images.py --plan '<reviewed image-url-dry-run.json>
 The reviewed plan contains id, source url, timezone-aware publishedAt, previous image URL and proposed metadata URL. The tool checks the current row, seven-day window, EXCERPT mode and previous value. It refuses apply before V21. After explicit approval only, add `--apply --limit <approved count>`; no network/image fetching happens in this maintenance script.
 
 ## Verification
-- AI: 384 passed, zero failures.
-- Backend: 342 tests, zero failures/errors/skips, including V21 on disposable PostgreSQL and Redis; Python image-backfill tests are part of Gradle test.
+- AI: 386 passed, zero failures.
+- Backend: 343 tests, zero failures/errors/skips, including V21 on disposable PostgreSQL and Redis; Python image-backfill tests are part of Gradle test.
 - Frontend: 179 passed, tsc --noEmit and Expo web export passed.
 - Mobile before: authenticated production QA account. After: authenticated local preview with real article copies; external KIS credentials were not copied, so local market tiles can show unavailable. No production quiz/judgement records were created.
 - Rollback: redeploy prior backend/frontend commits and prior AI pin; V21 is additive and can remain. A later approved content backfill requires a separate pre-write content snapshot to reverse; do not drop schema or overwrite article content as part of this review.
