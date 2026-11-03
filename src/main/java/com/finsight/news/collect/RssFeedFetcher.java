@@ -34,7 +34,9 @@ public class RssFeedFetcher {
         List<NewsCandidate> all = new ArrayList<>();
         for (String feedUrl : RSS_FEED_URLS) {
             try {
-                all.addAll(fetchOne(feedUrl));
+                var candidates = fetchOne(feedUrl);
+                log.info("RSS fetched: feed={} candidates={}", feedUrl, candidates.size());
+                all.addAll(candidates);
             } catch (Exception e) {
                 log.warn("Failed to fetch/parse RSS feed {}, skipping: {}", feedUrl, e.getMessage());
             }

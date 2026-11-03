@@ -49,13 +49,19 @@ public class NewsDeduplicator {
                 return false;
             }
             String redisKey = REDIS_SEEN_KEY_PREFIX + sha256(candidate.url());
-            Boolean firstSeen = redisTemplate.opsForValue().setIfAbsent(redisKey, "1", SEEN_TTL);
-            // firstSeen == null means Redis was unreachable; keep the candidate
-            // rather than silently dropping it just because dedup is unavailable.
-            return firstSeen == null || firstSeen;
+            // Ranking/extraction may skip this candidate; only successful saves mark it seen.
+            return !Boolean.TRUE.equals(redisTemplate.hasKey(redisKey));
         } catch (Exception e) {
             log.warn("Dedup check failed for {}, keeping candidate as a precaution: {}", candidate.url(), e.getMessage());
             return true;
+        }
+    }
+
+    public void markCollected(NewsCandidate candidate) {
+        try {
+            redisTemplate.opsForValue().set(REDIS_SEEN_KEY_PREFIX + sha256(candidate.url()), "1", SEEN_TTL);
+        } catch (RuntimeException error) {
+            log.warn("Collected-news marker unavailable for source={}; database URL dedup remains active", candidate.source());
         }
     }
 
