@@ -24,6 +24,7 @@ public record NewsDetailResponse(
         SentimentHint sentimentHint,
         String category,
         List<String> keyTerms,
+        java.util.Map<String,List<String>> keyTermsByLevel,
         com.finsight.judgement.JudgementTargetResolver.Target judgementTarget,
         java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate, boolean judgementReviewOnly, String imageUrl, boolean fullContentEnabled
 ) {
@@ -38,6 +39,7 @@ public record NewsDetailResponse(
         String beginner = unavailable ? "" : replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
         String normal = unavailable ? "" : replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
         String analyst = unavailable ? "" : replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
+        var termLists = com.finsight.term.KeyTermSelector.byLevel(unavailable ? "" : news.getTitle(), rawContent);
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
@@ -56,7 +58,7 @@ public record NewsDetailResponse(
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle(), rawContent),
-                unavailable ? List.of() : news.getKeyTerms(),
+                termLists.get("normal"), termLists,
                 com.finsight.judgement.JudgementTargetResolver.resolve(news),
                 com.finsight.judgement.KoreanTradingCalendar.onOrBefore(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
                 com.finsight.judgement.KoreanTradingCalendar.next(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),

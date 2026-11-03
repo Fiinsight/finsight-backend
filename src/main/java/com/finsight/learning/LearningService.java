@@ -74,8 +74,12 @@ public class LearningService {
                 : ai.learning(new AiRewriteRequest(article.getTitle(), body, level));
         List<Term> dictionary = terms.findAll();
         List<Term> matchedTerms = articleTerms(article, dictionary);
-        List<Glossary> glossary = matchedTerms.stream().limit(3)
-                .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
+        Map<String,String> definitions = dictionary.stream().filter(t -> t.getShortDefinition()!=null)
+                .collect(java.util.stream.Collectors.toMap(t -> t.getTerm().replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT), Term::getShortDefinition, (a,b)->a));
+        List<Glossary> glossary = com.finsight.term.KeyTermSelector.select(article.getTitle(), body, level).stream()
+                .map(term -> new Glossary(term, Optional.ofNullable(definitions.get(term.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT)))
+                        .or(() -> com.finsight.term.KeyTermSelector.definition(term)).orElse(null)))
+                .filter(item -> item.definition()!=null).toList();
         Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
         mastery.list(userId).forEach(row -> knowledge.put(row.term(),row));
         Map<String,Double> probabilities = new HashMap<>();

@@ -34,12 +34,12 @@ class ConceptPersonalizationTest {
     private NewsBriefResponse brief(long id) {
         return new NewsBriefResponse(id,"기사","요약","근거",null,"금리·채권",SentimentHint.NEUTRAL,"https://fixture.test","언론사",Instant.now(),1);
     }
-    @Test void topicsRemainInGlossaryButNeverBecomeQuizTargetsAndMarketsAreBeginnerOnly() {
+    @Test void everydayTopicsDoNotFillGlossaryOrBecomeQuizTargetsAndMarketsAreBeginnerOnly() {
         var topicWords=List.of("반도체","AI","HBM","투자","수출","수입","원화");
         when(terms.findAll()).thenReturn(topicWords.stream().map(word->new Term(word,"일반 설명")).toList());
         var row=article(1,"반도체 AI HBM 투자 수출 수입 원화");
         var lesson=service.lesson(1L,1L,"beginner");
-        assertNull(lesson.question()); assertFalse(lesson.glossary().isEmpty());
+        assertNull(lesson.question()); assertTrue(lesson.glossary().isEmpty());
         for(var word:topicWords) {
             assertEquals(Term.Kind.TOPIC,new Term(word,"설명").getKind());
             assertThrows(org.springframework.web.server.ResponseStatusException.class,()->service.answer(1L,1L,"beginner",word,0));

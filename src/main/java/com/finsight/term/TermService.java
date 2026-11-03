@@ -32,7 +32,7 @@ public class TermService {
 
     public TermExplainResponse explain(TermExplainRequest request) {
         Optional<String> localDefinition = termRepository.findByTermIgnoreCase(request.term())
-                .map(Term::getShortDefinition);
+                .map(Term::getShortDefinition).or(() -> KeyTermSelector.definition(request.term()));
 
         if (request.newsId() == null) {
             return localExplanation(request, localDefinition);
