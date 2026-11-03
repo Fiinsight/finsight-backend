@@ -74,6 +74,7 @@ public class JudgementService {
 
     private JudgementHistoryResponse history(Judgement j) {
         var content = j.getFeedbackContent();
+        String feedbackText = j.getFeedbackText(), headline = j.getFeedbackHeadline();
         var symbol = j.getTargetSymbol() == null ? j.getNews().getRelatedSymbol() : j.getTargetSymbol();
         String issue = null;
         String notice = null;
@@ -102,6 +103,22 @@ public class JudgementService {
             if (notice == null) notice = JudgementTargetResolver.resolve(j.getNews()).unavailableReason();
             if (notice == null) notice = "이 기록에는 비교할 가격이 저장되지 않아 적중 여부를 계산하지 않았어요. 기사 내용과 내 근거를 먼저 복습해보세요.";
         }
+        if (!reviewOnly && j.getComparisonDate() != null && j.getChoice() == JudgementChoice.NEUTRAL
+                && "NEUTRAL".equals(j.getActualDirection()) && j.getActualChangePercent() != null
+                && Math.abs(j.getActualChangePercent()) <= 0.5 + 1e-9
+                && ((content != null && "PARTIAL".equals(content.verdict()))
+                    || java.util.Objects.toString(feedbackText, "").contains("방향은 맞았지만 변동이 작")
+                    || java.util.Objects.toString(headline, "").contains("방향은 맞았지만 변동이 작"))) {
+            var current = JudgementFeedbackRules.generate(new com.finsight.external.AiFeedbackRequest(
+                    j.getNews().getId(), j.getChoice().name(), j.getReasonText(), j.getActualDirection(),
+                    j.getNews().getTitle(), new com.finsight.news.collect.ArticleContentExtractor().clean(j.getNews().getTitle(),j.getNews().getRawContent()),
+                    symbol, symbolName(symbol), j.getActualChangePercent(), j.getJudgementClose(), j.getComparisonClose(), j.getComparisonDate(), "normal"));
+            content = new Judgement.FeedbackContent(current.verdict(), current.reasons(), current.nextTip(),
+                    content == null ? null : content.indexName(), content == null ? null : content.indexChangePercent(),
+                    content == null ? null : content.conceptTerm(), content == null ? null : content.conceptDefinition(), "RULE");
+            displayReasons = current.reasons(); feedbackText = current.summary(); headline = current.headline();
+            // Correct legacy copy for display only; do not rewrite the saved judgement.
+        }
         if (displayReasons != null && !displayReasons.isEmpty() && displayReasons.getFirst().detail().matches("(?s).*기사 핵심.*(방향도 같았어요|묻혔을 수 있어요|함께 확인해보세요)\\.")) {
             String text = j.getNews().getTitle() + " " + JudgementFeedbackRules.first(new com.finsight.news.collect.ArticleContentExtractor().clean(j.getNews().getTitle(),j.getNews().getRawContent()));
             var enriched = new java.util.ArrayList<>(displayReasons);
@@ -111,8 +128,8 @@ public class JudgementService {
         }
         return new JudgementHistoryResponse(j.getId(), j.getNews().getId(), j.getNews().getTitle(),
                 j.getChoice(), j.getReasonText(), j.getCreatedAt(), j.getActualDirection(), j.getActualChangePercent(),
-                reviewOnly ? displayReasons.getFirst().detail() : j.getFeedbackText(), j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
-                reviewOnly ? null : j.getFeedbackHeadline(), reviewOnly || content == null ? null : content.verdict(), displayReasons, reviewOnly ? JudgementFeedbackRules.articleReviewTip(j.getNews(),j.getReasonText(),j.getChoice()) : content == null ? null : content.nextTip(),
+                reviewOnly ? displayReasons.getFirst().detail() : feedbackText, j.getFeedbackGeneratedAt(), j.getComparisonDate(), j.getJudgementClose(), j.getComparisonClose(),
+                reviewOnly ? null : headline, reviewOnly || content == null ? null : content.verdict(), displayReasons, reviewOnly ? JudgementFeedbackRules.articleReviewTip(j.getNews(),j.getReasonText(),j.getChoice()) : content == null ? null : content.nextTip(),
                 symbol, symbolName(symbol),
                 j.getActualDirection()==null?expectedResultDate(j.getCreatedAt()):null,
                 j.getActualDirection()==null?expectedResultAt(j.getCreatedAt()):null,

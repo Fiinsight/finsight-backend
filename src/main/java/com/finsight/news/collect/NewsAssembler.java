@@ -40,6 +40,7 @@ public class NewsAssembler {
 
     public News assemble(NewsCandidate candidate, String rawContent, boolean allowLlm) {
         News news = new News(candidate.title(), candidate.url(), candidate.source(), candidate.publishedAt(), rawContent);
+        news.setImageUrl(candidate.imageUrl());
         news.setCategory(newsCategoryClassifier.classify(candidate.title(), rawContent));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));

@@ -27,7 +27,7 @@ class NewsCatchUpTest {
   var fetch=mock(RssFeedFetcher.class); var dedup=mock(NewsDeduplicator.class); var rank=mock(NewsRelevanceScorer.class); var extract=mock(ArticleContentExtractor.class);
   var candidate=new NewsCandidate("수출 증가","https://fixture.test/news","fixture",Instant.now(),1);
   when(fetch.fetchAll()).thenReturn(List.of(candidate)); when(dedup.filterUnseen(any())).thenReturn(List.of(candidate));
-  when(rank.rank(any(),eq(220))).thenReturn(List.of(candidate)); when(extract.extract(any())).thenReturn(Optional.empty());
+  when(rank.rank(any(),eq(220))).thenReturn(List.of(candidate)); when(extract.extractArticle(any())).thenReturn(Optional.empty());
   var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extract,mock(NewsAssembler.class),mock(NewsRepository.class));
   scheduler.runOnce(); assertThat(ReflectionTestUtils.getField(scheduler,"lastSuccess")).isEqualTo(Instant.EPOCH);
  }

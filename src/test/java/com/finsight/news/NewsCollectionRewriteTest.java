@@ -16,7 +16,7 @@ class NewsCollectionRewriteTest {
         var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extractor,assembler,repo);
         var candidates=java.util.stream.IntStream.range(0,15).mapToObj(i->new NewsCandidate("금리 변화 "+i,"https://fixture.test/"+i,"fixture",Instant.now(),1)).toList();
         when(fetch.fetchAll()).thenReturn(candidates);when(dedup.filterUnseen(candidates)).thenReturn(candidates);when(rank.rank(candidates,220)).thenReturn(candidates);
-        when(extractor.extract(anyString())).thenReturn(Optional.of("금리가 변했다."));when(extractor.isUsable(anyString(),anyString())).thenReturn(true);
+        when(extractor.extractArticle(anyString())).thenReturn(Optional.of(new ArticleContentExtractor.ExtractedArticle("금리가 변했다.", null)));when(extractor.isUsable(anyString(),anyString())).thenReturn(true);
         var retry=new News("금리 변화","https://fixture.test/retry","fixture",Instant.now(),"금리가 변했다.");retry.setRewriteRetryPending(true);retry.setRewrittenBeginner("발췌");
         when(repo.findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc()).thenReturn(List.of(retry));
         when(ai.rewrite(any())).thenReturn(Optional.of(new AiRewriteResponse("기사","일반",null,Map.of(),List.of(),"초보예요.","일반 사실.","분석 근거.","EXCERPT")));

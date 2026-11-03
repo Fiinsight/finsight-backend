@@ -34,6 +34,11 @@ public class News {
 
     private String source;
 
+    @Column(length = 2000)
+    private String imageUrl;
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String value) { imageUrl = com.finsight.news.collect.NewsImageUrl.sanitize(value, url); }
+
     private Instant publishedAt;
 
     @Column(columnDefinition = "TEXT")

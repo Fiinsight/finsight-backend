@@ -12,6 +12,7 @@ public class NewsCategoryClassifier {
 
     public String classify(String title, String content) {
         String headline = title == null ? "" : title;
+        if (isMarketOverview(headline)) return "시장";
         if (containsAny(headline, "한은", "금통위", "총재", "기준금리", "근원물가", "수출", "수입", "무역수지", "펀드 출시", "운용")) return classify(headline);
         if (containsAny(headline, "반도체", "AI", "인공지능", "배터리", "바이오", "전기차", "조선", "방산", "현대로템")) return "산업·기술";
         if (containsAny(headline, "나스닥", "다우", "S&P", "뉴욕", "미국 증시", "일본 증시", "중국 증시")) return "해외증시";
@@ -22,6 +23,7 @@ public class NewsCategoryClassifier {
 
     public String classify(String title) {
         title = title == null ? "" : title;
+        if (isMarketOverview(title)) return "시장";
         if (containsAny(title, "한은", "금통위", "총재", "기준금리", "근원물가")) return "금리·통화정책";
         if (containsAny(title, "수출", "수입", "무역수지")) return "정책·경제";
         if (containsAny(title, "펀드 출시", "운용")) return "기업·종목";
@@ -107,6 +109,10 @@ public class NewsCategoryClassifier {
             }
         }
         return matches.isEmpty() ? null : new Evidence(String.join(", ", matches), impact, check);
+    }
+
+    private static boolean isMarketOverview(String title) {
+        return title.contains("[마켓뷰]") || title.matches(".*(?:코스피|코스닥).*(?:마감|향방).*");
     }
 
     private boolean containsAny(String title, String... keywords) {

@@ -41,6 +41,29 @@ public class RssFeedFetcher {
         return all;
     }
 
+    static String imageUrl(SyndEntry entry) {
+        for (var element : entry.getForeignMarkup()) {
+            var elements = new java.util.ArrayList<org.jdom2.Element>();
+            elements.add(element);
+            element.getDescendants(org.jdom2.filter.Filters.element()).forEach(elements::add);
+            for (var media : elements) {
+                if ("http://search.yahoo.com/mrss/".equals(media.getNamespaceURI()) && "content".equals(media.getName())
+                        && ("image".equals(media.getAttributeValue("medium")) || java.util.Objects.toString(media.getAttributeValue("type"), "").startsWith("image/")
+                        || java.util.Objects.toString(media.getAttributeValue("url"), "").matches("(?i).*\\.(jpg|jpeg|png|webp)(?:[?].*)?"))) {
+                    String url = NewsImageUrl.sanitize(media.getAttributeValue("url"), entry.getLink());
+                    if (url != null) return url;
+                }
+            }
+        }
+        for (var enclosure : entry.getEnclosures()) {
+            if (java.util.Objects.toString(enclosure.getType(), "").startsWith("image/")) {
+                String url = NewsImageUrl.sanitize(enclosure.getUrl(), entry.getLink());
+                if (url != null) return url;
+            }
+        }
+        return null;
+    }
+
     private List<NewsCandidate> fetchOne(String feedUrl) throws Exception {
         List<NewsCandidate> candidates = new ArrayList<>();
         URL url = URI.create(feedUrl).toURL();
@@ -59,7 +82,7 @@ public class RssFeedFetcher {
                 Instant publishedAt = entry.getPublishedDate() != null
                         ? entry.getPublishedDate().toInstant()
                         : entry.getUpdatedDate().toInstant();
-                candidates.add(new NewsCandidate(entry.getTitle().trim(), entry.getLink().trim(), source, publishedAt, 0));
+                candidates.add(new NewsCandidate(entry.getTitle().trim(), entry.getLink().trim(), source, publishedAt, 0, imageUrl(entry)));
             }
         }
         return candidates;

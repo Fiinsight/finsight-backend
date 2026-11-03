@@ -100,14 +100,14 @@ public class BriefingService {
         if (summary.isBlank()) summary = articleContentExtractor.clean(news.getTitle(), news.getRawContent());
         return new NewsBriefResponse(
                 news.getId(),
-                news.getTitle(),
-                NewsDetailResponse.excerpt(summary),
-                newsCategoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
-                        news.getRelatedSymbol()),
+                NewsDetailResponse.cardText(news.getTitle()),
+                NewsDetailResponse.cardSummary(summary),
+                NewsDetailResponse.cardPoint(newsCategoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
+                        news.getRelatedSymbol())),
                 news.getRelatedSymbol(),
                 newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()),
                 news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL,
-                news.getUrl(), news.getSource(), news.getPublishedAt(), relevanceScorer.scoreArticle(news.getTitle(), news.getRawContent())
+                news.getUrl(), news.getSource(), news.getPublishedAt(), relevanceScorer.scoreArticle(news.getTitle(), news.getRawContent()), news.getImageUrl()
         );
     }
 
