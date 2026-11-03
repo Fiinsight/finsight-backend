@@ -62,7 +62,7 @@ public record NewsDetailResponse(
 
     public static String cardText(String text) {
         return text == null ? "" : text.replaceAll("\\[(사실|전망|분석)\\]", "")
-                .replaceAll("\\[\\s*\\d{6}\\s*\\]|\\(\\s*\\d{6}\\s*\\)", "").replaceAll("\\s+", " ").strip();
+                .replaceAll("\\[\\s*(?=[A-Za-z0-9]*\\d)[A-Za-z0-9]{6}\\s*\\]|\\(\\s*(?=[A-Za-z0-9]*\\d)[A-Za-z0-9]{6}\\s*\\)", "").replaceAll("\\s+", " ").strip();
     }
     public static String cardPoint(String text) {
         String[] lines = java.util.Objects.toString(text, "").strip().split("\\n+");

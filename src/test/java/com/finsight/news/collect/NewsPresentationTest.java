@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class NewsPresentationTest {
+    @Test void mixedKrxCodeIsNotCardCopy() {
+        org.junit.jupiter.api.Assertions.assertEquals("래블업 [market]",com.finsight.news.NewsDetailResponse.cardText("래블업[0147B0] (0147B0) [market]"));
+    }
     @Test void cardSummaryHasTwoSentencesWithoutLevelLabelsOrStockCodes() {
         String raw="[사실] 삼성전자[005930]의 매출은 12.5% 늘었다.\n\n[전망] SK하이닉스(000660)의 매출은 3조원이다.\n\n[분석] 세 번째 문단이다.";
         assertThat(NewsDetailResponse.cardSummary(raw)).isEqualTo("삼성전자의 매출은 12.5% 늘었다. SK하이닉스의 매출은 3조원이다.");
