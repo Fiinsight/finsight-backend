@@ -38,12 +38,18 @@ class KisMinuteCandleClientTest {
         server.shutdown();
     }
 
-    @Test void failedMinuteLoadDoesNotHideRecoveryForOneMinute() {
+    @Test void failedMinuteLoadSuppressesRepeatedRequestsForThirtySeconds() {
         server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("{\"rt_cd\":\"1\"}"));
         server.enqueue(new MockResponse().setHeader("Content-Type", "application/json").setBody("""
                 {"rt_cd":"0","output2":[{"stck_bsop_date":"20261026","stck_cntg_hour":"090000","stck_oprc":"100","stck_hgpr":"110","stck_lwpr":"90","stck_prpr":"105"}]}
                 """));
         assertTrue(client.getCandlesWithStatus("005930", 5, 120).fallback());
+        assertTrue(client.getCandlesWithStatus("005930", 5, 120).fallback());
+        assertEquals(1, server.getRequestCount());
+        // Advance the failure cache's monotonic clock without a real thirty-second sleep.
+        var failures = (com.github.benmanes.caffeine.cache.Cache<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(client, "failures");
+        failures.policy().expireAfterWrite().orElseThrow().setExpiresAfter(java.time.Duration.ZERO);
+
         assertFalse(client.getCandlesWithStatus("005930", 5, 120).fallback());
         assertFalse(client.getCandlesWithStatus("005930", 5, 120).fallback());
         assertEquals(2, server.getRequestCount());

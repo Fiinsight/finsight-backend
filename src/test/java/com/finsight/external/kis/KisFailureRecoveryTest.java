@@ -65,6 +65,13 @@ class KisFailureRecoveryTest {
             try (var context = context(server, KisDailyCandleClient.class)) {
                 var client = context.getBean(KisDailyCandleClient.class);
                 assertTrue(client.getCandlesWithStatus("005930", 30, "D").fallback());
+                assertTrue(client.getCandlesWithStatus("005930", 30, "D").fallback());
+                assertEquals(1, server.getRequestCount());
+                var target = org.springframework.test.util.AopTestUtils.getUltimateTargetObject(client);
+                var failures = (com.github.benmanes.caffeine.cache.Cache<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(target, "failures");
+                assertEquals(java.time.Duration.ofSeconds(30), failures.policy().expireAfterWrite().orElseThrow().getExpiresAfter());
+                failures.policy().expireAfterWrite().orElseThrow().setExpiresAfter(java.time.Duration.ZERO);
+
                 assertFalse(client.getCandlesWithStatus("005930", 30, "D").fallback());
                 assertEquals(1, client.getCandlesWithStatus("005930", 30, "D").candles().size());
                 var day = LocalDate.of(2026, 10, 26);

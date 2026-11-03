@@ -98,6 +98,30 @@ public class ChartService {
         return getChart(symbol, period, 5);
     }
 
+    /** Price-only path: never waits for the news database or docent. */
+    @Cacheable(cacheNames = "chartCandles", key = "#symbol + ':' + #period + ':' + (#period == 'MINUTE' || #period == 'M' ? #intervalMinutes : 0)", sync = true)
+    public ChartResponse getCandles(String symbol, String period, int intervalMinutes) {
+        long started = System.nanoTime();
+        boolean minute = "MINUTE".equals(period) || "M".equals(period);
+        int interval = intervalMinutes == 1 || intervalMinutes == 15 ? intervalMinutes : 5;
+        String normalized = minute ? "MINUTE" : "W".equals(period) ? "W" : "D";
+        List<CandleView> daily = List.of();
+        List<ChartResponse.MinuteCandleView> intraday = List.of();
+        boolean fallback;
+        if (minute) {
+            var result = kisMinuteCandleClient.getCandlesWithStatus(symbol, interval, 120);
+            fallback = result.fallback();
+            intraday = result.candles().stream().map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close())).toList();
+        } else {
+            var result = kisDailyCandleClient.getCandlesWithStatus(symbol, "W".equals(normalized) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT, normalized);
+            fallback = result.fallback();
+            daily = result.candles().stream().sorted(Comparator.comparing(KisDailyCandle::date))
+                    .map(c -> new CandleView(c.date(), c.open(), c.high(), c.low(), c.close())).toList();
+        }
+        log.info("Chart timing stage=candles symbol={} period={} ms={} fallback={}", symbol, normalized, (System.nanoTime() - started) / 1_000_000, fallback);
+        return new ChartResponse(symbol, 0, 0, daily, List.of(), List.of(), null, normalized, minute ? interval : null, intraday, fallback, List.of());
+    }
+
     @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", unless = "#result.fallback()")
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         var quote = cachedQuote(symbol);
@@ -514,12 +538,14 @@ public class ChartService {
         return candidateNews(symbol,news,from,to,0);
     }
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to, double change) {
+        record Scored(News news, int rank, int score) {}
         return news.stream().filter(item -> item.getPublishedAt() != null
-                && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to)
-                && relevanceRank(symbol, item) > 0 && representativeScore(symbol,item,change)>=1)
-            .sorted(Comparator.comparingInt((News item) -> representativeScore(symbol,item,change)).reversed()
-                .thenComparing(Comparator.comparingInt((News item) -> relevanceRank(symbol,item)).reversed())
-                .thenComparing(News::getId,Comparator.nullsLast(Comparator.naturalOrder())))
-            .limit(3).toList();
+                && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to))
+            .map(item -> new Scored(item, relevanceRank(symbol, item), representativeScore(symbol, item, change)))
+            .filter(item -> item.rank() > 0 && item.score() >= 1)
+            .sorted(Comparator.comparingInt(Scored::score).reversed()
+                .thenComparing(Comparator.comparingInt(Scored::rank).reversed())
+                .thenComparing(item -> item.news().getId(), Comparator.nullsLast(Comparator.naturalOrder())))
+            .limit(3).map(Scored::news).toList();
     }
 }
