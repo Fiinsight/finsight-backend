@@ -17,6 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Tag(name = "뉴스", description = "뉴스 상세(원문 + 초급/일반/전문가 재작성)")
 public class NewsController {
 
+    @org.springframework.beans.factory.annotation.Value("${finsight.news.full-content-enabled:true}")
+    private boolean fullContentEnabled;
+
     private final NewsRepository newsRepository;
     private final NewsCategoryClassifier newsCategoryClassifier;
     private final ArticleContentExtractor articleContentExtractor;
@@ -33,6 +36,6 @@ public class NewsController {
     public NewsDetailResponse detail(@Parameter(description = "News 엔티티 id") @PathVariable Long id) {
         News news = newsRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "존재하지 않는 뉴스 id 입니다: " + id));
-        return NewsDetailResponse.from(news, newsCategoryClassifier, articleContentExtractor);
+        return NewsDetailResponse.from(news, newsCategoryClassifier, articleContentExtractor, fullContentEnabled);
     }
 }

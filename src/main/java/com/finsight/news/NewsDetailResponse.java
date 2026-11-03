@@ -25,10 +25,14 @@ public record NewsDetailResponse(
         String category,
         List<String> keyTerms,
         com.finsight.judgement.JudgementTargetResolver.Target judgementTarget,
-        java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate, boolean judgementReviewOnly
+        java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate, boolean judgementReviewOnly, String imageUrl, boolean fullContentEnabled
 ) {
     public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
                                           ArticleContentExtractor contentExtractor) {
+        return from(news,categoryClassifier,contentExtractor,false);
+    }
+    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
+                                          ArticleContentExtractor contentExtractor, boolean fullContentEnabled) {
         String rawContent = contentExtractor.clean(news.getTitle(), news.getRawContent());
         boolean unavailable = rawContent.isBlank();
         String beginner = unavailable ? "" : replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
@@ -40,7 +44,7 @@ public record NewsDetailResponse(
                 news.getUrl(),
                 news.getSource(),
                 news.getPublishedAt(),
-                sourceExcerpt(rawContent),
+                fullContentEnabled ? rawContent : sourceExcerpt(rawContent),
                 excerpt(beginner),
                 excerpt(normal),
                 excerpt(analyst),
@@ -56,7 +60,8 @@ public record NewsDetailResponse(
                 com.finsight.judgement.JudgementTargetResolver.resolve(news),
                 com.finsight.judgement.KoreanTradingCalendar.onOrBefore(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
                 com.finsight.judgement.KoreanTradingCalendar.next(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
-                com.finsight.judgement.ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),Instant.now())
+                com.finsight.judgement.ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),Instant.now()),
+                com.finsight.news.collect.NewsImageUrl.sanitize(news.getImageUrl(),news.getUrl()), fullContentEnabled
         );
     }
 

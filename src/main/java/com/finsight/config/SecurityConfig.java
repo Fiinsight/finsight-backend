@@ -32,6 +32,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/signup", "/api/auth/login", "/api/auth/kakao",
                                 "/api/auth/kakao/url", "/api/auth/kakao/status", "/api/auth/kakao/callback",
                                 "/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
+                        // These two endpoints enforce their own constant-time header token check.
+                        .requestMatchers(HttpMethod.POST,"/api/internal/news/collect").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/internal/news/status").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").access((authentication, context) ->
                                 new org.springframework.security.authorization.AuthorizationDecision(publicApiDocs))
                         .anyRequest().authenticated())

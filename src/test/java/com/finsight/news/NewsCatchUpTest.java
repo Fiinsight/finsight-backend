@@ -9,7 +9,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 class NewsCatchUpTest {
  @Test void staleRequestsAreBoundedCoalescedCooledDownAndAvoidStartup() {
   var fetch=mock(RssFeedFetcher.class); var rank=mock(NewsRelevanceScorer.class);
-  var scheduler=new NewsCollectionScheduler(fetch,mock(NewsDeduplicator.class),rank,mock(ArticleContentExtractor.class),mock(NewsAssembler.class),mock(NewsRepository.class));
+  var scheduler=new NewsCollectionScheduler(fetch,mock(NewsDeduplicator.class),rank,mock(ArticleContentExtractor.class),mock(NewsAssembler.class),mock(NewsRepository.class),mock(NewsImageVerifier.class));
   var now=Instant.parse("2026-11-01T00:00:00Z"); var jobs=new ArrayList<Runnable>();
   ReflectionTestUtils.setField(scheduler,"clock",Clock.fixed(now,ZoneOffset.UTC));
   ReflectionTestUtils.setField(scheduler,"startedAt",now);
@@ -28,11 +28,11 @@ class NewsCatchUpTest {
   var candidate=new NewsCandidate("수출 증가","https://fixture.test/news","fixture",Instant.now(),1);
   when(fetch.fetchAll()).thenReturn(List.of(candidate)); when(dedup.filterUnseen(any())).thenReturn(List.of(candidate));
   when(rank.rank(any(),eq(220))).thenReturn(List.of(candidate)); when(extract.extractArticle(any())).thenReturn(Optional.empty());
-  var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extract,mock(NewsAssembler.class),mock(NewsRepository.class));
+  var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extract,mock(NewsAssembler.class),mock(NewsRepository.class),mock(NewsImageVerifier.class));
   scheduler.runOnce(); assertThat(ReflectionTestUtils.getField(scheduler,"lastSuccess")).isEqualTo(Instant.EPOCH);
  }
  @Test void recentSuccessDoesNotCollect() {
-  var scheduler=new NewsCollectionScheduler(null,null,null,null,null,null);
+  var scheduler=new NewsCollectionScheduler(null,null,null,null,null,null,null);
   var now=Instant.now(); ReflectionTestUtils.setField(scheduler,"startedAt",now.minusSeconds(60));
   ReflectionTestUtils.setField(scheduler,"lastSuccess",now.minusSeconds(3600));
   scheduler.requestCatchUp();
