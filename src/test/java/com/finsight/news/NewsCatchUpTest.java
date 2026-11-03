@@ -30,6 +30,7 @@ class NewsCatchUpTest {
   when(rank.rank(any(),eq(220))).thenReturn(List.of(candidate)); when(extract.extractArticle(any())).thenReturn(Optional.empty());
   var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extract,mock(NewsAssembler.class),mock(NewsRepository.class),mock(NewsImageVerifier.class));
   scheduler.runOnce(); assertThat(ReflectionTestUtils.getField(scheduler,"lastSuccess")).isEqualTo(Instant.EPOCH);
+  verify(dedup,never()).markCollected(any());
  }
  @Test void recentSuccessDoesNotCollect() {
   var scheduler=new NewsCollectionScheduler(null,null,null,null,null,null,null);

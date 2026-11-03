@@ -136,6 +136,7 @@ public class NewsCollectionScheduler {
         List<NewsCandidate> fetched = rssFeedFetcher.fetchAll();
         List<NewsCandidate> unseen = newsDeduplicator.filterUnseen(fetched);
         List<NewsCandidate> topCandidates = newsRelevanceScorer.rank(unseen, limit);
+        log.info("News pipeline sources: fetched={} unseen={} ranked={}", sourceCounts(fetched), sourceCounts(unseen), sourceCounts(topCandidates));
 
         for (News retry : limit < TOP_CANDIDATE_COUNT ? List.<News>of() : newsRepository.findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc()) {
             try { newsAssembler.retryRewrite(retry); newsRepository.save(retry); }
@@ -162,27 +163,39 @@ public class NewsCollectionScheduler {
     private int extractAndSave(List<NewsCandidate> candidates, int limit) {
         int savedCount = 0;
         int attempts = 0;
+        java.util.Map<String, int[]> stages = new java.util.LinkedHashMap<>();
         for (NewsCandidate candidate : candidates) {
             if (savedCount >= Math.min(limit,TARGET_SAVED_COUNT) || attempts >= Math.min(limit,MAX_EXTRACTION_ATTEMPTS)) {
                 break;
             }
             attempts++;
+            int[] source = stages.computeIfAbsent(candidate.source(), ignored -> new int[4]);
+            source[0]++;
             var extracted = articleContentExtractor.extractArticle(candidate.url());
             Optional<String> body = extracted.map(ArticleContentExtractor.ExtractedArticle::body);
+            if (body.isPresent()) source[1]++;
             if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
-                log.info("Skipping unsuitable article body for {}", candidate.url());
+                log.warn("News extraction skipped: source={} reason={}", candidate.source(), body.isEmpty() ? "EMPTY_OR_FETCH_FAILED" : "UNUSABLE_BODY");
                 continue;
             }
+            source[2]++;
             try {
                 String image=imageVerifier.verify(candidate.imageUrl());
                 if(image==null) image=imageVerifier.verify(extracted.get().imageUrl());
                 newsRepository.save(newsAssembler.assemble(candidate.withImageUrl(image), body.get()));
+                newsDeduplicator.markCollected(candidate);
                 savedCount++;
+                source[3]++;
             } catch (Exception e) {
                 log.warn("Failed to save collected news for {}, skipping: {}", candidate.url(), e.getMessage());
             }
         }
+        stages.forEach((name, counts) -> log.info("News pipeline source={} attempts={} extracted={} usable={} saved={}", name, counts[0], counts[1], counts[2], counts[3]));
         return savedCount;
+    }
+
+    private static java.util.Map<String, Long> sourceCounts(List<NewsCandidate> candidates) {
+        return candidates.stream().collect(java.util.stream.Collectors.groupingBy(NewsCandidate::source, java.util.LinkedHashMap::new, java.util.stream.Collectors.counting()));
     }
 
     public int reprocessExisting(int limit) {
