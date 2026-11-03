@@ -181,7 +181,7 @@ class ChartServiceTest {
             new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.parse("2026-10-12"),103,103,103,103)),false));
         var service=new ChartService(daily,null,repository,new com.finsight.news.collect.ArticleContentExtractor(),new com.finsight.news.collect.NewsSymbolMatcher());
         var move=service.getChart("005930").moveInsights().getFirst();
-        assertThat(move.candidateNews().stream().filter(n -> !"REFERENCE".equals(n.relationType())).map(ChartResponse.NewsMarkerView::newsId)).containsExactly(1L,2L);
+        assertThat(move.candidateNews().stream().filter(n -> !"REFERENCE".equals(n.relationType())).map(ChartResponse.NewsMarkerView::newsId)).containsExactly(2L,1L);
         assertThat(move.candidateNews().stream().filter(n -> "REFERENCE".equals(n.relationType())).map(ChartResponse.NewsMarkerView::newsId)).containsExactly(3L);
         assertThat(move.newsId()).isIn(1L,2L); assertThat(move.docent().newsId()).isIn(1L,2L);
     }

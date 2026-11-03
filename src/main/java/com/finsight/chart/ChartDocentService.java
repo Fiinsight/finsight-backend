@@ -10,7 +10,7 @@ public class ChartDocentService {
     @Cacheable(cacheNames="chartDocents", key="T(com.finsight.chart.ChartDocentService).cacheKey(#r)", sync=true)
     public ChartResponse.DocentView get(AiDocentRequest r) {
         var fallback=rule(r);
-        if ("MINUTE".equals(r.period()) || "NONE".equals(fallback.relation())) return fallback;
+        if ("MINUTE".equals(r.period()) || "NONE".equals(fallback.relation()) || "SECTOR".equals(fallback.relation())) return fallback;
         return ai.docent(r).filter(value -> fallback.relation().equals(value.relation())
                 && java.util.Objects.equals(fallback.newsId(),value.newsId())
                 && ("RULE".equals(value.mode()) || "LLM".equals(value.mode()))
@@ -19,7 +19,7 @@ public class ChartDocentService {
                 && value.marketImpact()!=null && !value.marketImpact().isBlank()).orElse(fallback);
     }
     public static String cacheKey(AiDocentRequest r) {
-        return "news-direction-v4-neutral:" + r.symbol() + ":" + r.date() + ":" + r.period() + ":" + representativeId(r) + ":" + r.level()
+        return "news-direction-v5-sector:" + r.symbol() + ":" + r.date() + ":" + r.period() + ":" + representativeId(r) + ":" + r.level()
                 + ":" + String.format(java.util.Locale.ROOT,"%.2f",r.changePercent()) + ":" + r.indexName()
                 + ":" + (r.indexChangePercent()==null?"none":String.format(java.util.Locale.ROOT,"%.2f",r.indexChangePercent()));
     }
@@ -39,6 +39,7 @@ public class ChartDocentService {
         if (article==null) { lead="이날 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요."; reason=r.indexChangePercent()!=null && r.indexName()!=null
                 ? String.format(java.util.Locale.ROOT,"같은 날 %s는 %+.2f%% 움직였어요. 시장 흐름과 비교하되 원인으로 단정하지 않아요.",r.indexName(),r.indexChangePercent())
                 : "같은 날 지수 종가가 캐시에 없어 시장 등락률을 확인할 수 없어요. 수급이나 시장 전체 요인이 영향을 줬을 수 있어요."; }
+        else if ("SECTOR".equals(relation)) reason="같은 업종의 소식이에요. 이 종목을 직접 다룬 기사가 아니므로 개별 주가의 원인으로 단정하지 않아요.";
         else if ("MARKET".equals(relation)) reason=neutral ? "시장이 움직인 날에도 주가는 거의 변하지 않았어요 ("+(r.indexName()==null?"관련 지수":r.indexName())
                 +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")" : r.indexChangePercent()!=null && r.changePercent()*r.indexChangePercent()<0 ? "시장과 반대로 움직여 개별 요인을 확인해야 해요. ("+r.indexName()+String.format(java.util.Locale.ROOT," %+.2f%%)",r.indexChangePercent()) : "시장 전체 "+(r.indexChangePercent()!=null && r.indexChangePercent()<0?"하락":r.indexChangePercent()!=null && r.indexChangePercent()>0?"상승":"흐름")+"("+(r.indexName()==null?"관련 지수":r.indexName())
                 +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")과 함께 움직였을 수 있어요.";

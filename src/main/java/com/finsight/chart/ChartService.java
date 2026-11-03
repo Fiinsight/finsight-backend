@@ -362,7 +362,7 @@ public class ChartService {
             String body=articleContentExtractor.clean(item.getTitle(),item.getRawContent());
             String lead=articleContentExtractor.eventLead(item.getTitle(),body,at.toLocalDate(),change);
             String summary=docentSummary(lead+"\n\n"+body.replace(lead,""));
-            return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relevanceRank(symbol,item)>1?"DIRECT":"MARKET",item.getSource(),item.getSentimentHint()==null?null:item.getSentimentHint().name(),item.getSentimentConfidence());
+            return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relationType(symbol,item),item.getSource(),item.getSentimentHint()==null?null:item.getSentimentHint().name(),item.getSentimentConfidence());
         }).toList();
         return new com.finsight.external.AiDocentRequest(symbol,com.finsight.stock.StockCatalog.name(symbol),at.toString().length()==16?at.toString()+":00":at.toString(),change,period,news,level,index,indexChange);
     }
@@ -512,7 +512,11 @@ public class ChartService {
         LocalDate date = news.getPublishedAt() == null
                 ? null
                 : news.getPublishedAt().atZone(KST).toLocalDate();
-        return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource(), relevanceRank(symbol, news) > 1 ? "DIRECT" : "MARKET");
+        return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource(), relationType(symbol, news));
+    }
+
+    private static String relationType(String symbol, News news) {
+        return switch (relevanceRank(symbol, news)) { case 3 -> "DIRECT"; case 2 -> "SECTOR"; default -> "MARKET"; };
     }
 
     private List<News> findRelatedNews(String symbol, Instant start, Instant end) {
@@ -526,7 +530,9 @@ public class ChartService {
         String lead = raw.substring(0, Math.min(300, raw.length()));
         String name = com.finsight.stock.StockCatalog.name(symbol);
         if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol) || lead.contains(symbol)
-                || !name.equals(symbol) && (com.finsight.stock.StockCatalog.mentions(symbol,title) || com.finsight.stock.StockCatalog.mentions(symbol,lead))) return 3;
+                || !name.equals(symbol) && com.finsight.localml.ChartCompanyMatcher.reason(symbol,title,lead) != null) return 3;
+        String subject = title + " " + lead;
+        if (com.finsight.stock.StockCatalog.sectorTerms(symbol).stream().anyMatch(term -> subject.toLowerCase(java.util.Locale.ROOT).contains(term.toLowerCase(java.util.Locale.ROOT)))) return 2;
         String market = com.finsight.stock.StockCatalog.market(symbol);
         String index = "KOSDAQ".equals(market) ? "코스닥" : "KOSPI".equals(market) ? "코스피" : null;
         String other = "코스피".equals(index) ? "코스닥" : "코스피";
@@ -538,13 +544,17 @@ public class ChartService {
         return candidateNews(symbol,news,from,to,0);
     }
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to, double change) {
-        record Scored(News news, int rank, int score) {}
-        return news.stream().filter(item -> item.getPublishedAt() != null
+        record Scored(News news, int rank, int score, double adjusted) {}
+        var candidates = news.stream().filter(item -> item.getPublishedAt() != null
                 && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to))
-            .map(item -> new Scored(item, relevanceRank(symbol, item), representativeScore(symbol, item, change)))
-            .filter(item -> item.rank() > 0 && item.score() >= 1)
-            .sorted(Comparator.comparingInt(Scored::score).reversed()
-                .thenComparing(Comparator.comparingInt(Scored::rank).reversed())
+            .map(item -> {
+                int score = representativeScore(symbol, item, change);
+                return new Scored(item, relevanceRank(symbol, item), score, score - java.time.Duration.between(item.getPublishedAt(),to).toHours() / 24.0);
+            })
+            .filter(item -> item.rank() > 0 && item.score() >= (item.rank() == 3 ? 1 : 0)).toList();
+        int tier = candidates.stream().mapToInt(Scored::rank).max().orElse(0);
+        return candidates.stream().filter(item -> item.rank() == tier)
+            .sorted(Comparator.comparingDouble(Scored::adjusted).reversed()
                 .thenComparing(item -> item.news().getId(), Comparator.nullsLast(Comparator.naturalOrder())))
             .limit(3).map(Scored::news).toList();
     }
