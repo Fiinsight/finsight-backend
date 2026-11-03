@@ -373,6 +373,8 @@ public class ChartService {
         }
         return summary.toString();
     }
+    // Keep news rescoring fresh within one minute without repeating DB work for every chart hit.
+    @Cacheable(cacheNames = "chartReadings", unless = "#result.fallback()")
     public ChartResponse withDocents(ChartResponse chart,String level) {
         if (docentService==null) return chart;
         var sourceMoves=chart.moveInsights();

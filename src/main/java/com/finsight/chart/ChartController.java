@@ -30,13 +30,24 @@ public class ChartController {
             @Parameter(description = "D(일봉, 기본값), W(주봉), MINUTE(분봉)") @RequestParam(defaultValue = "D") String period,
             @Parameter(description = "분봉 간격: 1, 5, 15분") @RequestParam(defaultValue = "5") int interval,
             @RequestParam(required=false) String level,
-            @org.springframework.security.core.annotation.AuthenticationPrincipal Long userId) {
+            @org.springframework.security.core.annotation.AuthenticationPrincipal Long userId,
+            jakarta.servlet.http.HttpServletResponse response) {
         if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(period.toUpperCase(java.util.Locale.ROOT))) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
         }
         if (level==null) level=userId==null?"normal":profiles.getOnboarding(userId).learningLevel();
         if (level==null) level="beginner";
         if (!java.util.Set.of("beginner","normal","analyst").contains(level)) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"읽기 수준이 올바르지 않습니다.");
-        return chartService.withDocents(chartService.withCurrentQuote(chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval)),level);
+        long start = System.nanoTime();
+        var chart = chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval);
+        long dataReady = System.nanoTime();
+        chart = chartService.withDocents(chart, level);
+        long readingReady = System.nanoTime();
+        chart = chartService.withCurrentQuote(chart);
+        long quoteReady = System.nanoTime();
+        response.setHeader("Server-Timing", String.format(java.util.Locale.ROOT,
+                "chart;dur=%.3f, news_docent;dur=%.3f, cached_quote;dur=%.3f",
+                (dataReady-start)/1_000_000.0, (readingReady-dataReady)/1_000_000.0, (quoteReady-readingReady)/1_000_000.0));
+        return chart;
     }
 }
