@@ -1,6 +1,14 @@
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      cors:
+        # Actuator uses its own handler mapping, separate from WebMvcConfigurer.
+        allowed-origin-patterns: ${finsight.cors.allowed-origin-patterns}
+        allowed-methods: GET,OPTIONS
+
 spring:
   application:
     name: finsight-backend
