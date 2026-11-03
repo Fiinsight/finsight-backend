@@ -151,13 +151,14 @@ public class NewsCollectionScheduler {
                 break;
             }
             attempts++;
-            Optional<String> body = articleContentExtractor.extract(candidate.url());
+            var extracted = articleContentExtractor.extractArticle(candidate.url());
+            Optional<String> body = extracted.map(ArticleContentExtractor.ExtractedArticle::body);
             if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
                 log.info("Skipping unsuitable article body for {}", candidate.url());
                 continue;
             }
             try {
-                newsRepository.save(newsAssembler.assemble(candidate, body.get()));
+                newsRepository.save(newsAssembler.assemble(candidate.withImageUrl(candidate.imageUrl() != null ? candidate.imageUrl() : extracted.get().imageUrl()), body.get()));
                 savedCount++;
             } catch (Exception e) {
                 log.warn("Failed to save collected news for {}, skipping: {}", candidate.url(), e.getMessage());

@@ -60,6 +60,21 @@ public record NewsDetailResponse(
         );
     }
 
+    public static String cardText(String text) {
+        return text == null ? "" : text.replaceAll("\\[(사실|전망|분석)\\]", "")
+                .replaceAll("\\[\\s*\\d{6}\\s*\\]|\\(\\s*\\d{6}\\s*\\)", "").replaceAll("\\s+", " ").strip();
+    }
+    public static String cardPoint(String text) {
+        String[] lines = java.util.Objects.toString(text, "").strip().split("\\n+");
+        return cardText(lines.length > 1 && lines[0].startsWith("“") ? lines[lines.length - 1] : text);
+    }
+    public static String cardSummary(String text) {
+        String first = java.util.Arrays.stream(cardText(text).split("(?<=[.!?。！？])(?![0-9])\\s+"))
+                .limit(2).collect(java.util.stream.Collectors.joining(" "));
+        return first.codePointCount(0,first.length()) <= 150 ? first
+                : first.substring(0,first.offsetByCodePoints(0,149)).stripTrailing() + "…";
+    }
+
     public static String sourceExcerpt(String text) {
         if(text == null || text.isBlank()) return "";
         String first = java.util.Arrays.stream(text.strip().split("(?<=[.!?。！？])(?![0-9])\\s+|\\n+"))

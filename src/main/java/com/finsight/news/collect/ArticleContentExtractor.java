@@ -29,14 +29,19 @@ public class ArticleContentExtractor {
     private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(5);
     private static final String USER_AGENT = "Mozilla/5.0 (compatible; FinsightBot/1.0)";
 
-    public Optional<String> extract(String url) {
+    public record ExtractedArticle(String body, String imageUrl) {}
+
+    public Optional<String> extract(String url) { return extractArticle(url).map(ExtractedArticle::body); }
+
+    public Optional<ExtractedArticle> extractArticle(String url) {
         try {
             Document doc = Jsoup.connect(url)
                     .userAgent(USER_AGENT)
                     .timeout((int) FETCH_TIMEOUT.toMillis())
                     .get();
 
-            return extractDocument(doc, url);
+            String image = imageUrl(doc, url);
+            return extractDocument(doc, url).map(body -> new ExtractedArticle(body, image));
         } catch (Exception e) {
             log.warn("Failed to extract article body from {}: {}", url, e.getMessage());
             return Optional.empty();
@@ -46,6 +51,22 @@ public class ArticleContentExtractor {
     /** Parse an already fetched page without issuing another publisher request. */
     public Optional<String> extractHtml(String url, String html) {
         return extractDocument(Jsoup.parse(html, url), url);
+    }
+
+    public Optional<ExtractedArticle> extractArticleHtml(String url, String html) {
+        Document doc = Jsoup.parse(html, url);
+        String image = imageUrl(doc, url);
+        return extractDocument(doc, url).map(body -> new ExtractedArticle(body, image));
+    }
+
+    private static String imageUrl(Document doc, String url) {
+        for (String property : java.util.List.of("og:image:secure_url", "og:image")) {
+            for (var element : doc.select("meta[property=" + property + "]")) {
+                String image = NewsImageUrl.sanitize(element.attr("content"), url);
+                if (image != null) return image;
+            }
+        }
+        return null;
     }
 
     private Optional<String> extractDocument(Document doc, String url) {

@@ -131,13 +131,23 @@ class ProdMigrationStartupTest {
     }
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
+    void publisherImageReferenceRoundTripsWithoutReplacingArticleContent() {
+        var article = new com.finsight.news.News("반도체 수출 기사", "https://publisher.test/image-reference", "언론사", java.time.Instant.now(), "반도체 수출이 늘었다.");
+        article.setImageUrl("https://cdn.publisher.test/image.jpg");
+        entityManager.persist(article); entityManager.flush(); entityManager.clear();
+        assertThat(jdbc.queryForObject("SELECT image_url FROM news WHERE id=?", String.class, article.getId())).isEqualTo("https://cdn.publisher.test/image.jpg");
+        assertThat(jdbc.queryForObject("SELECT raw_content FROM news WHERE id=?", String.class, article.getId())).isEqualTo("반도체 수출이 늘었다.");
+    }
+
+    @Test
     void emptyPostgresMigratesAndProdHibernateValidates() {
         assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(environment.getProperty("finsight.auth.expiration-seconds"))
                 .isEqualTo(System.getenv().getOrDefault("JWT_EXPIRATION_SECONDS","604800"));
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
-                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
+                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM news", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM judgement", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success", Long.class)).isZero();
