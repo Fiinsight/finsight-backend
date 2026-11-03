@@ -98,6 +98,30 @@ public class ChartService {
         return getChart(symbol, period, 5);
     }
 
+    /** Price-only path: never waits for the news database or docent. */
+    @Cacheable(cacheNames = "chartCandles", key = "#symbol + ':' + #period + ':' + (#period == 'MINUTE' || #period == 'M' ? #intervalMinutes : 0)", sync = true)
+    public ChartResponse getCandles(String symbol, String period, int intervalMinutes) {
+        long started = System.nanoTime();
+        boolean minute = "MINUTE".equals(period) || "M".equals(period);
+        int interval = intervalMinutes == 1 || intervalMinutes == 15 ? intervalMinutes : 5;
+        String normalized = minute ? "MINUTE" : "W".equals(period) ? "W" : "D";
+        List<CandleView> daily = List.of();
+        List<ChartResponse.MinuteCandleView> intraday = List.of();
+        boolean fallback;
+        if (minute) {
+            var result = kisMinuteCandleClient.getCandlesWithStatus(symbol, interval, 120);
+            fallback = result.fallback();
+            intraday = result.candles().stream().map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close())).toList();
+        } else {
+            var result = kisDailyCandleClient.getCandlesWithStatus(symbol, "W".equals(normalized) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT, normalized);
+            fallback = result.fallback();
+            daily = result.candles().stream().sorted(Comparator.comparing(KisDailyCandle::date))
+                    .map(c -> new CandleView(c.date(), c.open(), c.high(), c.low(), c.close())).toList();
+        }
+        log.info("Chart timing stage=candles symbol={} period={} ms={} fallback={}", symbol, normalized, (System.nanoTime() - started) / 1_000_000, fallback);
+        return new ChartResponse(symbol, 0, 0, daily, List.of(), List.of(), null, normalized, minute ? interval : null, intraday, fallback, List.of());
+    }
+
     @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", unless = "#result.fallback()")
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         var quote = cachedQuote(symbol);
@@ -338,7 +362,7 @@ public class ChartService {
             String body=articleContentExtractor.clean(item.getTitle(),item.getRawContent());
             String lead=articleContentExtractor.eventLead(item.getTitle(),body,at.toLocalDate(),change);
             String summary=docentSummary(lead+"\n\n"+body.replace(lead,""));
-            return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relevanceRank(symbol,item)>1?"DIRECT":"MARKET",item.getSource(),item.getSentimentHint()==null?null:item.getSentimentHint().name(),item.getSentimentConfidence());
+            return new com.finsight.external.AiDocentRequest.Article(item.getId(),item.getTitle(),summary,item.getPublishedAt(),relationType(symbol,item),item.getSource(),item.getSentimentHint()==null?null:item.getSentimentHint().name(),item.getSentimentConfidence());
         }).toList();
         return new com.finsight.external.AiDocentRequest(symbol,com.finsight.stock.StockCatalog.name(symbol),at.toString().length()==16?at.toString()+":00":at.toString(),change,period,news,level,index,indexChange);
     }
@@ -488,7 +512,11 @@ public class ChartService {
         LocalDate date = news.getPublishedAt() == null
                 ? null
                 : news.getPublishedAt().atZone(KST).toLocalDate();
-        return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource(), relevanceRank(symbol, news) > 1 ? "DIRECT" : "MARKET");
+        return new NewsMarkerView(date, news.getPublishedAt(), news.getId(), news.getTitle(), news.getSource(), relationType(symbol, news));
+    }
+
+    private static String relationType(String symbol, News news) {
+        return switch (relevanceRank(symbol, news)) { case 3 -> "DIRECT"; case 2 -> "SECTOR"; default -> "MARKET"; };
     }
 
     private List<News> findRelatedNews(String symbol, Instant start, Instant end) {
@@ -502,7 +530,9 @@ public class ChartService {
         String lead = raw.substring(0, Math.min(300, raw.length()));
         String name = com.finsight.stock.StockCatalog.name(symbol);
         if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol) || lead.contains(symbol)
-                || !name.equals(symbol) && (com.finsight.stock.StockCatalog.mentions(symbol,title) || com.finsight.stock.StockCatalog.mentions(symbol,lead))) return 3;
+                || !name.equals(symbol) && com.finsight.localml.ChartCompanyMatcher.reason(symbol,title,lead) != null) return 3;
+        String subject = title + " " + lead;
+        if (com.finsight.stock.StockCatalog.sectorTerms(symbol).stream().anyMatch(term -> subject.toLowerCase(java.util.Locale.ROOT).contains(term.toLowerCase(java.util.Locale.ROOT)))) return 2;
         String market = com.finsight.stock.StockCatalog.market(symbol);
         String index = "KOSDAQ".equals(market) ? "코스닥" : "KOSPI".equals(market) ? "코스피" : null;
         String other = "코스피".equals(index) ? "코스닥" : "코스피";
@@ -514,12 +544,18 @@ public class ChartService {
         return candidateNews(symbol,news,from,to,0);
     }
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to, double change) {
-        return news.stream().filter(item -> item.getPublishedAt() != null
-                && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to)
-                && relevanceRank(symbol, item) > 0 && representativeScore(symbol,item,change)>=1)
-            .sorted(Comparator.comparingInt((News item) -> representativeScore(symbol,item,change)).reversed()
-                .thenComparing(Comparator.comparingInt((News item) -> relevanceRank(symbol,item)).reversed())
-                .thenComparing(News::getId,Comparator.nullsLast(Comparator.naturalOrder())))
-            .limit(3).toList();
+        record Scored(News news, int rank, int score, double adjusted) {}
+        var candidates = news.stream().filter(item -> item.getPublishedAt() != null
+                && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to))
+            .map(item -> {
+                int score = representativeScore(symbol, item, change);
+                return new Scored(item, relevanceRank(symbol, item), score, score - java.time.Duration.between(item.getPublishedAt(),to).toHours() / 24.0);
+            })
+            .filter(item -> item.rank() > 0 && item.score() >= (item.rank() == 3 ? 1 : 0)).toList();
+        int tier = candidates.stream().mapToInt(Scored::rank).max().orElse(0);
+        return candidates.stream().filter(item -> item.rank() == tier)
+            .sorted(Comparator.comparingDouble(Scored::adjusted).reversed()
+                .thenComparing(item -> item.news().getId(), Comparator.nullsLast(Comparator.naturalOrder())))
+            .limit(3).map(Scored::news).toList();
     }
 }

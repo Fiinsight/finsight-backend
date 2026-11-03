@@ -24,23 +24,29 @@ public record NewsDetailResponse(
         SentimentHint sentimentHint,
         String category,
         List<String> keyTerms,
+        java.util.Map<String,List<String>> keyTermsByLevel,
         com.finsight.judgement.JudgementTargetResolver.Target judgementTarget,
-        java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate, boolean judgementReviewOnly
+        java.time.LocalDate judgementBaselineDate, java.time.LocalDate judgementComparisonDate, boolean judgementReviewOnly, String imageUrl, boolean fullContentEnabled
 ) {
     public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
                                           ArticleContentExtractor contentExtractor) {
+        return from(news,categoryClassifier,contentExtractor,false);
+    }
+    public static NewsDetailResponse from(News news, NewsCategoryClassifier categoryClassifier,
+                                          ArticleContentExtractor contentExtractor, boolean fullContentEnabled) {
         String rawContent = contentExtractor.clean(news.getTitle(), news.getRawContent());
         boolean unavailable = rawContent.isBlank();
         String beginner = unavailable ? "" : replaceStaleRewrite(news.getRewrittenBeginner(), rawContent);
         String normal = unavailable ? "" : replaceStaleRewrite(news.getRewrittenNormal(), rawContent);
         String analyst = unavailable ? "" : replaceStaleRewrite(news.getRewrittenAnalyst(), rawContent);
+        var termLists = com.finsight.term.KeyTermSelector.byLevel(unavailable ? "" : news.getTitle(), rawContent);
         return new NewsDetailResponse(
                 news.getId(),
                 news.getTitle(),
                 news.getUrl(),
                 news.getSource(),
                 news.getPublishedAt(),
-                sourceExcerpt(rawContent),
+                fullContentEnabled ? rawContent : sourceExcerpt(rawContent),
                 excerpt(beginner),
                 excerpt(normal),
                 excerpt(analyst),
@@ -52,11 +58,12 @@ public record NewsDetailResponse(
                 news.getRelatedSymbol(),
                 news.getSentimentHint(),
                 categoryClassifier.classify(news.getTitle(), rawContent),
-                unavailable ? List.of() : news.getKeyTerms(),
+                termLists.get("normal"), termLists,
                 com.finsight.judgement.JudgementTargetResolver.resolve(news),
                 com.finsight.judgement.KoreanTradingCalendar.onOrBefore(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
                 com.finsight.judgement.KoreanTradingCalendar.next(java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))),
-                com.finsight.judgement.ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),Instant.now())
+                com.finsight.judgement.ArticleJudgementPolicy.reviewOnly(news.getPublishedAt(),Instant.now()),
+                com.finsight.news.collect.NewsImageUrl.sanitize(news.getImageUrl(),news.getUrl()), fullContentEnabled
         );
     }
 
@@ -76,11 +83,21 @@ public record NewsDetailResponse(
     }
 
     public static String sourceExcerpt(String text) {
-        if(text == null || text.isBlank()) return "";
-        String first = java.util.Arrays.stream(text.strip().split("(?<=[.!?。！？])(?![0-9])\\s+|\\n+"))
-                .limit(3).collect(java.util.stream.Collectors.joining(" "));
-        return first.codePointCount(0,first.length()) <= 300 ? first
-                : first.substring(0,first.offsetByCodePoints(0,299)).stripTrailing() + "…";
+        if (text == null || text.isBlank()) return "";
+        var paragraphs = new java.util.ArrayList<String>();
+        int count = 0, size = 0;
+        for (String paragraph : text.strip().split("\\n+")) {
+            var kept = new java.util.ArrayList<String>();
+            for (String sentence : paragraph.split("(?<=[.!?。！？])(?![0-9])\\s+")) {
+                if (sentence.isBlank()) continue;
+                int length = sentence.codePointCount(0,sentence.length());
+                if (count >= 6 || size + length + 2 > 1200) break;
+                kept.add(sentence); count++; size += length + 2;
+            }
+            if (!kept.isEmpty()) paragraphs.add(String.join(" ", kept));
+            if (count >= 6) break;
+        }
+        return String.join("\n\n", paragraphs);
     }
 
     public static String excerpt(String text) {

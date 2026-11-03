@@ -10,6 +10,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class TermServiceTest {
+    @Test void newCuratedTermsHaveDefinitionsWithoutSeedingOrCallingAi() {
+        var terms=mock(TermRepository.class); var ai=mock(AiServiceClient.class);
+        var service=new TermService(terms,mock(NewsRepository.class),ai,new ArticleContentExtractor());
+        assertTrue(service.explain(new TermExplainRequest("실적 가이던스",null,"normal")).definition().contains("기업이 제시"));
+        verify(terms,never()).save(any()); verifyNoInteractions(ai);
+    }
     @Test void dictionarySeedCoversDetectedTermsWithoutOverwritingExistingDefinitions() {
         var repository = mock(TermRepository.class);
         when(repository.findByTermIgnoreCase("환율")).thenReturn(Optional.of(new Term("환율", "기존 정의")));

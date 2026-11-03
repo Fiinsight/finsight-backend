@@ -62,7 +62,9 @@ public class ArticleContentExtractor {
     private static String imageUrl(Document doc, String url) {
         for (String property : java.util.List.of("og:image:secure_url", "og:image")) {
             for (var element : doc.select("meta[property=" + property + "]")) {
-                String image = NewsImageUrl.sanitize(element.attr("content"), url);
+                var width=doc.selectFirst("meta[property=og:image:width]");
+                var height=doc.selectFirst("meta[property=og:image:height]");
+                String image = NewsImageUrl.sanitize(element.attr("content"), url, width==null?null:width.attr("content"),height==null?null:height.attr("content"));
                 if (image != null) return image;
             }
         }
@@ -112,7 +114,7 @@ public class ArticleContentExtractor {
         if (!StringUtils.hasText(body)) {
             return "";
         }
-        body = stripPhotoNoise(body).replaceAll("(?s)\\[[^\\]]{0,500}(?:자료사진|사진 제공|재판매|DB 금지)[^\\]]{0,500}\\]", " ")
+        body = stripPhotoNoise(body).replaceAll("(?m)^(?:\\([^()\\n]{1,40}\\)\\s*)?[가-힣·]{2,12}\\s*(?:기자|특파원)\\s*=\\s*", "").replaceAll("(?s)\\[[^\\]]{0,500}(?:자료사진|사진 제공|재판매|DB 금지)[^\\]]{0,500}\\]", " ")
                 .replaceFirst("(?s)^.{0,700}?(?:사진|딜링룸|촬영).{0,500}?20\\d{2}\\.\\d{1,2}\\.\\d{1,2}\\s+[\\w.+-]+@[\\w.-]+\\s*", "")
                 .replaceAll("\\([^()\\n]{1,40}=연합뉴스\\)\\s*[가-힣·]{2,12}\\s*기자\\s*=\\s*", "")
                 .replaceAll("사진\\s*=\\s*(?:AFP|AP|EPA|로이터|연합뉴스)(?:/[^\\s]+)?\\s*", "")
@@ -123,18 +125,17 @@ public class ArticleContentExtractor {
                 .replace("ⓒ 한경닷컴, 무단전재 및 재배포 금지", "")
                 .trim();
         String titleKey = compact(title);
-        String[] parts = body.replace('\r', '\n').split("(?<=[.!?。！？])\\s+|\\n+");
         List<String> cleaned = new ArrayList<>();
-        for (String part : parts) {
-            String item = part.trim().replaceAll("\\s+", " ");
-            while (java.util.regex.Pattern.compile(prefix).matcher(item).find()) item = item.replaceFirst(prefix, "").strip();
-            if (item.length() < 10 || PAGE_CHROME.stream().anyMatch(item::contains)) {
-                continue;
+        for (String paragraph : body.replace('\r', '\n').split("\\n+")) {
+            List<String> sentences = new ArrayList<>();
+            for (String part : paragraph.split("(?<=[.!?。！？])(?![0-9])\\s+")) {
+                String item = part.trim().replaceAll("\\s+", " ");
+                while (java.util.regex.Pattern.compile(prefix).matcher(item).find()) item = item.replaceFirst(prefix, "").strip();
+                if (item.length() < 10 || PAGE_CHROME.stream().anyMatch(item::contains)) continue;
+                if (!titleKey.isBlank() && compact(item).equals(titleKey)) continue;
+                sentences.add(item);
             }
-            if (!titleKey.isBlank() && compact(item).equals(titleKey)) {
-                continue;
-            }
-            cleaned.add(item);
+            if (!sentences.isEmpty()) cleaned.add(String.join(" ", sentences));
         }
         return String.join("\n\n", cleaned).trim();
     }
@@ -145,12 +146,16 @@ public class ArticleContentExtractor {
         String credit = "^사진\\s*=\\s*(?:.{1,60}?(?:생성\\s*이미지|제공)|게티이미지뱅크|[^\\s]+)\\s*";
         List<String> kept = new ArrayList<>();
         boolean changed = false;
-        for (String part : text.split("(?<=[.!?。！？])(?!\\d)\\s*|\\n+")) {
-            String item = part.strip();
-            if (java.util.regex.Pattern.compile(notice).matcher(item).find()) { changed = true; continue; }
-            String plain = item.replaceFirst(credit, "");
-            changed |= !plain.equals(item);
-            if (!plain.isBlank()) kept.add(plain);
+        for (String paragraph : text.split("\\n+")) {
+            List<String> sentences = new ArrayList<>();
+            for (String part : paragraph.split("(?<=[.!?。！？])(?!\\d)\\s+")) {
+                String item = part.strip();
+                if (java.util.regex.Pattern.compile(notice).matcher(item).find()) { changed = true; continue; }
+                String plain = item.replaceFirst(credit, "");
+                changed |= !plain.equals(item);
+                if (!plain.isBlank()) sentences.add(plain);
+            }
+            if (!sentences.isEmpty()) kept.add(String.join(" ", sentences));
         }
         return changed ? String.join("\n\n", kept).strip() : text;
     }

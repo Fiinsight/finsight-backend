@@ -74,8 +74,12 @@ public class LearningService {
                 : ai.learning(new AiRewriteRequest(article.getTitle(), body, level));
         List<Term> dictionary = terms.findAll();
         List<Term> matchedTerms = articleTerms(article, dictionary);
-        List<Glossary> glossary = matchedTerms.stream().limit(3)
-                .map(t -> new Glossary(t.getTerm(), t.getShortDefinition())).toList();
+        Map<String,String> definitions = dictionary.stream().filter(t -> t.getShortDefinition()!=null)
+                .collect(java.util.stream.Collectors.toMap(t -> t.getTerm().replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT), Term::getShortDefinition, (a,b)->a));
+        List<Glossary> glossary = com.finsight.term.KeyTermSelector.select(article.getTitle(), body, level).stream()
+                .map(term -> new Glossary(term, Optional.ofNullable(definitions.get(term.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT)))
+                        .or(() -> com.finsight.term.KeyTermSelector.definition(term)).orElse(null)))
+                .filter(item -> item.definition()!=null).toList();
         Map<String,TermMasteryService.Mastery> knowledge = new HashMap<>();
         mastery.list(userId).forEach(row -> knowledge.put(row.term(),row));
         Map<String,Double> probabilities = new HashMap<>();
@@ -85,10 +89,12 @@ public class LearningService {
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
         GradedQuestion quiz = first == null ? null : question(article, first, level, needsConcept(knowledge.get(first.getTerm())), dictionary);
         if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
+        String summary = usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).filter(value -> !value.isBlank())
+                .orElseGet(() -> com.finsight.news.NewsDetailResponse.sourceExcerpt(body));
         return new Lesson(newsId, level,
-                usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).orElse("수준별 설명을 확인할 수 없습니다 (fallback). 원문 링크를 확인하세요."),
-                aid.map(AiServiceClient.ReadingAid::readingGuide).orElse("아래 용어는 일반 개념 설명이며 기사의 사실과 구분해 읽어주세요."),
-                usableStored ? mode : aid.isPresent() ? "EXCERPT" : "UNAVAILABLE", glossary,
+                summary.isBlank() ? "수준별 설명을 확인할 수 없습니다. 원문 링크를 확인하세요." : summary,
+                aid.map(AiServiceClient.ReadingAid::readingGuide).filter(value -> !value.isBlank()).orElse("아래 용어는 일반 개념 설명이며 기사의 사실과 구분해 읽어주세요."),
+                usableStored ? mode : summary.isBlank() ? "UNAVAILABLE" : "EXCERPT", glossary,
                 quiz == null ? null : quiz.publicQuestion());
     }
     @Transactional

@@ -22,6 +22,28 @@ public class ChartController {
         this.chartService = chartService;
     }
 
+    @GetMapping("/{symbol}/candles")
+    public ChartResponse candles(@PathVariable String symbol,
+            @RequestParam(defaultValue = "D") String period,
+            @RequestParam(defaultValue = "5") int interval) {
+        String normalized = period.toUpperCase(java.util.Locale.ROOT);
+        if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(normalized)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
+        }
+        return chartService.withCurrentQuote(chartService.getCandles(symbol, normalized, interval));
+    }
+
+    @GetMapping("/{symbol}/insights")
+    public ChartResponse insights(@PathVariable String symbol,
+            @RequestParam(defaultValue = "D") String period,
+            @RequestParam(defaultValue = "5") int interval) {
+        String normalized = period.toUpperCase(java.util.Locale.ROOT);
+        if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(normalized)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
+        }
+        return chartService.withCurrentQuote(chartService.getChart(symbol, normalized, interval));
+    }
+
     @GetMapping("/{symbol}")
     @Operation(summary = "종목 차트 조회",
             description = "해당 종목의 캔들(KIS)과, 같은 기간 relatedSymbol이 일치하는 뉴스 마커/도슨트를 함께 반환합니다.")

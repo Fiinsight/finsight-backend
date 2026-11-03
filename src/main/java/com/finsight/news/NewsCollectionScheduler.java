@@ -44,19 +44,21 @@ public class NewsCollectionScheduler {
     private final ArticleContentExtractor articleContentExtractor;
     private final NewsAssembler newsAssembler;
     private final NewsRepository newsRepository;
+    private final com.finsight.news.collect.NewsImageVerifier imageVerifier;
 
     public NewsCollectionScheduler(RssFeedFetcher rssFeedFetcher,
                                     NewsDeduplicator newsDeduplicator,
                                     NewsRelevanceScorer newsRelevanceScorer,
                                     ArticleContentExtractor articleContentExtractor,
                                     NewsAssembler newsAssembler,
-                                    NewsRepository newsRepository) {
+                                    NewsRepository newsRepository, com.finsight.news.collect.NewsImageVerifier imageVerifier) {
         this.rssFeedFetcher = rssFeedFetcher;
         this.newsDeduplicator = newsDeduplicator;
         this.newsRelevanceScorer = newsRelevanceScorer;
         this.articleContentExtractor = articleContentExtractor;
         this.newsAssembler = newsAssembler;
         this.newsRepository = newsRepository;
+        this.imageVerifier = imageVerifier;
     }
 
     private java.time.Clock clock = java.time.Clock.systemUTC();
@@ -69,17 +71,28 @@ public class NewsCollectionScheduler {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private org.springframework.data.redis.core.StringRedisTemplate redis;
 
-    public void requestCatchUp() {
+    public record CollectionStatus(boolean enabled, boolean running, Instant lastSuccessAt, long collectedToday, long publishedToday) {}
+    public CollectionStatus collectionStatus() {
+        Instant now=clock.instant();
+        Instant start=now.atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+        return new CollectionStatus(collectionEnabled,collecting.get()||requested.get(),lastSuccess.equals(Instant.EPOCH)?null:lastSuccess,
+                newsRepository.countByCreatedAtBetween(start,now),newsRepository.countByPublishedAtBetween(start,now));
+    }
+    public boolean startupReady() { return !clock.instant().isBefore(startedAt.plusSeconds(45)); }
+    public void requestCatchUp() { queueCatchUp(false); }
+    public boolean requestScheduledCatchUp() { return queueCatchUp(true); }
+    private boolean queueCatchUp(boolean scheduled) {
         Instant now = clock.instant();
         if (!collectionEnabled || now.isBefore(startedAt.plusSeconds(45))
-                || now.isBefore(lastSuccess.plusSeconds(10800)) || now.isBefore(lastAttempt.plusSeconds(600))
-                || collecting.get() || !requested.compareAndSet(false,true)) return;
+                || (!scheduled && now.isBefore(lastSuccess.plusSeconds(10800))) || now.isBefore(lastAttempt.plusSeconds(600))
+                || collecting.get() || !requested.compareAndSet(false,true)) return false;
         lastAttempt = now;
         try {
             executor.execute(() -> { try { runOnce(40); }
                 catch (Exception error) { log.warn("Requested collection failed: {}",error.getClass().getSimpleName()); }
                 finally { requested.set(false); } });
-        } catch (RuntimeException error) { requested.set(false); }
+        } catch (RuntimeException error) { requested.set(false); return false; }
+        return true;
     }
 
     @Scheduled(cron = "0 0 */3 * * *", zone = "Asia/Seoul")
@@ -123,6 +136,7 @@ public class NewsCollectionScheduler {
         List<NewsCandidate> fetched = rssFeedFetcher.fetchAll();
         List<NewsCandidate> unseen = newsDeduplicator.filterUnseen(fetched);
         List<NewsCandidate> topCandidates = newsRelevanceScorer.rank(unseen, limit);
+        log.info("News pipeline sources: fetched={} unseen={} ranked={}", sourceCounts(fetched), sourceCounts(unseen), sourceCounts(topCandidates));
 
         for (News retry : limit < TOP_CANDIDATE_COUNT ? List.<News>of() : newsRepository.findTop10ByRewriteRetryPendingTrueOrderByPublishedAtDesc()) {
             try { newsAssembler.retryRewrite(retry); newsRepository.save(retry); }
@@ -138,6 +152,9 @@ public class NewsCollectionScheduler {
             if (redis != null) try { redis.opsForValue().set("finsight:news:last-success",lastSuccess.toString()); }
             catch (RuntimeException ignored) { log.warn("Collection timestamp persistence unavailable"); }
         }
+        var status=collectionStatus();
+        log.info("News collection status: lastSuccessAt={}, collectedToday={}, publishedToday={}",
+                status.lastSuccessAt(),status.collectedToday(),status.publishedToday());
         log.info("News collection heapMiB={}", (Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576);
         return new NewsCollectionResult(fetched.size(), unseen.size(), topCandidates.size(), saved);
         } finally { collecting.set(false); }
@@ -146,25 +163,39 @@ public class NewsCollectionScheduler {
     private int extractAndSave(List<NewsCandidate> candidates, int limit) {
         int savedCount = 0;
         int attempts = 0;
+        java.util.Map<String, int[]> stages = new java.util.LinkedHashMap<>();
         for (NewsCandidate candidate : candidates) {
             if (savedCount >= Math.min(limit,TARGET_SAVED_COUNT) || attempts >= Math.min(limit,MAX_EXTRACTION_ATTEMPTS)) {
                 break;
             }
             attempts++;
+            int[] source = stages.computeIfAbsent(candidate.source(), ignored -> new int[4]);
+            source[0]++;
             var extracted = articleContentExtractor.extractArticle(candidate.url());
             Optional<String> body = extracted.map(ArticleContentExtractor.ExtractedArticle::body);
+            if (body.isPresent()) source[1]++;
             if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
-                log.info("Skipping unsuitable article body for {}", candidate.url());
+                log.warn("News extraction skipped: source={} reason={}", candidate.source(), body.isEmpty() ? "EMPTY_OR_FETCH_FAILED" : "UNUSABLE_BODY");
                 continue;
             }
+            source[2]++;
             try {
-                newsRepository.save(newsAssembler.assemble(candidate.withImageUrl(candidate.imageUrl() != null ? candidate.imageUrl() : extracted.get().imageUrl()), body.get()));
+                String image=imageVerifier.verify(candidate.imageUrl());
+                if(image==null) image=imageVerifier.verify(extracted.get().imageUrl());
+                newsRepository.save(newsAssembler.assemble(candidate.withImageUrl(image), body.get()));
+                newsDeduplicator.markCollected(candidate);
                 savedCount++;
+                source[3]++;
             } catch (Exception e) {
                 log.warn("Failed to save collected news for {}, skipping: {}", candidate.url(), e.getMessage());
             }
         }
+        stages.forEach((name, counts) -> log.info("News pipeline source={} attempts={} extracted={} usable={} saved={}", name, counts[0], counts[1], counts[2], counts[3]));
         return savedCount;
+    }
+
+    private static java.util.Map<String, Long> sourceCounts(List<NewsCandidate> candidates) {
+        return candidates.stream().collect(java.util.stream.Collectors.groupingBy(NewsCandidate::source, java.util.LinkedHashMap::new, java.util.stream.Collectors.counting()));
     }
 
     public int reprocessExisting(int limit) {

@@ -31,6 +31,21 @@ class NewsPipelineQualityTest {
     }
 
     @Test
+    void ranksPublishersInTurnsSoOneLargeFeedCannotFillEverySlot() {
+        NewsRelevanceScorer scorer = new NewsRelevanceScorer();
+        List<NewsCandidate> ranked = scorer.rank(List.of(
+                new NewsCandidate("금리 환율 코스피 급등", "https://www.yna.co.kr/view/1", "연합뉴스", Instant.now(), 0),
+                new NewsCandidate("금리 환율 증시 전망", "https://www.yna.co.kr/view/2", "연합뉴스", Instant.now(), 0),
+                new NewsCandidate("금리 인상 우려", "https://www.yna.co.kr/view/3", "연합뉴스", Instant.now(), 0),
+                new NewsCandidate("반도체 주가 하락", "https://www.mk.co.kr/news/stock/1", "매일경제 : 증권", Instant.now(), 0),
+                new NewsCandidate("배당 확대", "https://www.mk.co.kr/news/business/2", "매일경제 : 기업/경영", Instant.now(), 0),
+                new NewsCandidate("수출 증가", "https://www.hankyung.com/article/1", "한국경제", Instant.now(), 0)), 3);
+
+        assertThat(ranked).extracting(NewsCandidate::url).containsExactly(
+                "https://www.yna.co.kr/view/1", "https://www.mk.co.kr/news/stock/1", "https://www.hankyung.com/article/1");
+    }
+
+    @Test
     void rejectsSearchChromeAndShortBodies() {
         ArticleContentExtractor extractor = new ArticleContentExtractor();
         assertThat(extractor.isUsable("경제 뉴스", "Google 검색 결과를 표시합니다.".repeat(30))).isFalse();

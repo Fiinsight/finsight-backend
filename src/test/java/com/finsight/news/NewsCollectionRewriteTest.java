@@ -13,7 +13,7 @@ class NewsCollectionRewriteTest {
         var fetch=mock(RssFeedFetcher.class);var dedup=mock(NewsDeduplicator.class);var rank=mock(NewsRelevanceScorer.class);
         var extractor=mock(ArticleContentExtractor.class);var ai=mock(AiServiceClient.class);var repo=mock(NewsRepository.class);
         var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),extractor);
-        var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extractor,assembler,repo);
+        var scheduler=new NewsCollectionScheduler(fetch,dedup,rank,extractor,assembler,repo,mock(NewsImageVerifier.class));
         var candidates=java.util.stream.IntStream.range(0,15).mapToObj(i->new NewsCandidate("금리 변화 "+i,"https://fixture.test/"+i,"fixture",Instant.now(),1)).toList();
         when(fetch.fetchAll()).thenReturn(candidates);when(dedup.filterUnseen(candidates)).thenReturn(candidates);when(rank.rank(candidates,220)).thenReturn(candidates);
         when(extractor.extractArticle(anyString())).thenReturn(Optional.of(new ArticleContentExtractor.ExtractedArticle("금리가 변했다.", null)));when(extractor.isUsable(anyString(),anyString())).thenReturn(true);
@@ -28,7 +28,7 @@ class NewsCollectionRewriteTest {
     @Test void simultaneousCollectionRunsRemainSequential() throws Exception {
         var fetch=mock(RssFeedFetcher.class);var active=new java.util.concurrent.atomic.AtomicInteger();var maximum=new java.util.concurrent.atomic.AtomicInteger();
         when(fetch.fetchAll()).thenAnswer(invocation->{int n=active.incrementAndGet();maximum.accumulateAndGet(n,Math::max);Thread.sleep(30);active.decrementAndGet();return List.of();});
-        var scheduler=new NewsCollectionScheduler(fetch,mock(NewsDeduplicator.class),mock(NewsRelevanceScorer.class),mock(ArticleContentExtractor.class),mock(NewsAssembler.class),mock(NewsRepository.class));
+        var scheduler=new NewsCollectionScheduler(fetch,mock(NewsDeduplicator.class),mock(NewsRelevanceScorer.class),mock(ArticleContentExtractor.class),mock(NewsAssembler.class),mock(NewsRepository.class),mock(NewsImageVerifier.class));
         try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)) {
             var first=pool.submit(scheduler::runOnce);var second=pool.submit(scheduler::runOnce);first.get();second.get();
         }

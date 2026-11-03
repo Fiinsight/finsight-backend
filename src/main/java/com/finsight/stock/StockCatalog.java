@@ -33,6 +33,16 @@ public class StockCatalog {
         String normalized=text.toLowerCase(java.util.Locale.ROOT);
         return aliases(code).stream().anyMatch(alias -> normalized.contains(alias.toLowerCase(java.util.Locale.ROOT)));
     }
+    public static java.util.List<String> sectorTerms(String code) {
+        return switch (code) {
+            case "005930", "000660" -> java.util.List.of("반도체", "메모리", "HBM");
+            case "035420", "035720" -> java.util.List.of("플랫폼", "인터넷", "온라인 광고", "검색 광고");
+            case "373220", "051910", "006400" -> java.util.List.of("배터리", "이차전지", "2차전지");
+            case "005380", "000270" -> java.util.List.of("자동차", "완성차", "전기차");
+            case "207940", "068270" -> java.util.List.of("바이오", "제약", "의약품");
+            default -> java.util.List.of();
+        };
+    }
     private static Map<String, Stock> load() {
         var result = new LinkedHashMap<String, Stock>();
         try (var reader = new BufferedReader(new InputStreamReader(StockCatalog.class.getResourceAsStream("/stocks/krx-listed.csv"), StandardCharsets.UTF_8))) {
