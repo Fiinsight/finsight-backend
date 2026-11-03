@@ -98,6 +98,6 @@ tasks.named('test') { dependsOn 'testFreeEntrypoint' }
 
 tasks.register('testNewsImageBackfill', Exec) {
     workingDir 'scripts'
-    commandLine 'python3', '-m', 'unittest', '-v', 'test_backfill_news_images.py'
+    commandLine 'python3', '-m', 'unittest', 'discover', '-v', '-p', 'test_backfill_news_*.py'
 }
 tasks.named('test') { dependsOn 'testNewsImageBackfill' }

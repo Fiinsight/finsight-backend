@@ -37,3 +37,16 @@ The reviewed plan contains id, source url, timezone-aware publishedAt, previous 
 - Frontend: 179 passed, tsc --noEmit and Expo web export passed.
 - Mobile before: authenticated production QA account. After: authenticated local preview with real article copies; external KIS credentials were not copied, so local market tiles can show unavailable. No production quiz/judgement records were created.
 - Rollback: redeploy prior backend/frontend commits and prior AI pin; V21 is additive and can remain. A later approved content backfill requires a separate pre-write content snapshot to reverse; do not drop schema or overwrite article content as part of this review.
+
+## Follow-up review: release baseline, source links and category content
+All three repositories' `release/demo-2026-11` trees equal the main trees used to start these PRs (frontend 84e0b414, backend 9be21869, AI e1c546b5). The branches contain those release commits; no release changes were omitted. Keep main as the reviewed production PR target.
+
+The frontend thumbnail opens the publisher's original article, with a category icon and colored background when no usable image exists. This opens an external URL only and does not download/rehost images.
+
+The existing rewrite backfill updates the stored three reading-level excerpts and investment points; compact card summaries are derived at response time. It does not need a separate card-summary database column. Categories are stored separately, and have their own guarded reviewed-plan tool:
+```sh
+python scripts/backfill_news_categories.py --plan '<reviewed category-backfill-plan.json>'
+```
+The plan is produced by the exact Java classifier against the read-only article snapshot. Dry-run is default; apply requires `--apply --limit <approved count>` after explicit approval. It checks id, source URL, publication time, EXCERPT scope, seven-day window and previous category, and skips changed rows. Use a fresh read-only snapshot/dry-run after deployment before requesting apply approval. No existing production category was changed by this PR.
+
+At snapshot 2026-11-03 03:22:17 UTC, the 134 EXCERPT articles were all from Yonhap: metadata image URL 131/134 (97.76%). Other publishers had no samples, so no acquisition rate is claimed. Re-running collection may yield different counts or URLs. Frozen classifier plan: 8 category changes / 126 unchanged (snapshot comparison, not a live category apply result).
