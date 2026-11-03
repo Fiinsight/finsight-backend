@@ -81,11 +81,21 @@ public record NewsDetailResponse(
     }
 
     public static String sourceExcerpt(String text) {
-        if(text == null || text.isBlank()) return "";
-        String first = java.util.Arrays.stream(text.strip().split("(?<=[.!?。！？])(?![0-9])\\s+|\\n+"))
-                .limit(3).collect(java.util.stream.Collectors.joining(" "));
-        return first.codePointCount(0,first.length()) <= 300 ? first
-                : first.substring(0,first.offsetByCodePoints(0,299)).stripTrailing() + "…";
+        if (text == null || text.isBlank()) return "";
+        var paragraphs = new java.util.ArrayList<String>();
+        int count = 0, size = 0;
+        for (String paragraph : text.strip().split("\\n+")) {
+            var kept = new java.util.ArrayList<String>();
+            for (String sentence : paragraph.split("(?<=[.!?。！？])(?![0-9])\\s+")) {
+                if (sentence.isBlank()) continue;
+                int length = sentence.codePointCount(0,sentence.length());
+                if (count >= 6 || size + length + 2 > 1200) break;
+                kept.add(sentence); count++; size += length + 2;
+            }
+            if (!kept.isEmpty()) paragraphs.add(String.join(" ", kept));
+            if (count >= 6) break;
+        }
+        return String.join("\n\n", paragraphs);
     }
 
     public static String excerpt(String text) {
