@@ -11,6 +11,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
 class LearningServiceTest {
+    @Test void blankReadingAidUsesLocalWholeSentenceExcerptButMissingBodyRemainsUnavailable() {
+        var repository=mock(NewsRepository.class); var dictionary=mock(TermRepository.class); var ai=mock(AiServiceClient.class);
+        var article=new News("기준금리 전망","https://fixture.test","fixture",java.time.Instant.EPOCH,
+                "기준금리가 동결될 것으로 예상했다. 환율 변동도 함께 살폈다.\n\n추가 경제 지표를 확인할 예정이다.");
+        when(repository.findById(1L)).thenReturn(Optional.of(article));
+        when(ai.learning(any())).thenReturn(Optional.of(new AiServiceClient.ReadingAid("normal","","","EXCERPT")));
+        var service=new LearningService(repository,mock(UserRepository.class),dictionary,mock(LearningProgressRepository.class),mock(UserProfileService.class),ai,
+                new ArticleContentExtractor(),mock(TermMasteryService.class),mock(com.finsight.briefing.BriefingService.class));
+        var result=service.lesson(1L,1L,"normal");
+        assertEquals("EXCERPT",result.mode());assertTrue(result.summary().contains("기준금리가 동결"));assertTrue(result.summary().contains("\n\n"));
+        article.setRawContent("");clearInvocations(ai);
+        assertEquals("UNAVAILABLE",service.lesson(1L,1L,"normal").mode());verifyNoInteractions(ai);
+    }
     @Test void answersAreServerGradedAndProgressIsOwnerScoped() {
         var news = mock(NewsRepository.class); var users = mock(UserRepository.class);
         var terms = mock(TermRepository.class); var progress = mock(LearningProgressRepository.class);
@@ -37,7 +50,7 @@ class LearningServiceTest {
         when(article.getRewriteMode()).thenReturn("EXCERPT");
         assertEquals("EXCERPT", service.lesson(1L,115L,"beginner").mode());
         when(article.getRewriteMode()).thenReturn(null);
-        assertEquals("analyst", lesson.level()); assertEquals("UNAVAILABLE", lesson.mode());
+        assertEquals("analyst", lesson.level()); assertEquals("EXCERPT", lesson.mode());
         assertEquals("환율", lesson.question().term()); // Title beats alphabetical AI/body terms.
         assertEquals(lesson.question().options(), service.lesson(1L,115L,"beginner").question().options());
         assertEquals(3, lesson.question().options().size());
