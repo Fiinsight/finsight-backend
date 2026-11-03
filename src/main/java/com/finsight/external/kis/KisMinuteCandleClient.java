@@ -38,6 +38,7 @@ public class KisMinuteCandleClient {
     private static final LocalTime MARKET_OPEN = LocalTime.of(9, 0);
     private static final LocalTime MARKET_CLOSE = LocalTime.of(15, 30);
 
+    private final Cache<String, KisMinuteCandleResult> failures = Caffeine.newBuilder().maximumSize(100).expireAfterWrite(Duration.ofSeconds(30)).build();
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
     private final String appKey;
@@ -64,8 +65,10 @@ public class KisMinuteCandleClient {
         int interval = normalizeInterval(intervalMinutes);
         int safeCount = Math.max(1, Math.min(count, 120));
         String key = stockCode + ":" + interval + ":" + safeCount;
+        var failed = failures.getIfPresent(key);
+        if (failed != null) return failed;
         KisMinuteCandleResult result = cache.get(key, ignored -> fetchCandles(stockCode, interval, safeCount));
-        if (result.fallback()) cache.invalidate(key);
+        if (result.fallback()) { failures.put(key, result); cache.invalidate(key); }
         return result;
     }
 
