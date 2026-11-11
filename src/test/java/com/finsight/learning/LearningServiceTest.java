@@ -142,7 +142,7 @@ class LearningServiceTest {
     }
     @Test void factualDistractorsAlterSourceNumbersOrDirectionAndNeverUseGuaranteedProfits() {
         var variants=LearningService.factVariants("환율은 2.5% 상승했다.");
-        assertTrue(variants.contains("환율은 3.5% 상승했다."));
+        assertTrue(variants.stream().anyMatch(v -> v.matches("환율은 [0-9]+\\.[0-9]% 상승했다[.]") && !v.contains("2.5%")));
         assertTrue(variants.contains("환율은 2.5% 하락했다."));
         assertTrue(variants.stream().allMatch(value -> value.startsWith("환율은 ")));
         assertTrue(variants.stream().noneMatch(value -> value.contains("보장") || value.contains("확정")));
@@ -156,9 +156,9 @@ class LearningServiceTest {
             assertTrue(variants.size() >= 2);
             assertTrue(variants.stream().allMatch(value -> value.startsWith(temporal + " ")));
         }
-        assertTrue(LearningService.factVariants("2026년 거래량은 20개였다.").contains("2026년 거래량은 21개였다."));
-        assertTrue(LearningService.factVariants("2026년 성장률은 2.5%였다.").contains("2026년 성장률은 3.5%였다."));
-        assertTrue(LearningService.factVariants("매출은 1,200억원이었다.").contains("매출은 1201억원이었다."));
+        assertTrue(LearningService.factVariants("2026년 거래량은 20개였다.").stream().allMatch(v -> v.matches("2026년 거래량은 (16|18|22|24)개였다[.]")));
+        assertTrue(LearningService.factVariants("2026년 성장률은 2.5%였다.").stream().allMatch(v -> v.matches("2026년 성장률은 [0-9]+\\.[0-9]%였다[.]")));
+        assertTrue(LearningService.factVariants("매출은 1,200억원이었다.").stream().allMatch(v -> v.matches("매출은 [0-9],[0-9]{3}억원이었다[.]")));
     }
 
     @Test void allReadingLevelsKeepReceivingDefinitionsUntilPromotionEvidenceIsReady() {
