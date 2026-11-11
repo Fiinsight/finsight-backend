@@ -67,8 +67,9 @@ class ConceptPersonalizationTest {
     }
     @Test void sameCoreNewsProducesDifferentDailyConceptsAndNeverTopicsOrMarkets() {
         when(terms.findAll()).thenReturn(List.of(new Term("금리","이자 비율"),new Term("환율","교환 비율"),new Term("물가","가격 수준"),new Term("수급","수요 공급"),new Term("반도체","부품"),new Term("코스피","지수")));
-        article(1,"금리 환율 물가 수급 반도체 코스피");
-        when(briefing.getTodayBriefing()).thenReturn(List.of(brief(1)));
+        var core=article(1,"금리 환율 물가 수급 반도체 코스피");
+        when(news.findAllById(List.of(1L))).thenReturn(List.of(core));
+        when(briefing.getTodayBriefingWithoutCatchUp()).thenReturn(List.of(brief(1)));
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.25,5,false)));
         when(mastery.list(2L)).thenReturn(List.of(known("금리",.9,5,true),known("환율",.7,2,true)));
         var beginner=service.dailyTerms(1L); var investor=service.dailyTerms(2L);
@@ -83,13 +84,13 @@ class ConceptPersonalizationTest {
     }
     @Test void candidateShortageExpandsOnlyToRecentArticlesWithoutDictionaryFiller() {
         when(terms.findAll()).thenReturn(List.of(new Term("금리","이자"),new Term("환율","비율"),new Term("물가","가격"),new Term("반도체","부품")));
-        article(1,"금리"); var recent=article(2,"환율 물가 반도체");
-        when(briefing.getTodayBriefing()).thenReturn(List.of(brief(1)));
+        var core=article(1,"금리"); when(news.findAllById(List.of(1L))).thenReturn(List.of(core)); var recent=article(2,"환율 물가 반도체");
+        when(briefing.getTodayBriefingWithoutCatchUp()).thenReturn(List.of(brief(1)));
         when(mastery.list(1L)).thenReturn(List.of(known("금리",.9,3,true)));
-        when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(List.of(recent));
+        when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any(),any())).thenReturn(List.of(recent));
         assertEquals(List.of("물가","환율"),service.dailyTerms(1L).stream().map(LearningService.DailyTerm::term).toList());
         verify(terms).findAll();
-        verify(news).findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(argThat(at->at.isAfter(Instant.now().minusSeconds(86405)) && at.isBefore(Instant.now().minusSeconds(86395))));
+        verify(news).findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(argThat(at->at.isAfter(Instant.now().minusSeconds(86405)) && at.isBefore(Instant.now().minusSeconds(86395))),argThat(p->p.getPageSize()==50));
     }
 
     @Test void reviewsUseTheSameHalfProbabilityBoundaryAndExcludeHistoricalTopics() {

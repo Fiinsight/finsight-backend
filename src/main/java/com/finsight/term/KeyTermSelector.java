@@ -23,6 +23,10 @@ public final class KeyTermSelector {
             entry("신용 스프레드",3), entry("EPS",3), entry("듀레이션",3), entry("영업레버리지",3)
     ).stream().sorted(Comparator.comparingInt((Entry value)->value.term().length()).reversed()).toList();
 
+    public static boolean containsTerm(String text, String term) {
+        return text != null && term != null && entry(term, 1).pattern().matcher(text).find();
+    }
+
     public static List<String> select(String title, String body, String level) {
         int maximum = switch (level) { case "beginner" -> 1; case "analyst" -> 3; default -> 2; };
         String text = Objects.toString(title, "") + "\n" + Objects.toString(body, "");

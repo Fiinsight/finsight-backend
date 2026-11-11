@@ -44,6 +44,10 @@ public class BriefingService {
 
     public List<NewsBriefResponse> getTodayBriefing() {
         if (collection != null) collection.requestCatchUp();
+        return getTodayBriefingWithoutCatchUp();
+    }
+
+    public List<NewsBriefResponse> getTodayBriefingWithoutCatchUp() {
         return rankedNews().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
     }
 

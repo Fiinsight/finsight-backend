@@ -85,9 +85,12 @@ public class LearningService {
         Map<String,Double> probabilities = new HashMap<>();
         knowledge.forEach((term,row) -> probabilities.put(term,row.effectivePKnown()));
         String quizLevel = level;
-        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm())), dictionary) != null).map(Term::getTerm).toList(), probabilities);
+        var context = quizContext(article, dictionary, body, matchedTerms);
+        Map<String,GradedQuestion> questions = new HashMap<>();
+        for (Term term : matchedTerms) questions.put(term.getTerm(), question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm())),dictionary,context));
+        String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> questions.get(term.getTerm()) != null).map(Term::getTerm).toList(), probabilities);
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
-        GradedQuestion quiz = first == null ? null : question(article, first, level, needsConcept(knowledge.get(first.getTerm())), dictionary);
+        GradedQuestion quiz = first == null ? null : questions.get(first.getTerm());
         if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
         String summary = usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).filter(value -> !value.isBlank())
                 .orElseGet(() -> com.finsight.news.NewsDetailResponse.sourceExcerpt(body));
@@ -124,9 +127,12 @@ public class LearningService {
         mastery.list(userId).forEach(row -> known.put(row.term(), row));
         List<Term> dictionary = terms.findAll();
         LinkedHashMap<String,DailyTerm> candidates = new LinkedHashMap<>();
-        for (var item : briefing.getTodayBriefing()) news.findById(item.id()).ifPresent(article -> addDailyTerms(candidates, article, known, dictionary));
+        var items = briefing.getTodayBriefingWithoutCatchUp();
+        Map<Long,News> articles = news.findAllById(items.stream().map(item -> item.id()).toList()).stream()
+                .collect(java.util.stream.Collectors.toMap(News::getId, article -> article));
+        for (var item : items) if (articles.containsKey(item.id())) addDailyTerms(candidates, articles.get(item.id()), known, dictionary);
         if (candidates.size() < 3) {
-            for (News article : news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant.now().minus(java.time.Duration.ofHours(24)))) {
+            for (News article : news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(Instant.now().minus(java.time.Duration.ofHours(24)), org.springframework.data.domain.PageRequest.of(0,50))) {
                 addDailyTerms(candidates, article, known, dictionary);
             }
         }
@@ -179,14 +185,16 @@ public class LearningService {
         Map<String,Double> known = new HashMap<>();
         mastery.list(userId).forEach(row -> known.put(row.term(),row.effectivePKnown()));
         List<Term> dictionary = terms.findAll();
-        return articleTerms(article, dictionary).stream().filter(term -> term.getKind() == Term.Kind.CONCEPT && question(article,term,level,false,dictionary) != null)
+        var matched = articleTerms(article, dictionary);
+        var context = quizContext(article, dictionary, extractor.clean(article.getTitle(), article.getRawContent()), matched);
+        return matched.stream().filter(term -> term.getKind() == Term.Kind.CONCEPT && question(article,term,level,false,dictionary,context) != null)
                 .min(Comparator.comparingDouble((Term term) -> known.getOrDefault(term.getTerm(),KnowledgeTracing.P_INIT)).thenComparing(Term::getTerm))
                 .map(term -> new Glossary(term.getTerm(),term.getShortDefinition())).orElse(null);
     }
     List<Term> articleTerms(News article) { return articleTerms(article, terms.findAll()); }
     private List<Term> articleTerms(News article, List<Term> dictionary) {
         String content = article.getTitle() + " " + Objects.toString(article.getRawContent(), "");
-        return dictionary.stream().filter(t -> content.contains(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
+        return dictionary.stream().filter(t -> com.finsight.term.KeyTermSelector.containsTerm(content, t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
                 .sorted(Comparator.comparingInt((Term t) -> article.getTitle().contains(t.getTerm()) ? 0 : 1)
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();
@@ -202,17 +210,26 @@ public class LearningService {
         return question(article,term,level,conceptFirst,terms.findAll());
     }
     private GradedQuestion question(News article, Term term, String level, boolean conceptFirst, List<Term> dictionary) {
+        var context = quizContext(article, dictionary, extractor.clean(article.getTitle(), article.getRawContent()), articleTerms(article, dictionary));
+        return question(article,term,level,conceptFirst,dictionary,context);
+    }
+    private record QuizContext(String body, List<String> sentences, List<Term> matched) {}
+    private QuizContext quizContext(News article, List<Term> dictionary, String cleaned, List<Term> matched) {
+        String body = Objects.toString(cleaned, "");
+        return new QuizContext(body, Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
+                .map(String::strip).filter(value -> !value.isBlank()).distinct().toList(), matched);
+    }
+    private GradedQuestion question(News article, Term term, String level, boolean conceptFirst, List<Term> dictionary, QuizContext context) {
         if (!term.quizEligible(level)) return null;
         if (conceptFirst) {
             GradedQuestion definition = beginnerQuestion(article, term, level, dictionary);
             if (definition != null) return definition;
         }
-        String body = Objects.toString(extractor.clean(article.getTitle(), article.getRawContent()), "");
-        List<String> sentences = Arrays.stream(body.split("(?<=[.!?。])\\s+|\\n+"))
-                .map(String::strip).filter(value -> !value.isBlank()).distinct().toList();
+        String body = context.body();
+        List<String> sentences = context.sentences();
         Random seed = new Random(article.getId() ^ term.getTerm().hashCode());
         if ("normal".equals(level)) {
-            List<Term> matched = articleTerms(article, dictionary);
+            List<Term> matched = context.matched();
             for (String sentence : sentences) {
                 if (sentence.length()>180 || !sentence.contains(term.getTerm()) || !sentence.matches(".*[0-9].*")) continue;
                 if (matched.stream().anyMatch(other -> !other.getTerm().equals(term.getTerm())
