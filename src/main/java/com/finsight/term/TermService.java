@@ -30,6 +30,7 @@ public class TermService {
 
     private static final String NO_DEFINITION_FALLBACK = "등록된 기본 설명이 없는 용어입니다.";
 
+    @org.springframework.cache.annotation.Cacheable(cacheNames="termExplanations", key="#request")
     public TermExplainResponse explain(TermExplainRequest request) {
         Optional<String> localDefinition = termRepository.findByTermIgnoreCase(request.term())
                 .map(Term::getShortDefinition).or(() -> KeyTermSelector.definition(request.term()));
