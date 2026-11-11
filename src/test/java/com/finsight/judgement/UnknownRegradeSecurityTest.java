@@ -25,6 +25,14 @@ class UnknownRegradeSecurityTest {
 
     @BeforeEach void clearStartupInvocation() { clearInvocations(scheduler); }
 
+    @Test void singleNewsQueryRejectsAnonymousAndIgnoresSpoofedOwner() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/by-news/42")).andExpect(status().is4xxClientError());
+        verifyNoInteractions(service,users);
+        when(jwt.isValid("owner-token")).thenReturn(true);when(jwt.userId("owner-token")).thenReturn(7L);
+        var owner=mock(com.finsight.auth.User.class);when(users.findById(7L)).thenReturn(java.util.Optional.of(owner));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/judgements/by-news/42").header("Authorization","Bearer owner-token").param("userId","999")).andExpect(status().isOk());
+        verify(service).getForNews(owner,42L);verify(users,never()).findById(999L);verifyNoInteractions(scheduler);
+    }
     @Test void anonymousRequestCannotReadPricesOrChangeRecords() throws Exception {
         mvc.perform(post("/api/judgements/regrade-unknown").param("apply","true")).andExpect(status().is4xxClientError());
         verifyNoInteractions(scheduler);
