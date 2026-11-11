@@ -39,6 +39,13 @@ public class JudgementController {
         return judgementService.recordJudgement(user(userId), request);
     }
 
+    @GetMapping("/by-news/{newsId}")
+    public JudgementHistoryResponse byNews(@AuthenticationPrincipal Long userId,
+            @org.springframework.web.bind.annotation.PathVariable Long newsId) {
+        if (newsId <= 0) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST);
+        return judgementService.getForNews(user(userId), newsId);
+    }
+
     @GetMapping("/{id}")
     public JudgementHistoryResponse detail(@AuthenticationPrincipal Long userId,
             @org.springframework.web.bind.annotation.PathVariable Long id) {

@@ -144,6 +144,12 @@ public class JudgementService {
         return symbol==null?null:com.finsight.stock.StockCatalog.name(symbol);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public JudgementHistoryResponse getForNews(User user, Long newsId) {
+        return judgementRepository.findLatestForNews(user, newsId, org.springframework.data.domain.PageRequest.of(0,1))
+                .stream().findFirst().map(this::history).orElse(null);
+    }
+
     public JudgementHistoryResponse getDetail(User user, Long id) {
         return history(judgementRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "판단 기록을 찾을 수 없어요")));

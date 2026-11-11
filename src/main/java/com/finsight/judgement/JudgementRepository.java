@@ -41,6 +41,9 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     @EntityGraph(attributePaths = "news")
     java.util.Optional<Judgement> findByIdAndUser(Long id, User user);
 
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news WHERE j.user=:owner AND j.news.id=:newsId ORDER BY j.createdAt DESC,j.id DESC")
+    List<Judgement> findLatestForNews(User owner, Long newsId, Pageable pageable);
+
     // JOIN FETCH pulls `news` in the same query — without it, `open-in-view:
     // false` means the Hibernate session is closed by the time the caller
     // touches the lazy `news` proxy, throwing LazyInitializationException
