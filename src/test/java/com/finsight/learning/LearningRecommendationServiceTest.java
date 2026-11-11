@@ -22,9 +22,12 @@ class LearningRecommendationServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(Instant.parse("2026-10-13T04:00:00Z"),ZoneId.of("Asia/Seoul")));
         News source=article(1,"환율 변화","환율"), candidate=article(2,"수출 기업 원화 매출","환율");
         when(jdbc.queryForList(contains("sum(weight)"),any(Object[].class))).thenReturn(List.of(Map.of("news_id",1L,"weight",1.8)));
-        when(news.findAllById(any())).thenReturn(List.of(source));when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(List.of(source,candidate));
+        when(news.findRecommendationObservations(any())).thenReturn(List.of(source));when(news.findRecommendationCandidates(any(),any(),any())).thenReturn(List.of(source,candidate));
         when(ai.recommendations(any())).thenReturn(Optional.of(new AiRecommendationResponse("LOCAL_SENTENCE_TRANSFORMER",List.of(new AiRecommendationResponse.Item(2L,.9,1L,"spoofed"),new AiRecommendationResponse.Item(2L,.9,999L,"foreign")))));
         var result=service.get(7L,List.of(1L));
+        verify(news).findRecommendationCandidates(any(),any(),argThat(p->p.getPageSize()==300));
+        verify(news,never()).findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any());
+        verify(news).findAllById(List.of(2L));
         var sent=org.mockito.ArgumentCaptor.forClass(AiRecommendationRequest.class);verify(ai).recommendations(sent.capture());
         assertEquals(2.1,sent.getValue().behaviors().getFirst().weight(),1e-9);
         assertTrue(sent.getValue().excludedIds().contains(1L));assertEquals(1,result.items().size());
@@ -38,7 +41,7 @@ class LearningRecommendationServiceTest {
         var service=new LearningRecommendationService(jdbc,news,ai,new ArticleContentExtractor());
         org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(Instant.parse("2026-10-13T04:00:00Z"),ZoneId.of("Asia/Seoul")));
         var candidates=List.of(article(1,"국채 금리 하락","금리"),article(2,"국채 금리 하락","금리"),article(3,"반도체 생산 확대","반도체"));
-        when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(candidates);
+        when(news.findRecommendationCandidates(any(),any(),any())).thenReturn(candidates);
         assertTrue(service.get(7L,List.of()).items().isEmpty());verifyNoInteractions(ai);
         var recommendations=mock(LearningRecommendationService.class);
         var controller=new LearningController(mock(LearningService.class),mock(LearningProgressService.class),recommendations);
@@ -63,8 +66,8 @@ class LearningRecommendationServiceTest {
         org.springframework.test.util.ReflectionTestUtils.setField(service,"clock",Clock.fixed(Instant.parse("2026-10-13T04:00:00Z"),ZoneId.of("Asia/Seoul")));
         var source=article(1,"기준금리 변화","금리");var normal=article(2,"채권 투자 환경","금리");
         var watched=article(3,"반도체 신규 계약","반도체");when(watched.getRelatedSymbol()).thenReturn("005930");
-        when(news.findAllById(any())).thenReturn(List.of(source));
-        when(news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(any())).thenReturn(List.of(source,normal,watched));
+        when(news.findRecommendationObservations(any())).thenReturn(List.of(source));
+        when(news.findRecommendationCandidates(any(),any(),any())).thenReturn(List.of(source,normal,watched));
         var before=service.get(31L,List.of(1L));
         when(jdbc.queryForList(startsWith("SELECT symbol"),eq(String.class),eq(31L))).thenReturn(List.of("000660"));
         assertEquals(before,service.get(31L,List.of(1L)));
@@ -74,7 +77,7 @@ class LearningRecommendationServiceTest {
         assertFalse(prioritized.items().stream().anyMatch(item->item.newsId()==1L));
         assertFalse(service.get(31L,List.of(1L,3L)).items().stream().anyMatch(item->item.newsId()==3L));
         // Cold start has no behavior source; a watched article still has an honest, explicit recommendation reason.
-        when(news.findAllById(any())).thenReturn(List.of());
+        when(news.findRecommendationObservations(any())).thenReturn(List.of());
         assertEquals("WATCHLIST",service.get(31L,List.of()).items().getFirst().basis());
     }
 }

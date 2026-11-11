@@ -47,13 +47,9 @@ public class LearningRecommendationService {
                 UNION SELECT DISTINCT news_id FROM judgement WHERE user_id=?
                 """,Long.class,userId,userId,userId));
         excluded.addAll(readIds); excluded.addAll(weights.keySet());
-        Map<Long,News> observations=news.findAllById(weights.keySet()).stream().collect(Collectors.toMap(News::getId,article->article));
-        var candidates=news.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(since).stream()
-                .filter(article -> article.getPublishedAt()!=null && !article.getPublishedAt().isAfter(now)
-                        && !Objects.toString(article.getSource(),"").startsWith("SYNTHETIC")
-                        && !Objects.toString(article.getUrl(),"").contains("example.invalid")
-                        && article.getRawContent()!=null && !article.getRawContent().isBlank())
-                .limit(300).toList();
+        Map<Long,News> observations=news.findRecommendationObservations(weights.keySet()).stream().collect(Collectors.toMap(News::getId,article->article));
+        var candidates=news.findRecommendationCandidates(since,now,org.springframework.data.domain.PageRequest.of(0,300));
+        var index = new SimilarityIndex();
         if (!weights.isEmpty() && excluded.size()<=5000) {
             var request=new AiRecommendationRequest(weights.entrySet().stream().limit(500).map(entry->new AiRecommendationRequest.Behavior(entry.getKey(),entry.getValue())).toList(),candidates.stream().map(News::getId).toList(),excluded.stream().sorted().toList());
             var result=ai.recommendations(request);
@@ -63,11 +59,11 @@ public class LearningRecommendationService {
                 for (var item:result.get().results()) {
                     if (item==null || item.score()==null || !Double.isFinite(item.score()) || item.score()<=0 || item.score()>1.000001) continue;
                     News article=byId.get(item.newsId()), reason=observations.get(item.reasonNewsId());
-                    if (article==null || reason==null || excluded.contains(article.getId()) || duplicate(article,selected,observations.values())) continue;
+                    if (article==null || reason==null || excluded.contains(article.getId()) || duplicate(article,selected,observations.values(),index)) continue;
                     selected.add(view(article,reason,reasons.get(reason.getId()),"LOCAL_SENTENCE_TRANSFORMER",item.score()));
                     if(selected.size()==3) break;
                 }
-                if(!selected.isEmpty()) return prioritize(new Response(selected,"LOCAL_SENTENCE_TRANSFORMER"),candidates,watched,excluded,observations.values());
+                if(!selected.isEmpty()) return hydrate(prioritize(new Response(selected,"LOCAL_SENTENCE_TRANSFORMER"),candidates,watched,excluded,observations.values(),index));
             }
         }
         record Ranked(News article, News reason, double score) {}
@@ -78,7 +74,7 @@ public class LearningRecommendationService {
             double score=0,best=0; News reason=null;
             for(var entry:weights.entrySet()) {
                 News source=observations.get(entry.getKey()); if(source==null) continue;
-                double similarity=similarity(article,source);
+                double similarity=index.similarity(article,source);
                 score+=entry.getValue()*similarity;
                 if(similarity>best) { best=similarity; reason=source; }
             }
@@ -87,15 +83,15 @@ public class LearningRecommendationService {
         ranked.sort(Comparator.comparingDouble(Ranked::score).reversed().thenComparing(row->row.article().getPublishedAt(),Comparator.reverseOrder()).thenComparing(row->row.article().getId()));
         List<Recommendation> selected=new ArrayList<>();
         for(var row:ranked) {
-            if(row.reason()==null || duplicate(row.article(),selected,observations.values())) continue;
+            if(row.reason()==null || duplicate(row.article(),selected,observations.values(),index)) continue;
             selected.add(view(row.article(),row.reason(),reasons.get(row.reason().getId()),"RULE_INTEREST",row.score()));
             if(selected.size()==3) break;
         }
-        return prioritize(new Response(selected,selected.stream().anyMatch(item->"RULE_INTEREST".equals(item.basis()))?"RULE_INTEREST":"RULE_RECENT"),candidates,watched,excluded,observations.values());
+        return hydrate(prioritize(new Response(selected,selected.stream().anyMatch(item->"RULE_INTEREST".equals(item.basis()))?"RULE_INTEREST":"RULE_RECENT"),candidates,watched,excluded,observations.values(),index));
     }
-    private Response prioritize(Response original,List<News> candidates,Set<String> watched,Set<Long> excluded,Collection<News> observed) {
+    private Response prioritize(Response original,List<News> candidates,Set<String> watched,Set<Long> excluded,Collection<News> observed, SimilarityIndex index) {
         var eligible=candidates.stream().filter(n->watched.contains(n.getRelatedSymbol()) && !excluded.contains(n.getId())
-                && !duplicate(n,List.of(),observed)).toList();
+                && !duplicate(n,List.of(),observed,index)).toList();
         if(eligible.isEmpty()) return original;
         var selected=new ArrayList<Recommendation>();
         var byId=candidates.stream().collect(Collectors.toMap(News::getId,n->n));
@@ -103,22 +99,44 @@ public class LearningRecommendationService {
         for(var item:original.items()) if(watched.contains(byId.get(item.newsId()).getRelatedSymbol())) selected.add(item);
         for(var article:eligible) {
             if(selected.size()==3) break;
-            if(selected.stream().anyMatch(item->item.newsId().equals(article.getId())) || duplicate(article,selected,observed)) continue;
-            String body=extractor.clean(article.getTitle(),article.getRawContent());
-            String summary=body==null?"":body.split("(?<=[.!?])\\s+|\\n+",2)[0];
-            selected.add(new Recommendation(article.getId(),article.getTitle(),article.getCategory(),summary.substring(0,Math.min(400,summary.length())),
+            if(selected.stream().anyMatch(item->item.newsId().equals(article.getId())) || duplicate(article,selected,observed,index)) continue;
+            selected.add(new Recommendation(article.getId(),article.getTitle(),article.getCategory(),"",
                     "관심종목 "+com.finsight.stock.StockCatalog.name(article.getRelatedSymbol())+" 소식이에요",null,null,"WATCHLIST",null));
         }
         for(var item:original.items()) {
             if(selected.size()==3) break;
-            if(selected.stream().noneMatch(previous->previous.newsId().equals(item.newsId()) || sameEvent(previous.title(),item.title()))) selected.add(item);
+            if(selected.stream().noneMatch(previous->previous.newsId().equals(item.newsId()) || index.sameEvent(previous.title(),item.title()))) selected.add(item);
         }
         return new Response(List.copyOf(selected),selected.stream().anyMatch(item->"WATCHLIST".equals(item.basis()))?"WATCHLIST":original.basis());
     }
+    private Response hydrate(Response response) {
+        if (response.items().isEmpty()) return response;
+        Map<Long,News> selected=news.findAllById(response.items().stream().map(Recommendation::newsId).toList()).stream()
+                .collect(Collectors.toMap(News::getId,n->n));
+        return new Response(response.items().stream().map(item -> {
+            News article=selected.get(item.newsId());
+            String body=article==null?"":extractor.clean(article.getTitle(),article.getRawContent());
+            String summary=body==null?"":body.split("(?<=[.!?])\\s+|\\n+",2)[0];
+            return new Recommendation(item.newsId(),item.title(),item.category(),summary.substring(0,Math.min(400,summary.length())),item.reason(),item.reasonNewsId(),item.reasonTitle(),item.basis(),item.score());
+        }).toList(),response.basis());
+    }
+    private static final class SimilarityIndex {
+        private final Map<String,Set<String>> titles=new HashMap<>();
+        private final Map<News,Set<String>> terms=new IdentityHashMap<>();
+        private Set<String> title(String text) { return titles.computeIfAbsent(Objects.toString(text,""),LearningRecommendationService::bigrams); }
+        private double overlap(Set<String> a,Set<String> b) {
+            if(a.isEmpty() && b.isEmpty()) return 0;
+            long common=a.stream().filter(b::contains).count();
+            return (double)common/(a.size()+b.size()-common);
+        }
+        boolean sameEvent(String a,String b) { return overlap(title(a),title(b))>=.8; }
+        double similarity(News a,News b) {
+            return .65*overlap(terms.computeIfAbsent(a,n->new HashSet<>(n.getKeyTerms())),terms.computeIfAbsent(b,n->new HashSet<>(n.getKeyTerms())))
+                    +(a.getRelatedSymbol()!=null && a.getRelatedSymbol().equals(b.getRelatedSymbol())?.2:0)+.15*overlap(title(a.getTitle()),title(b.getTitle()));
+        }
+    }
     private Recommendation view(News article, News reason, Activity activity, String basis, double score) {
-        String body=extractor.clean(article.getTitle(),article.getRawContent());
-        String summary=body==null?"":body.split("(?<=[.!?])\\s+|\\n+",2)[0];
-        return new Recommendation(article.getId(),article.getTitle(),article.getCategory(),summary.substring(0,Math.min(400,summary.length())),
+        return new Recommendation(article.getId(),article.getTitle(),article.getCategory(),"",
                 reasonText(reason,activity),reason.getId(),reason.getTitle(),basis,score);
     }
     static String reasonText(News reason, Activity activity) {
@@ -131,8 +149,8 @@ public class LearningRecommendationService {
             default -> "읽은 '"+title+"'와 비슷해요";
         };
     }
-    private boolean duplicate(News article,List<Recommendation> selected,Collection<News> observed) {
-        return selected.stream().anyMatch(previous->sameEvent(article.getTitle(),previous.title())) || observed.stream().anyMatch(previous->sameEvent(article.getTitle(),previous.getTitle()));
+    private boolean duplicate(News article,List<Recommendation> selected,Collection<News> observed, SimilarityIndex index) {
+        return selected.stream().anyMatch(previous->index.sameEvent(article.getTitle(),previous.title())) || observed.stream().anyMatch(previous->index.sameEvent(article.getTitle(),previous.getTitle()));
     }
     static boolean sameEvent(String left,String right) {
         Set<String> a=bigrams(left),b=bigrams(right); if(a.isEmpty() || b.isEmpty()) return false;

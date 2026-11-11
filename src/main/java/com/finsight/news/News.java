@@ -102,6 +102,12 @@ public class News {
         this.createdAt = Instant.now();
     }
 
+    /** Unmanaged metadata projection; article bodies are loaded only for the selected cards. */
+    public News(Long id, String title, String url, String source, Instant publishedAt, String category, String relatedSymbol, String keyTerms) {
+        this.id=id; this.title=title; this.url=url; this.source=source; this.publishedAt=publishedAt;
+        this.category=category; this.relatedSymbol=relatedSymbol; this.keyTerms=keyTerms;
+    }
+
     public Long getId() {
         return id;
     }
