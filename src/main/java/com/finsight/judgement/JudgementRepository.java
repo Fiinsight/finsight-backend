@@ -52,6 +52,9 @@ public interface JudgementRepository extends JpaRepository<Judgement, Long> {
     @Query("SELECT j FROM Judgement j JOIN FETCH j.news LEFT JOIN FETCH j.user WHERE j.user.id=:userId AND j.feedbackGeneratedAt IS NULL AND j.createdAt < :cutoff")
     List<Judgement> findPendingByOwner(Long userId, Instant cutoff);
 
+    @Query("SELECT j FROM Judgement j JOIN FETCH j.news LEFT JOIN FETCH j.user WHERE j.feedbackGeneratedAt IS NULL AND j.actualDirection IS NULL AND j.createdAt < :cutoff AND j.id > :afterId ORDER BY j.id")
+    List<Judgement> findDueAfterId(Instant cutoff, Long afterId, Pageable pageable);
+
     // Same as above but without the 1-day-old gate — used by the manual
     // "run now" endpoint so the feedback flow can be tested/demoed without
     // waiting for a real trading day to pass.
