@@ -108,6 +108,11 @@ public class News {
         this.category=category; this.relatedSymbol=relatedSymbol; this.keyTerms=keyTerms;
     }
 
+    public News(Long id, String title, String url, String source, Instant publishedAt, String category, String relatedSymbol, String keyTerms, String lead) {
+        this(id,title,url,source,publishedAt,category,relatedSymbol,keyTerms);
+        this.rawContent=lead;
+    }
+
     public Long getId() {
         return id;
     }

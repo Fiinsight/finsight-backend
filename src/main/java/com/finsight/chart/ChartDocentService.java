@@ -9,9 +9,16 @@ public class ChartDocentService {
     public ChartDocentService(AiServiceClient ai) { this.ai=ai; }
     @Cacheable(cacheNames="chartDocents", key="T(com.finsight.chart.ChartDocentService).cacheKey(#r)", sync=true)
     public ChartResponse.DocentView get(AiDocentRequest r) {
+        return compute(r, java.time.Duration.ofSeconds(3));
+    }
+    @Cacheable(cacheNames="chartDocents", key="T(com.finsight.chart.ChartDocentService).cacheKey(#r)", sync=true)
+    public ChartResponse.DocentView getWithin(AiDocentRequest r, java.time.Duration remaining) {
+        return compute(r, remaining);
+    }
+    private ChartResponse.DocentView compute(AiDocentRequest r, java.time.Duration remaining) {
         var fallback=rule(r);
         if ("MINUTE".equals(r.period()) || "NONE".equals(fallback.relation()) || "SECTOR".equals(fallback.relation())) return fallback;
-        return ai.docent(r).filter(value -> fallback.relation().equals(value.relation())
+        return ai.docent(r, remaining).filter(value -> fallback.relation().equals(value.relation())
                 && java.util.Objects.equals(fallback.newsId(),value.newsId())
                 && ("RULE".equals(value.mode()) || "LLM".equals(value.mode()))
                 && value.whatHappened()!=null && !value.whatHappened().isBlank()

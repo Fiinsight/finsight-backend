@@ -100,10 +100,15 @@ public class AiServiceClient {
     }
 
     public Optional<com.finsight.chart.ChartResponse.DocentView> docent(AiDocentRequest request) {
+        return docent(request, USER_TIMEOUT);
+    }
+    public Optional<com.finsight.chart.ChartResponse.DocentView> docent(AiDocentRequest request, Duration remaining) {
+        if (remaining.isNegative() || remaining.isZero()) return Optional.empty();
+        Duration timeout=remaining.compareTo(USER_TIMEOUT)<0?remaining:USER_TIMEOUT;
         try {
             return Optional.ofNullable(webClient.post().uri("/ai/chart/docent").bodyValue(request)
                     .retrieve().bodyToMono(com.finsight.chart.ChartResponse.DocentView.class)
-                    .timeout(USER_TIMEOUT).block());
+                    .timeout(timeout).block());
         } catch (Exception e) {
             log.warn("Chart docent unavailable: {}", e.getClass().getSimpleName());
             return Optional.empty();

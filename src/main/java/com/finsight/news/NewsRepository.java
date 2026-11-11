@@ -12,6 +12,9 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT new com.finsight.news.News(n.id,n.title,n.url,n.source,n.publishedAt,n.category,n.relatedSymbol,n.keyTerms) FROM News n WHERE n.id IN :ids")
     List<News> findRecommendationObservations(java.util.Collection<Long> ids);
 
+    @org.springframework.data.jpa.repository.Query("SELECT new com.finsight.news.News(n.id,n.title,n.url,n.source,n.publishedAt,n.category,n.relatedSymbol,n.keyTerms,substring(trim(n.rawContent),1,300)) FROM News n WHERE n.publishedAt BETWEEN :start AND :end AND n.id>:afterId ORDER BY n.id")
+    List<News> findChartCandidatesAfterId(Instant start, Instant end, Long afterId, Pageable pageable);
+
     long countByCreatedAtBetween(Instant since, Instant until);
     long countByPublishedAtBetween(Instant since, Instant until);
     @org.springframework.data.jpa.repository.Query("""
