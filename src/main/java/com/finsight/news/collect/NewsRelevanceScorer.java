@@ -14,7 +14,8 @@ public class NewsRelevanceScorer {
     private static final List<String> SCORING_KEYWORDS = List.of(
             "금리", "환율", "실적", "코스피", "코스닥", "반도체", "수출", "물가",
             "공시", "배당", "증시", "주가", "투자", "인플레이션", "무역", "성장률",
-            "기준금리", "채권", "유가", "고용"
+            "기준금리", "채권", "유가", "고용", "영업이익", "매출", "순이익", "수주",
+            "계약", "인수", "합병", "증자", "자사주", "외환시장", "시장금리", "부동산"
     );
 
     /**
@@ -66,9 +67,13 @@ public class NewsRelevanceScorer {
 
     private int localPenalty(String title) {
         if (title == null) return 0;
-        boolean local = title.matches(".*(시장|군수|도지사|시청|군청|도청|구청).*" )
+        String administrative = title.replaceAll(
+                "(?:주식|외환|외국환|채권|부동산|금융|증권|자본|고용|노동|유통|국제|세계|신흥|해외|국내|글로벌)\\s*시장|시장\\s*금리", " ");
+        boolean mayor = administrative.matches(".*[가-힣]{2,}시장(?=\\s|[은이과는의,·]|$).*" )
+                && administrative.matches(".*(서울|부산|대구|인천|광주|대전|울산|세종|제주|경기|강원|수원|성남|고양|용인|화성|청주|전주|창원|포항|속초|강릉).*" );
+        boolean local = mayor || administrative.matches(".*(군수|도지사|시청|군청|도청|구청).*" )
                 || title.matches(".*(속초|새만금|수출탑|분쟁조정위).*" );
-        boolean finance = title.matches(".*(코스피|코스닥|증시|주가|상장|실적|영업이익|채권|기준금리).*" );
+        boolean finance = title.matches(".*(코스피|코스닥|증시|주가|상장|실적|영업이익|매출|순이익|수주|계약|인수|합병|증자|채권|금리|환율|외환).*" );
         return local && !finance ? -5 : 0;
     }
 
