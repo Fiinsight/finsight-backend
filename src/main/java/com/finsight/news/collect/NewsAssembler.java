@@ -52,6 +52,7 @@ public class NewsAssembler {
         news.setCategory(newsCategoryClassifier.classify(candidate.title(), rawContent));
         news.setRelatedSymbol(newsSymbolMatcher.match(candidate.title(), rawContent));
         news.setSentimentHint(newsSentimentClassifier.classify(candidate.title()));
+        news.setKeyTerms(com.finsight.term.KeyTermSelector.canonical(candidate.title(),rawContent,terms==null?List.of():terms.findAll()));
         applyRewrite(news, candidate, rawContent, allowLlm);
         return news;
     }
@@ -88,7 +89,6 @@ public class NewsAssembler {
     }
 
     private void applyRewrite(News news, NewsCandidate candidate, String rawContent, boolean allowLlm) {
-        news.setKeyTerms(com.finsight.term.KeyTermSelector.canonical(candidate.title(),rawContent,terms==null?List.of():terms.findAll()));
         if (hasStoredSummaries(news) && !news.isRewriteRetryPending()) return;
         var response = aiServiceClient.rewrite(new AiRewriteRequest(candidate.title(), rawContent, null, candidate.url(), allowLlm));
         if (response.isEmpty()) {

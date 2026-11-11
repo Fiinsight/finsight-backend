@@ -3,6 +3,15 @@ import java.util.*;import org.junit.jupiter.api.Test;import static org.assertj.c
 import com.finsight.news.collect.*;import com.finsight.external.*;
 import static org.mockito.Mockito.*;
 class CanonicalNewsTermsTest {
+    @Test void retryingAnExistingArticleNeverBackfillsItsStoredKeyTerms() {
+        var ai=mock(AiServiceClient.class);
+        var assembler=new NewsAssembler(ai,new NewsCategoryClassifier(),new NewsSymbolMatcher(),new NewsSentimentClassifier(),mock(ArticleContentExtractor.class));
+        var article=new com.finsight.news.News("EPS 분석","https://fixture.test","TEST",java.time.Instant.now(),"EPS는 100원이었다.");
+        article.setKeyTerms(List.of("AI","원화"));article.setRewriteRetryPending(true);
+        assembler.retryRewrite(article);
+        assertThat(article.getKeyTerms()).containsExactly("AI","원화");
+    }
+
     @Test void canonicalMetadataIncludesDictionaryConceptsBeyondLegacyAiListAndKeepsBoundaries() {
         var terms=List.of(new Term("기회비용","포기한 대안의 가치"));
         var result=KeyTermSelector.canonical("기회비용과 EPS 분석","EPS는 100원이다. CHAIR와 저금리도 등장한다.",terms);
