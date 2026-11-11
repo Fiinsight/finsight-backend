@@ -13,7 +13,7 @@ public class NewsCategoryClassifier {
     public String classify(String title, String content) {
         String headline = title == null ? "" : title;
         if (isMarketOverview(headline)) return "시장";
-        if (containsAny(headline, "한은", "금통위", "총재", "기준금리", "근원물가", "수출", "수입", "무역수지", "펀드 출시", "운용")) return classify(headline);
+        if ((containsAny(headline, "한은", "금통위", "총재", "기준금리", "근원물가", "수출", "수입", "무역수지") || isFundCompany(headline))) return classify(headline);
         if (containsAny(headline, "반도체", "AI", "인공지능", "배터리", "바이오", "전기차", "조선", "방산", "현대로템")) return "산업·기술";
         if (containsAny(headline, "나스닥", "다우", "S&P", "뉴욕", "미국 증시", "일본 증시", "중국 증시")) return "해외증시";
         String category = classify(headline);
@@ -25,8 +25,8 @@ public class NewsCategoryClassifier {
         title = title == null ? "" : title;
         if (isMarketOverview(title)) return "시장";
         if (containsAny(title, "한은", "금통위", "총재", "기준금리", "근원물가")) return "금리·통화정책";
-        if (containsAny(title, "수출", "수입", "무역수지")) return "정책·경제";
-        if (containsAny(title, "펀드 출시", "운용")) return "기업·종목";
+        if (containsAny(title, "수출", "수입", "무역수지") && !isIndustryHeadline(title)) return "정책·경제";
+        if (isFundCompany(title)) return "기업·종목";
         if (containsAny(title, "IPO", "공시", "상장", "유상증자", "무상증자")) {
             return "IPO·공시";
         }
@@ -42,7 +42,7 @@ public class NewsCategoryClassifier {
         if (containsAny(title, "코스피", "코스닥", "국내 증시", "증시", "주가", "장 마감", "거래소")) {
             return "국내증시";
         }
-        if (containsAny(title, "반도체", "AI", "인공지능", "배터리", "바이오", "전기차", "조선", "수출", "무역")) {
+        if (containsAny(title, "반도체", "AI", "인공지능", "배터리", "바이오", "전기차", "조선", "방산")) {
             return "산업·기술";
         }
         if (containsAny(title, "삼성", "SK", "현대", "LG", "네이버", "카카오", "실적", "영업이익", "매출")) {
@@ -115,9 +115,18 @@ public class NewsCategoryClassifier {
         return title.contains("[마켓뷰]") || title.matches(".*(?:코스피|코스닥).*(?:마감|향방).*");
     }
 
+    private static final java.util.regex.Pattern AI_TOKEN = java.util.regex.Pattern.compile("(?<![A-Za-z])AI(?![A-Za-z])",java.util.regex.Pattern.CASE_INSENSITIVE);
+    private boolean isIndustryHeadline(String title) {
+        return containsAny(title,"반도체","AI","인공지능","배터리","바이오","전기차","조선","방산");
+    }
+    private boolean isFundCompany(String title) {
+        return !containsAny(title,"국민연금","기금운용") && (containsAny(title,"운용사","자산운용","펀드 출시")
+                || title.contains("운용") && containsAny(title,"ETF","펀드","분배금","투자신탁"));
+    }
+
     private boolean containsAny(String title, String... keywords) {
         for (String keyword : keywords) {
-            if (title.contains(keyword)) {
+            if ("AI".equals(keyword) ? AI_TOKEN.matcher(title).find() : title.contains(keyword)) {
                 return true;
             }
         }

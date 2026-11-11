@@ -26,8 +26,9 @@ class BriefingServiceTest {
         News undated = news(99L,"금리",null);
         when(repository.findByPublishedAtBetweenOrderByPublishedAtDesc(any(),any(),any(Pageable.class))).thenReturn(List.of(newest, tied, middle, high, old, synthetic, undated));
         var service = new BriefingService(repository, extractor, new NewsCategoryClassifier(), new NewsRelevanceScorer());
-        assertEquals(List.of(2L, 3L, 4L), service.getTodayBriefing().stream().map(NewsBriefResponse::id).toList());
-        assertEquals(List.of(1L, 5L), service.getMoreBriefing(0, 10).stream().map(NewsBriefResponse::id).toList());
+        // Industry exports now have their own category; preserve the three-category priority.
+        assertEquals(List.of(2L, 3L, 1L), service.getTodayBriefing().stream().map(NewsBriefResponse::id).toList());
+        assertEquals(List.of(4L, 5L), service.getMoreBriefing(0, 10).stream().map(NewsBriefResponse::id).toList());
         assertTrue(service.getMoreBriefing(Integer.MAX_VALUE, 100).isEmpty());
         assertThrows(ResponseStatusException.class, () -> service.getMoreBriefing(-1, 10));
         assertThrows(ResponseStatusException.class, () -> service.getMoreBriefing(0, 101));
