@@ -62,7 +62,7 @@ public class FeedbackScheduler {
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void onApplicationReady() {
         if (!feedbackOnStartup) return;
-        java.util.concurrent.CompletableFuture.runAsync(this::generatePendingFeedback)
+        java.util.concurrent.CompletableFuture.runAsync(this::generatePendingFeedback, catchUpExecutor)
                 .exceptionally(error -> { log.warn("Feedback startup catch-up failed", error); return null; });
     }
 
@@ -96,7 +96,9 @@ public class FeedbackScheduler {
             com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(10000)
                     .expireAfterWrite(java.time.Duration.ofMinutes(5)).build();
     private final java.util.Set<Long> runningCatchUps = java.util.concurrent.ConcurrentHashMap.newKeySet();
-    private java.util.concurrent.Executor catchUpExecutor = java.util.concurrent.ForkJoinPool.commonPool();
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.beans.factory.annotation.Qualifier("feedbackBackgroundExecutor")
+    private java.util.concurrent.Executor catchUpExecutor = Runnable::run;
 
     public void requestCatchUp(Long userId) {
         if (userId == null || !runningCatchUps.add(userId)) return;

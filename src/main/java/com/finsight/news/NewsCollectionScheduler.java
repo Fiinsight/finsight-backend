@@ -67,7 +67,9 @@ public class NewsCollectionScheduler {
     private volatile Instant lastAttempt = Instant.EPOCH;
     private final java.util.concurrent.atomic.AtomicBoolean requested = new java.util.concurrent.atomic.AtomicBoolean();
     private final java.util.concurrent.atomic.AtomicBoolean collecting = new java.util.concurrent.atomic.AtomicBoolean();
-    private java.util.concurrent.Executor executor = java.util.concurrent.ForkJoinPool.commonPool();
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.beans.factory.annotation.Qualifier("newsBackgroundExecutor")
+    private java.util.concurrent.Executor executor = Runnable::run;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private org.springframework.data.redis.core.StringRedisTemplate redis;
 
@@ -114,7 +116,7 @@ public class NewsCollectionScheduler {
                 if (previous != null) lastSuccess = Instant.parse(previous);
             } catch (RuntimeException ignored) { log.warn("Collection timestamp unavailable"); }
             if (collectionEnabled && collectionOnStartup) runOnce();
-        })
+        }, executor)
                 .exceptionally(error -> {
                     log.warn("Startup news collection failed: {}", error.getMessage());
                     return null;
@@ -131,9 +133,13 @@ public class NewsCollectionScheduler {
     private NewsCollectionResult runOnce(int limit) {
         if (!collecting.compareAndSet(false,true)) return new NewsCollectionResult(0,0,0,0);
         try {
+        long started=System.nanoTime();
+        long[] timings=new long[5];
         log.info("News collection started at {}", Instant.now());
+        long fetchedAt=System.nanoTime();
 
         List<NewsCandidate> fetched = rssFeedFetcher.fetchAll();
+        timings[0]=System.nanoTime()-fetchedAt;
         List<NewsCandidate> unseen = newsDeduplicator.filterUnseen(fetched);
         List<NewsCandidate> topCandidates = newsRelevanceScorer.rank(unseen, limit);
         java.util.Map<String, int[]> stages = new java.util.LinkedHashMap<>();
@@ -145,7 +151,7 @@ public class NewsCollectionScheduler {
             try { newsAssembler.retryRewrite(retry); newsRepository.save(retry); }
             catch (Exception error) { log.warn("Rewrite retry deferred for newsId={}", retry.getId()); }
         }
-        int saved = extractAndSave(topCandidates, limit, stages);
+        int saved = extractAndSave(topCandidates, limit, stages, timings);
         stages.forEach((source, counts) -> log.info(
                 "News pipeline source={} fetched={} unseen={} ranked={} attempts={} extracted={} usable={} saved={}",
                 source, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6]));
@@ -161,12 +167,14 @@ public class NewsCollectionScheduler {
         var status=collectionStatus();
         log.info("News collection status: lastSuccessAt={}, collectedToday={}, publishedToday={}",
                 status.lastSuccessAt(),status.collectedToday(),status.publishedToday());
+        log.info("News collection timing fetchMs={} extractMs={} assembleMs={} saveMs={} imagesMs={} totalMs={}",
+                timings[0]/1_000_000,timings[1]/1_000_000,timings[2]/1_000_000,timings[3]/1_000_000,timings[4]/1_000_000,(System.nanoTime()-started)/1_000_000);
         log.info("News collection heapMiB={}", (Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory())/1048576);
         return new NewsCollectionResult(fetched.size(), unseen.size(), topCandidates.size(), saved);
         } finally { collecting.set(false); }
     }
 
-    private int extractAndSave(List<NewsCandidate> candidates, int limit, java.util.Map<String, int[]> stages) {
+    private int extractAndSave(List<NewsCandidate> candidates, int limit, java.util.Map<String, int[]> stages, long[] timings) {
         int savedCount = 0;
         int attempts = 0;
         for (NewsCandidate candidate : candidates) {
@@ -176,7 +184,9 @@ public class NewsCollectionScheduler {
             attempts++;
             int[] source = stages.get(candidate.source());
             source[3]++;
+            long stageStarted=System.nanoTime();
             var extracted = articleContentExtractor.extractArticle(candidate.url());
+            timings[1]+=System.nanoTime()-stageStarted;
             Optional<String> body = extracted.map(ArticleContentExtractor.ExtractedArticle::body);
             if (body.isPresent()) source[4]++;
             if (body.isEmpty() || !articleContentExtractor.isUsable(candidate.title(), body.get())) {
@@ -185,9 +195,16 @@ public class NewsCollectionScheduler {
             }
             source[5]++;
             try {
+                stageStarted=System.nanoTime();
                 String image=imageVerifier.verify(candidate.imageUrl());
                 if(image==null) image=imageVerifier.verify(extracted.get().imageUrl());
-                newsRepository.save(newsAssembler.assemble(candidate.withImageUrl(image), body.get()));
+                timings[4]+=System.nanoTime()-stageStarted;
+                stageStarted=System.nanoTime();
+                News article=newsAssembler.assemble(candidate.withImageUrl(image), body.get());
+                timings[2]+=System.nanoTime()-stageStarted;
+                stageStarted=System.nanoTime();
+                newsRepository.save(article);
+                timings[3]+=System.nanoTime()-stageStarted;
                 newsDeduplicator.markCollected(candidate);
                 savedCount++;
                 source[6]++;
