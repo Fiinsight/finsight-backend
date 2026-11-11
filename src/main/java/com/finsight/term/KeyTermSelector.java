@@ -8,6 +8,8 @@ public final class KeyTermSelector {
     private KeyTermSelector() {}
     private static final Set<String> EVERYDAY_WORDS = Set.of("주식","시장","기업","가격","상승","하락","투자","회사","정부","경제",
             "AI","반도체","수출","수입","원화","물가","매출","실적");
+    private static final Set<String> GENERIC_METADATA = Set.of("주식","시장","기업","가격","상승","하락","투자","회사","정부","경제");
+    private static final Set<String> BROAD_TOPICS = Set.of("AI","반도체","수출","수입","원화","물가","매출","실적","코스피","코스닥");
     private static final String PARTICLES = "은|는|이|가|을|를|의|와|과|에|로|도|만|으로|에서|에게|까지|부터|보다|처럼|에도|에는|에선|으로는|에서는|이며|이고|이다|입니다";
     private record Entry(String term, int grade, Pattern pattern) {}
     private static Entry entry(String term, int grade) {
@@ -27,14 +29,31 @@ public final class KeyTermSelector {
         return text != null && term != null && entry(term, 1).pattern().matcher(text).find();
     }
 
+    public static boolean isRecommendationTerm(String term) {
+        return term != null && !term.isBlank() && !GENERIC_METADATA.contains(term.strip());
+    }
+
+    public static double recommendationWeight(String term) { return BROAD_TOPICS.contains(term.toUpperCase(Locale.ROOT).strip()) ? 0.25 : 1.0; }
+
+    public static List<String> canonical(String title, String body, List<Term> dictionary) {
+        Map<String,Entry> entries=new LinkedHashMap<>();
+        DICTIONARY.forEach(item -> entries.put(item.term(),item));
+        dictionary.stream().filter(term -> isRecommendationTerm(term.getTerm()))
+                .forEach(term -> entries.putIfAbsent(term.getTerm(),entry(term.getTerm(),term.getKind()==Term.Kind.CONCEPT?2:1)));
+        return select(title,body,"analyst",entries.values().stream().sorted(Comparator.comparingInt((Entry e)->e.term().length()).reversed()).toList(),GENERIC_METADATA);
+    }
+
     public static List<String> select(String title, String body, String level) {
+        return select(title,body,level,DICTIONARY,EVERYDAY_WORDS);
+    }
+    private static List<String> select(String title, String body, String level, List<Entry> dictionary, Set<String> excluded) {
         int maximum = switch (level) { case "beginner" -> 1; case "analyst" -> 3; default -> 2; };
         String text = Objects.toString(title, "") + "\n" + Objects.toString(body, "");
         boolean[] occupied = new boolean[text.length()];
         record Candidate(String display, int score, int first) {}
         List<Candidate> candidates = new ArrayList<>();
-        for (Entry entry : DICTIONARY) {
-            if (entry.grade()>maximum || EVERYDAY_WORDS.contains(entry.term())) continue;
+        for (Entry entry : dictionary) {
+            if (entry.grade()>maximum || excluded.contains(entry.term())) continue;
             var matches=entry.pattern().matcher(text); int count=0,first=-1; String display=null;
             while(matches.find()) {
                 boolean overlap=false;

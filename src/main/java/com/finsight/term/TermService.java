@@ -54,11 +54,7 @@ public class TermService {
             return localExplanation(request, localDefinition);
         }
 
-        // Only ~20 terms are seeded locally, but keyTerms now come from real
-        // AI-detected terms per article, which go far beyond that fixed list.
-        // Prefer the curated local definition when we have one (trusted,
-        // reviewed); otherwise use the AI's own definition instead of a
-        // dead-end "no definition" message.
+        // Prefer curated definitions; article key terms use the backend dictionary and boundary rules.
         String plainDefinition = aiResponse.get().plainDefinition();
         String definition = localDefinition.orElseGet(() ->
                 (plainDefinition != null && !plainDefinition.isBlank()) ? plainDefinition : NO_DEFINITION_FALLBACK);

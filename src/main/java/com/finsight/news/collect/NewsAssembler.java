@@ -23,10 +23,18 @@ public class NewsAssembler {
     private final NewsSymbolMatcher newsSymbolMatcher;
     private final NewsSentimentClassifier newsSentimentClassifier;
     private final ArticleContentExtractor articleContentExtractor;
+    private final com.finsight.term.TermRepository terms;
 
     public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier,
                           NewsSymbolMatcher newsSymbolMatcher, NewsSentimentClassifier newsSentimentClassifier,
                           ArticleContentExtractor articleContentExtractor) {
+        this(aiServiceClient,newsCategoryClassifier,newsSymbolMatcher,newsSentimentClassifier,articleContentExtractor,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public NewsAssembler(AiServiceClient aiServiceClient, NewsCategoryClassifier newsCategoryClassifier,
+                          NewsSymbolMatcher newsSymbolMatcher, NewsSentimentClassifier newsSentimentClassifier,
+                          ArticleContentExtractor articleContentExtractor, com.finsight.term.TermRepository terms) {
+        this.terms=terms;
         this.aiServiceClient = aiServiceClient;
         this.newsCategoryClassifier = newsCategoryClassifier;
         this.newsSymbolMatcher = newsSymbolMatcher;
@@ -80,6 +88,7 @@ public class NewsAssembler {
     }
 
     private void applyRewrite(News news, NewsCandidate candidate, String rawContent, boolean allowLlm) {
+        news.setKeyTerms(com.finsight.term.KeyTermSelector.canonical(candidate.title(),rawContent,terms==null?List.of():terms.findAll()));
         if (hasStoredSummaries(news) && !news.isRewriteRetryPending()) return;
         var response = aiServiceClient.rewrite(new AiRewriteRequest(candidate.title(), rawContent, null, candidate.url(), allowLlm));
         if (response.isEmpty()) {
@@ -103,6 +112,5 @@ public class NewsAssembler {
         news.setImportanceReasonNormal(reasons.get("normal"));
         news.setImportanceReasonAnalyst(reasons.get("analyst"));
         news.setImportanceReason(result.importanceReason());
-        news.setKeyTerms(result.detectedTerms() == null ? List.of() : result.detectedTerms());
     }
 }
