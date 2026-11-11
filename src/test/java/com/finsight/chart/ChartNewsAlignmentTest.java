@@ -49,8 +49,7 @@ class ChartNewsAlignmentTest {
     }
     @Test void cachedCandlesAreRescoredWithoutAnyMarketClientCall() throws Exception {
         var repo=mock(com.finsight.news.NewsRepository.class);
-        when(repo.findByPublishedAtBetween(any(),any())).thenReturn(fixture());
-        for(var n:fixture()) when(repo.findById(n.getId())).thenReturn(Optional.of(n));
+        ChartNewsRows.stub(repo,fixture());
         var daily=mock(com.finsight.external.kis.KisDailyCandleClient.class);
         var minute=mock(com.finsight.external.kis.KisMinuteCandleClient.class);
         var ai=mock(com.finsight.external.AiServiceClient.class);
@@ -60,6 +59,7 @@ class ChartNewsAlignmentTest {
         var candles=List.of(new ChartResponse.CandleView(LocalDate.parse("2026-10-08"),100,100,100,100),new ChartResponse.CandleView(LocalDate.parse("2026-10-12"),95.61,95.61,95.61,95.61));
         var cached=new ChartResponse("005930",95.61,-4.39,candles,List.of(),List.of(),null,"D",null,List.of(),false,List.of());
         assertThat(service.withDocents(cached,"normal").moveInsights().getFirst().newsId()).isIn(232L,264L);
+        verify(repo,never()).findById(any());
         verifyNoInteractions(daily,minute);
     }
 }

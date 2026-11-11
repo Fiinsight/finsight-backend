@@ -41,7 +41,7 @@ class ChartDocentTest {
     @Test void cacheReusesPointAndSeparatesPeriodAndLevel() {
         try (var context = new AnnotationConfigApplicationContext(Config.class)) {
             var ai = context.getBean(AiServiceClient.class);
-            when(ai.docent(any())).thenAnswer(call -> Optional.of(ChartDocentService.rule(call.getArgument(0))));
+            when(ai.docent(any(),any())).thenAnswer(call -> Optional.of(ChartDocentService.rule(call.getArgument(0))));
             var service = context.getBean(ChartDocentService.class);
             var request = request("DIRECT", "D", "beginner");
             assertThat(service.get(request)).isSameAs(service.get(request));
@@ -49,7 +49,7 @@ class ChartDocentTest {
             service.get(request("DIRECT", "D", "analyst"));
             service.get(request("DIRECT", "MINUTE", "beginner"));
             service.get(request("NONE", "D", "beginner"));
-            verify(ai, times(3)).docent(any());
+            verify(ai, times(3)).docent(any(),any());
         }
     }
     @Test void largestPointUsesItsExactDocentAndLegacyAlias() throws Exception {
@@ -68,7 +68,7 @@ class ChartDocentTest {
     }
     @Test void malformedAiResultFallsBack() {
         var ai = mock(AiServiceClient.class);
-        when(ai.docent(any())).thenReturn(Optional.of(new ChartResponse.DocentView("MARKET", "a", "b", "c", 1L, "", "", "LLM")));
+        when(ai.docent(any(),any())).thenReturn(Optional.of(new ChartResponse.DocentView("MARKET", "a", "b", "c", 1L, "", "", "LLM")));
         assertThat(new ChartDocentService(ai).get(request("DIRECT", "D", "normal")).mode()).isEqualTo("RULE");
     }
     @Test void marketIndexUsesOnlyRealCachedDailyCloses() {

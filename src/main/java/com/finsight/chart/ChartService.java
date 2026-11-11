@@ -400,16 +400,27 @@ public class ChartService {
     public ChartResponse withDocents(ChartResponse chart,String level) {
         if (docentService==null) return chart;
         var sourceMoves=chart.moveInsights();
+        java.util.Map<Long,News> byId=new java.util.HashMap<>();
         if (("D".equals(chart.period()) || "W".equals(chart.period())) && !chart.candles().isEmpty() && !chart.fallback()) {
             var from=moveWindow(chart.candles().getFirst().date(),chart.period()).from();
             var to=referenceEnd(moveWindow(chart.candles().getLast().date(),chart.period()));
             // Rescore cached candles with DB news; do not invalidate or refetch market prices.
-            sourceMoves=findDailyMoveInsights(chart.symbol(),chart.candles(),findRelatedNews(chart.symbol(),from,to),chart.period());
+            var related=findRelatedNews(chart.symbol(),from,to);
+            related.forEach(article -> byId.put(article.getId(),article));
+            sourceMoves=findDailyMoveInsights(chart.symbol(),chart.candles(),related,chart.period());
         }
+        if (byId.isEmpty()) {
+            var ids=sourceMoves.stream().flatMap(move -> move.candidateNews().stream()).filter(marker -> !"REFERENCE".equals(marker.relationType()))
+                    .map(ChartResponse.NewsMarkerView::newsId).filter(java.util.Objects::nonNull).distinct().toList();
+            if(!ids.isEmpty()) newsRepository.findAllById(ids).forEach(article -> byId.put(article.getId(),article));
+        }
+        long deadline=System.nanoTime()+java.time.Duration.ofSeconds(3).toNanos();
         var moves=sourceMoves.stream().map(move -> {
-            var articles=move.candidateNews().stream().filter(marker -> !"REFERENCE".equals(marker.relationType())).map(marker -> newsRepository.findById(marker.newsId()).orElse(null)).filter(java.util.Objects::nonNull).toList();
+            var articles=move.candidateNews().stream().filter(marker -> !"REFERENCE".equals(marker.relationType())).map(marker -> byId.get(marker.newsId())).filter(java.util.Objects::nonNull).toList();
             var at="W".equals(chart.period()) ? moveWindow(move.timestamp().toLocalDate(),"W").to().atZone(KST).toLocalDateTime() : move.timestamp();
-            var docent=docentService.get(docentRequest(chart.symbol(),at,move.changePercent(),chart.period(),articles,level));
+            var request=docentRequest(chart.symbol(),at,move.changePercent(),chart.period(),articles,level);
+            long remaining=deadline-System.nanoTime();
+            var docent=remaining<=0?ChartDocentService.rule(request):docentService.getWithin(request,java.time.Duration.ofNanos(remaining));
             String prefix="MINUTE".equals(chart.period()) && move.explanation().contains(" · ") ? move.explanation().substring(0,move.explanation().indexOf(" · ")+3) : "";
             return new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),docent.newsId(),docent.newsTitle(),docent.source(),prefix+docent.possibleReason(),move.causeScore(),move.candidateNews(),docent);
         }).toList();
@@ -520,8 +531,15 @@ public class ChartService {
     }
 
     private List<News> findRelatedNews(String symbol, Instant start, Instant end) {
-        return newsRepository.findByPublishedAtBetween(start, end).stream()
-            .filter(news -> relevanceRank(symbol, news) > 0).toList();
+        var ids=new java.util.ArrayList<Long>();
+        long cursor=0;
+        while(true) {
+            var page=newsRepository.findChartCandidatesAfterId(start,end,cursor,org.springframework.data.domain.PageRequest.of(0,100));
+            page.stream().filter(article -> relevanceRank(symbol,article)>0).map(News::getId).forEach(ids::add);
+            if(page.size()<100) break;
+            cursor=page.getLast().getId();
+        }
+        return ids.isEmpty()?List.of():newsRepository.findAllById(ids);
     }
 
     static int relevanceRank(String symbol, News news) {

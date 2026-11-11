@@ -41,7 +41,7 @@ class ChartServiceTest {
                 .thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(new com.finsight.external.kis.KisDailyCandle(date, 100, 110, 90, 105)), false));
         org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("064350"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock));
         org.mockito.Mockito.when(repository.findByRelatedSymbolAndPublishedAtBetween(org.mockito.ArgumentMatchers.eq("KOSPI"), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(market));
-        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stock,market));
+        ChartNewsRows.stub(repository,List.of(stock,market));
         var service = new ChartService(daily, minute, repository, new com.finsight.news.collect.ArticleContentExtractor(), new com.finsight.news.collect.NewsSymbolMatcher());
         assertThat(service.getChart("064350").relatedNews()).extracting(ChartResponse.NewsMarkerView::title)
                 .containsExactly("코스피 시장 동향", "현대로템 실적 전망");
@@ -148,7 +148,7 @@ class ChartServiceTest {
             org.springframework.test.util.ReflectionTestUtils.setField(article,"id",row.get("id").asLong());
             article.setRelatedSymbol(row.get("related_symbol").asText()); articles.add(article);
         }
-        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> articles.stream().filter(n -> !n.getPublishedAt().isBefore(invocation.getArgument(0)) && n.getPublishedAt().isBefore(invocation.getArgument(1))).toList());
+        ChartNewsRows.stub(repository,articles);
         org.mockito.Mockito.when(repository.collectionStart()).thenReturn(articles.stream().map(News::getPublishedAt).min(java.util.Comparator.naturalOrder()).orElseThrow());
         org.mockito.Mockito.when(daily.getCandlesWithStatus("005930",30,"D")).thenReturn(new com.finsight.external.kis.KisDailyCandleResult(bars,false));
         var service = new ChartService(daily,null,repository,new com.finsight.news.collect.ArticleContentExtractor(),new com.finsight.news.collect.NewsSymbolMatcher());
@@ -175,7 +175,7 @@ class ChartServiceTest {
             var article=new News(headline,"https://fixture.test/"+time,"fixture",Instant.parse(time),(headline+". 기업 투자 소식을 전했다. ").repeat(30));
             org.springframework.test.util.ReflectionTestUtils.setField(article,"id",(long)articles.size()+1); article.setRelatedSymbol("005930"); articles.add(article);
         }
-        org.mockito.Mockito.when(repository.findByPublishedAtBetween(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(articles);
+        ChartNewsRows.stub(repository,articles);
         org.mockito.Mockito.when(daily.getCandlesWithStatus("005930",30,"D")).thenReturn(new com.finsight.external.kis.KisDailyCandleResult(List.of(
             new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.parse("2026-10-08"),100,100,100,100),
             new com.finsight.external.kis.KisDailyCandle(java.time.LocalDate.parse("2026-10-12"),103,103,103,103)),false));
