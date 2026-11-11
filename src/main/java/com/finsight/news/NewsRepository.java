@@ -6,6 +6,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface NewsRepository extends JpaRepository<News, Long> {
+    @org.springframework.data.jpa.repository.Query("SELECT new com.finsight.news.News(n.id,n.title,n.url,n.source,n.publishedAt,n.category,n.relatedSymbol,n.keyTerms) FROM News n WHERE n.publishedAt>=:since AND n.publishedAt<=:now AND coalesce(n.source,'') NOT LIKE 'SYNTHETIC%' AND n.url NOT LIKE '%example.invalid%' AND length(trim(n.rawContent))>0 ORDER BY n.publishedAt DESC,n.id DESC")
+    List<News> findRecommendationCandidates(Instant since, Instant now, Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("SELECT new com.finsight.news.News(n.id,n.title,n.url,n.source,n.publishedAt,n.category,n.relatedSymbol,n.keyTerms) FROM News n WHERE n.id IN :ids")
+    List<News> findRecommendationObservations(java.util.Collection<Long> ids);
+
     long countByCreatedAtBetween(Instant since, Instant until);
     long countByPublishedAtBetween(Instant since, Instant until);
     @org.springframework.data.jpa.repository.Query("""
