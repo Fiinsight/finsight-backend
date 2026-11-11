@@ -231,7 +231,7 @@ public class LearningService {
         if ("analyst".equals(level)) {
             for (String fact : sentences) {
                 if (fact.length() > 180 || !fact.contains(term.getTerm()) || fact.matches(".*(전망|예상|가능성|예측).*")) continue;
-                List<String> changed = factVariants(fact).stream().filter(value -> !body.contains(value)).distinct().limit(2).toList();
+                List<String> changed = factVariants(fact, seed).stream().filter(value -> !body.contains(value)).distinct().limit(2).toList();
                 if (changed.size() < 2) continue;
                 List<String> options = new ArrayList<>(List.of(fact, changed.get(0), changed.get(1)));
                 Collections.shuffle(options, seed);
@@ -243,18 +243,47 @@ public class LearningService {
     }
 
     static List<String> factVariants(String fact) {
+        return factVariants(fact, new Random(fact.hashCode()));
+    }
+    private static List<String> factVariants(String fact, Random seed) {
         List<String> variants = new ArrayList<>();
-        // Match only explicit amount/rate/count units; calendar and clock numbers stay intact.
-        var number = java.util.regex.Pattern.compile("(?<![0-9.,])([0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?)(?=\\s*(?:%|퍼센트|bp|베이시스포인트|조\\s*원|억\\s*원|만\\s*원|천\\s*원|원|달러|유로|엔|위안|개|명|대|건|톤|배럴))").matcher(fact);
+        // Alter quantities, never dates or clocks; preserve source precision and grouping.
+        var number = java.util.regex.Pattern.compile("(?<![0-9.,+-])([-+]?[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?)(?=\\s*(?:%|퍼센트|bp|베이시스포인트|조\\s*원|억\\s*원|만\\s*원|천\\s*원|원|달러|유로|엔|위안|개|명|대|건|톤|배럴))").matcher(fact);
         if (number.find()) {
             var value = new java.math.BigDecimal(number.group(1).replace(",", ""));
-            for (int offset : List.of(1, 2)) variants.add(fact.substring(0, number.start(1))
-                    + value.add(java.math.BigDecimal.valueOf(offset)).toPlainString() + fact.substring(number.end(1)));
+            var tick = java.math.BigDecimal.ONE.scaleByPowerOfTen(-value.scale());
+            var delta = value.abs().multiply(new java.math.BigDecimal("0.1"))
+                    .setScale(value.scale(), java.math.RoundingMode.HALF_UP).max(tick);
+            int[][] patterns = {{-2,-1},{-1,1},{1,2}};
+            int rank = seed.nextInt(3);
+            boolean share = fact.matches(".*(점유율|비중|확률|응답률|투표율).*%.*");
+            for (int attempt = 0; attempt < 3 && variants.size() < 2; attempt++) {
+                List<String> pair = new ArrayList<>();
+                for (int offset : patterns[(rank + attempt) % 3]) {
+                    var changed = value.add(delta.multiply(java.math.BigDecimal.valueOf(offset)));
+                    if ((value.signum() >= 0 && changed.signum() < 0)
+                            || (value.signum() < 0 && changed.signum() >= 0)
+                            || (share && changed.compareTo(new java.math.BigDecimal("100")) > 0)) continue;
+                    String formatted = changed.toPlainString();
+                    if (number.group(1).contains(",")) {
+                        var formatter = new java.text.DecimalFormat("#,##0" + (value.scale() == 0 ? "" : "." + "0".repeat(value.scale())), java.text.DecimalFormatSymbols.getInstance(java.util.Locale.US));
+                        formatted = formatter.format(changed);
+                    }
+                    if (number.group(1).startsWith("+") && changed.signum() >= 0) formatted = "+" + formatted;
+                    pair.add(fact.substring(0, number.start(1)) + formatted + fact.substring(number.end(1)));
+                }
+                if (pair.size() == 2) variants.addAll(pair);
+            }
         }
+        List<String> directions = new ArrayList<>();
         for (var pair : List.of(List.of("상승", "하락"), List.of("증가", "감소"), List.of("인상", "인하"), List.of("늘었", "줄었"))) {
+            if (fact.contains(pair.get(0)) && fact.contains(pair.get(1))) continue;
             for (int i = 0; i < 2; i++) if (fact.contains(pair.get(i)))
-                variants.add(fact.replaceFirst(pair.get(i), pair.get(1-i)));
+                directions.add(fact.replaceFirst(pair.get(i), pair.get(1-i)));
         }
+        if (!variants.isEmpty() && !directions.isEmpty() && seed.nextInt(3) == 0)
+            variants.add(1, directions.remove(0));
+        variants.addAll(directions);
         return variants;
     }
     private GradedQuestion beginnerQuestion(News article, Term term, String level, List<Term> dictionary) {
