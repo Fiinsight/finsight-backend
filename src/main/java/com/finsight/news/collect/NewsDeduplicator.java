@@ -34,9 +34,17 @@ public class NewsDeduplicator {
     }
 
     public List<NewsCandidate> filterUnseen(List<NewsCandidate> candidates) {
+        if (candidates.isEmpty()) return List.of();
+        java.util.Set<String> stored = java.util.Set.of();
+        try {
+            stored = new java.util.HashSet<>(newsRepository.findUrlsIn(
+                    candidates.stream().map(NewsCandidate::url).distinct().toList()));
+        } catch (RuntimeException error) {
+            log.warn("Batch news dedup lookup unavailable; keeping unmarked candidates");
+        }
         List<NewsCandidate> result = new ArrayList<>();
         for (NewsCandidate candidate : candidates) {
-            if (isUnseen(candidate)) {
+            if (!stored.contains(candidate.url()) && isUnseen(candidate)) {
                 result.add(candidate);
             }
         }
@@ -45,9 +53,6 @@ public class NewsDeduplicator {
 
     private boolean isUnseen(NewsCandidate candidate) {
         try {
-            if (newsRepository.existsByUrl(candidate.url())) {
-                return false;
-            }
             String redisKey = REDIS_SEEN_KEY_PREFIX + sha256(candidate.url());
             // Ranking/extraction may skip this candidate; only successful saves mark it seen.
             return !Boolean.TRUE.equals(redisTemplate.hasKey(redisKey));

@@ -26,6 +26,9 @@ public interface NewsRepository extends JpaRepository<News, Long> {
 
     boolean existsByUrl(String url);
 
+    @org.springframework.data.jpa.repository.Query("select n.url from News n where n.url in :urls")
+    List<String> findUrlsIn(java.util.Collection<String> urls);
+
     List<News> findTop3ByOrderByPublishedAtDesc();
 
     List<News> findAllByOrderByPublishedAtDesc(Pageable pageable);

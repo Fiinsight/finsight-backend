@@ -25,7 +25,7 @@ class NewsDeduplicatorRetryTest {
         verifyNoInteractions(values);
         service.markCollected(candidate);
         assertThat(service.filterUnseen(List.of(candidate))).isEmpty();
-        when(repository.existsByUrl(candidate.url())).thenReturn(true);
+        when(repository.findUrlsIn(any())).thenReturn(List.of(candidate.url()));
         seen.clear();
         assertThat(service.filterUnseen(List.of(candidate))).isEmpty();
     }
