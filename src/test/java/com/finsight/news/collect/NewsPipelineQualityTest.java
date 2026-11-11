@@ -17,7 +17,7 @@ class NewsPipelineQualityTest {
         var classifier = new NewsCategoryClassifier();
         assertThat(classifier.classify("현대로템, 환율 영향", "방산 수주")).isEqualTo("산업·기술");
         assertThat(classifier.classify("나스닥, 금리 변화", "채권")).isEqualTo("해외증시");
-        assertThat(classifier.classify("오늘의 동향", "반도체 수출 증가")).isEqualTo("정책·경제");
+        assertThat(classifier.classify("오늘의 동향", "반도체 수출 증가")).isEqualTo("산업·기술");
     }
 
     @Test
@@ -107,7 +107,7 @@ class NewsPipelineQualityTest {
     void classifiesNewsByTopicInsteadOfIndexName() {
         NewsCategoryClassifier classifier = new NewsCategoryClassifier();
         assertThat(classifier.classify("원달러 환율 변동성 확대")).isEqualTo("환율·원자재");
-        assertThat(classifier.classify("반도체 수출 회복세")).isEqualTo("정책·경제");
+        assertThat(classifier.classify("반도체 수출 회복세")).isEqualTo("산업·기술");
         assertThat(classifier.classify("코스피 장 마감 상승")).isEqualTo("시장");
         String fxReason = classifier.importanceReason("원달러 환율 변동성 확대", "달러 강세로 수입 원가가 상승했습니다.",
                 "경제 지표 및 시장 동향과 관련된 뉴스입니다.", "005930");
