@@ -31,6 +31,7 @@ public class AiServiceClient {
     // article body in, multi-sentence rewrite out) routinely take longer,
     // especially on a free-tier model with no dedicated capacity.
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration USER_TIMEOUT = Duration.ofSeconds(3);
 
     private final WebClient webClient;
 
@@ -82,7 +83,7 @@ public class AiServiceClient {
                     .bodyValue(request)
                     .retrieve()
                     .bodyToMono(AiTermExplainResponse.class)
-                    .timeout(CALL_TIMEOUT)
+                    .timeout(USER_TIMEOUT)
                     .block();
             return Optional.ofNullable(response);
         } catch (Exception e) {
@@ -95,7 +96,7 @@ public class AiServiceClient {
         try {
             return Optional.ofNullable(webClient.post().uri("/ai/chart/docent").bodyValue(request)
                     .retrieve().bodyToMono(com.finsight.chart.ChartResponse.DocentView.class)
-                    .timeout(CALL_TIMEOUT).block());
+                    .timeout(USER_TIMEOUT).block());
         } catch (Exception e) {
             log.warn("Chart docent unavailable: {}", e.getClass().getSimpleName());
             return Optional.empty();
@@ -104,7 +105,7 @@ public class AiServiceClient {
     public Optional<AiRecommendationResponse> recommendations(AiRecommendationRequest request) {
         try {
             return Optional.ofNullable(webClient.post().uri("/ai/news/recommendations").bodyValue(request)
-                    .retrieve().bodyToMono(AiRecommendationResponse.class).timeout(CALL_TIMEOUT).block());
+                    .retrieve().bodyToMono(AiRecommendationResponse.class).timeout(USER_TIMEOUT).block());
         } catch (Exception unavailable) {
             log.debug("Local news recommendation unavailable: {}", unavailable.getClass().getSimpleName());
             return Optional.empty();
