@@ -20,10 +20,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class BriefingService {
 
+    private record RankedNews(News news, int score, String category) {}
     private static final int MIN_REQUIRED_ITEMS = 3;
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
-    private final com.github.benmanes.caffeine.cache.Cache<String, List<News>> rankingCache =
+    private final com.github.benmanes.caffeine.cache.Cache<String, List<RankedNews>> rankingCache =
             com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(1)
                     .expireAfterWrite(java.time.Duration.ofSeconds(60)).build();
     private final NewsRelevanceScorer relevanceScorer;
@@ -48,7 +49,7 @@ public class BriefingService {
     }
 
     public List<NewsBriefResponse> getTodayBriefingWithoutCatchUp() {
-        return rankedNews().stream().limit(MIN_REQUIRED_ITEMS).map(this::toBriefResponse).toList();
+        return rankedNews().stream().limit(MIN_REQUIRED_ITEMS).map(row -> toBriefResponse(row.news(),row.score(),row.category())).toList();
     }
 
     public List<NewsBriefResponse> getMoreBriefing(int page, int size) {
@@ -56,39 +57,40 @@ public class BriefingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid page or size");
         }
         long offset = MIN_REQUIRED_ITEMS + (long) page * size;
-        return rankedNews().stream().skip(offset).limit(size).map(this::toBriefResponse).toList();
+        return rankedNews().stream().skip(offset).limit(size).map(row -> toBriefResponse(row.news(),row.score(),row.category())).toList();
     }
 
-    private List<News> rankedNews() {
+    private List<RankedNews> rankedNews() {
         return rankingCache.get(LocalDate.now(KOREA_ZONE).toString(), ignored -> loadRankedNews());
     }
 
-    private List<News> loadRankedNews() {
+    private List<RankedNews> loadRankedNews() {
         Instant today = LocalDate.now(KOREA_ZONE).atStartOfDay(KOREA_ZONE).toInstant();
-        record Scored(News news, int score) {}
         Instant now = Instant.now();
-        List<News> ranked = NewsDeduplicator.distinctArticles(newsRepository.findByPublishedAtBetweenOrderByPublishedAtDesc(
+        List<RankedNews> scored = newsRepository.findByPublishedAtBetweenOrderByPublishedAtDesc(
                     today.minus(java.time.Duration.ofDays(7)), now, PageRequest.of(0,300)).stream()
                 .filter(n -> n.getPublishedAt() != null && !n.getPublishedAt().isAfter(now))
                 .filter(this::isUsable)
-                .map(n -> new Scored(n,relevanceScorer.scoreArticle(n.getTitle(),n.getRawContent())))
+                .map(n -> new RankedNews(n,relevanceScorer.scoreArticle(n.getTitle(),n.getRawContent()),newsCategoryClassifier.classify(n.getTitle(),n.getRawContent())))
                 .filter(row -> row.score() > 0)
-                .sorted(Comparator.comparing((Scored row) -> !row.news().getPublishedAt().isBefore(today)).reversed()
-                        .thenComparing(Comparator.comparingInt(Scored::score).reversed())
+                .sorted(Comparator.comparing((RankedNews row) -> !row.news().getPublishedAt().isBefore(today)).reversed()
+                        .thenComparing(Comparator.comparingInt(RankedNews::score).reversed())
                         .thenComparing(row -> row.news().getPublishedAt(), Comparator.reverseOrder())
                         .thenComparing(row -> row.news().getId(), Comparator.nullsLast(Comparator.reverseOrder())))
-                .map(Scored::news).toList());
+                .toList();
+        var byArticle = scored.stream().collect(java.util.stream.Collectors.toMap(RankedNews::news,row->row));
+        List<News> ranked = NewsDeduplicator.distinctArticles(scored.stream().map(RankedNews::news).toList());
         java.util.Set<String> categories = new java.util.HashSet<>();
         java.util.List<News> selected = new java.util.ArrayList<>();
         boolean hasToday = ranked.stream().anyMatch(n -> !n.getPublishedAt().isBefore(today));
         for (News news : ranked) {
             if (hasToday && news.getPublishedAt().isBefore(today)) continue;
-            if (categories.add(newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()))) selected.add(news);
+            if (categories.add(byArticle.get(news).category())) selected.add(news);
             if (selected.size() == MIN_REQUIRED_ITEMS) break;
         }
         for (News news : ranked) if (selected.size() < MIN_REQUIRED_ITEMS && !selected.contains(news)) selected.add(news);
         for (News news : ranked) if (!selected.contains(news)) selected.add(news);
-        return List.copyOf(selected);
+        return selected.stream().map(byArticle::get).toList();
     }
 
     private boolean isUsable(News news) {
@@ -98,6 +100,9 @@ public class BriefingService {
     }
 
     public NewsBriefResponse toBriefResponse(News news) {
+        return toBriefResponse(news,relevanceScorer.scoreArticle(news.getTitle(),news.getRawContent()),newsCategoryClassifier.classify(news.getTitle(),news.getRawContent()));
+    }
+    private NewsBriefResponse toBriefResponse(News news,int score,String category) {
         String summary = news.getRewrittenNormal() != null && !news.getRewrittenNormal().isBlank()
                 ? news.getRewrittenNormal() : "요약을 확인할 수 없습니다. 원문 링크에서 확인하세요.";
         summary = ArticleContentExtractor.stripPhotoNoise(summary);
@@ -109,9 +114,9 @@ public class BriefingService {
                 NewsDetailResponse.cardPoint(newsCategoryClassifier.importanceReason(news.getTitle(), news.getRawContent(), news.getImportanceReason(),
                         news.getRelatedSymbol())),
                 news.getRelatedSymbol(),
-                newsCategoryClassifier.classify(news.getTitle(), news.getRawContent()),
+                category,
                 news.getSentimentHint() != null ? news.getSentimentHint() : SentimentHint.NEUTRAL,
-                news.getUrl(), news.getSource(), news.getPublishedAt(), relevanceScorer.scoreArticle(news.getTitle(), news.getRawContent()), news.getImageUrl()
+                news.getUrl(), news.getSource(), news.getPublishedAt(), score, news.getImageUrl()
         );
     }
 
