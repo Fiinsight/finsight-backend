@@ -41,6 +41,14 @@ public class FeedbackScheduler {
     @org.springframework.beans.factory.annotation.Value("${finsight.feedback.on-startup:true}")
     private boolean feedbackOnStartup = true;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.finsight.news.collect.ArticleContentExtractor extractor = new com.finsight.news.collect.ArticleContentExtractor();
+    private record MissingClose(Instant judgedAt, int attempts, Instant nextAttempt) {}
+    private final com.github.benmanes.caffeine.cache.Cache<Long, MissingClose> missingCloses =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(10000)
+                    .expireAfterWrite(java.time.Duration.ofDays(14)).build();
+    private long scheduledCursor;
+
     private java.time.Clock clock = java.time.Clock.system(ZoneId.of("Asia/Seoul"));
 
     public FeedbackScheduler(JudgementRepository judgementRepository,
@@ -60,9 +68,18 @@ public class FeedbackScheduler {
 
     // Weekdays, shortly after the KRX market close (~15:30 KST).
     @Scheduled(cron = "0 40 15-23 * * MON-FRI", zone = "Asia/Seoul")
-    public void generatePendingFeedback() {
-        Instant today = LocalDate.now(clock).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
-        process(judgementRepository.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(today));
+    public synchronized void generatePendingFeedback() {
+        var now = java.time.ZonedDateTime.now(clock);
+        LocalDate completed = KoreanTradingCalendar.onOrBefore(now.toLocalDate().minusDays(now.toLocalTime().isBefore(java.time.LocalTime.of(15,40)) ? 1 : 0));
+        Instant cutoff = completed.atStartOfDay(now.getZone()).toInstant();
+        // Bound both memory and one run's work; resume the keyset on the next run.
+        for (int batch = 0; batch < 5; batch++) {
+            var page = judgementRepository.findDueAfterId(cutoff, scheduledCursor, org.springframework.data.domain.PageRequest.of(0,100));
+            if (page.isEmpty()) { scheduledCursor = 0; break; }
+            process(page);
+            scheduledCursor = page.getLast().getId();
+            if (page.size() < 100) { scheduledCursor = 0; break; }
+        }
     }
 
     /**
@@ -132,17 +149,24 @@ public class FeedbackScheduler {
         String symbol = judgement.getTargetSymbol();
         if (!StringUtils.hasText(symbol)) symbol = JudgementTargetResolver.resolve(judgement.getNews()).symbol();
         if (!JudgementTargetResolver.valid(symbol)) return finishWithoutTarget(judgement, symbol);
+        var previous = missingCloses.getIfPresent(judgement.getId());
+        if (previous != null && !previous.judgedAt().equals(judgement.getCreatedAt())) { missingCloses.invalidate(judgement.getId()); previous = null; }
+        LocalDate deadline = comparison;
+        for (int i=0;i<5;i++) deadline = KoreanTradingCalendar.next(deadline);
+        if (previous != null && !now.toLocalDate().isBefore(deadline)) return finishMissingClose(judgement, symbol);
+        if (previous != null && now.toInstant().isBefore(previous.nextAttempt())) return false;
         var prices = closingPrices(symbol, baseline, comparison);
-        if (prices.isEmpty()) return false;
+        if (prices.isEmpty()) { rememberMissing(judgement, previous); return false; }
         boolean indexTarget = symbol.equals("KOSPI") || symbol.equals("KOSDAQ");
         String indexSymbol = "KOSDAQ".equals(com.finsight.stock.StockCatalog.market(symbol)) ? "KOSDAQ" : "KOSPI";
         var indexPrices = indexTarget ? Optional.<ClosingPrices.Pair>empty() : closingPrices(indexSymbol, baseline, comparison);
-        if (!indexTarget && indexPrices.isEmpty()) return false;
+        if (!indexTarget && indexPrices.isEmpty()) { rememberMissing(judgement, previous); return false; }
         if (prices.get().needsAdjustmentReview() || indexPrices.map(ClosingPrices.Pair::needsAdjustmentReview).orElse(false)) {
             adjustmentHolds.mark(judgement.getId());
             return false;
         }
         adjustmentHolds.clear(judgement.getId());
+        missingCloses.invalidate(judgement.getId());
         double actualChangePercent = prices.get().percent();
         String actualDirection = JudgementFeedbackRules.direction(actualChangePercent);
         String indexName = indexTarget ? null : JudgementTargetResolver.name(indexSymbol);
@@ -228,6 +252,21 @@ public class FeedbackScheduler {
         return row.withStatus(updated == 1 ? "APPLIED" : "CONFLICT",updated == 1 ? null : "이미 재채점됐거나 판단이 변경돼 저장하지 않았어요.");
     }
 
+    private void rememberMissing(Judgement judgement, MissingClose previous) {
+        int attempts = previous == null ? 1 : previous.attempts() + 1;
+        long seconds = Math.min(86400L, 3600L << Math.min(attempts - 1, 5));
+        missingCloses.put(judgement.getId(), new MissingClose(judgement.getCreatedAt(), attempts, clock.instant().plusSeconds(seconds)));
+    }
+
+    private boolean finishMissingClose(Judgement judgement, String symbol) {
+        String reason = "비교일 이후 5거래일 동안 종가를 확인하지 못해 채점을 종료했어요.";
+        if (judgementRepository.finalizeOutcome(judgement.getId(), judgement.getCreatedAt(), "UNKNOWN", null, reason,
+                clock.instant(), null, null, null, "종가 미확인", null, symbol) != 1) return false;
+        judgement.setActualDirection("UNKNOWN"); judgement.setFeedbackText(reason); judgement.setFeedbackGeneratedAt(clock.instant());
+        missingCloses.invalidate(judgement.getId());
+        return true;
+    }
+
     private boolean finishWithoutTarget(Judgement judgement, String symbol) {
         String reason = "판단 대상이 정해지지 않은 기사예요";
         var content = new Judgement.FeedbackContent(null,
@@ -278,7 +317,7 @@ public class FeedbackScheduler {
                 request.conceptTerm(),request.conceptDefinition(),response.mode());
     }
     private String feedbackSummary(News news) {
-        String cleaned = new com.finsight.news.collect.ArticleContentExtractor().clean(news.getTitle(), news.getRawContent());
+        String cleaned = extractor.clean(news.getTitle(), news.getRawContent());
         return cleaned == null ? "" : cleaned.substring(0, Math.min(600, cleaned.length()));
     }
 }

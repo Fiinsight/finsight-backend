@@ -74,7 +74,7 @@ class FeedbackSchedulerTest {
     @Test void startupFinalizesUnresolvablePastButSkipsFutureComparison() {
         var past = pending(null, "2026-09-28");
         var future = pending("005930", "2026-10-06");
-        when(records.findByFeedbackGeneratedAtIsNullAndCreatedAtBefore(any())).thenReturn(List.of(past, future));
+        when(records.findDueAfterId(any(),anyLong(),any())).thenReturn(List.of(past, future));
         scheduler.generatePendingFeedback();
         assertThat(past.getActualDirection()).isEqualTo("UNKNOWN");
         assertThat(future.getActualDirection()).isNull();
