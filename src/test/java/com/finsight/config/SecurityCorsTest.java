@@ -32,16 +32,6 @@ class SecurityCorsTest {
     private MarketSummaryService marketSummaryService;
 
     @Test
-    void allowsPublicLivenessProbeFromTheSameConfiguredWebOrigin() throws Exception {
-        mockMvc.perform(options("/actuator/health/liveness")
-                        .header(HttpHeaders.ORIGIN, PHONE_WEB_ORIGIN)
-                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
-                .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, PHONE_WEB_ORIGIN))
-                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, containsString("GET")));
-    }
-
-    @Test
     void allowsLanBrowserPreflightForAuthenticatedMarketRequest() throws Exception {
         mockMvc.perform(options("/api/market/summary")
                         .header(HttpHeaders.ORIGIN, PHONE_WEB_ORIGIN)

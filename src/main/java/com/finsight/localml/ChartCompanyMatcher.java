@@ -11,12 +11,12 @@ public final class ChartCompanyMatcher {
         return new Company(List.of(terms), Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE));
     }
     private static final Map<String,Company> COMPANIES = Map.ofEntries(
-        Map.entry("005930", company("삼성\\s*전자|삼전(?!기)", "삼성전자", "삼전")),
-        Map.entry("000660", company("(?:SK\\s*)?하이닉스|(?:SK\\s*)?하닉|삼전닉스", "하이닉스", "하닉", "삼전닉스")),
-        Map.entry("035720", company("카카오(?!뱅크|페이|게임즈|뱅|분말|버터|열매)", "카카오")),
+        Map.entry("005930", company("삼성\\s*전자|삼전(?!기)|(?<![a-z])Samsung\\s+Electronics(?![a-z])", "삼성전자", "삼전")),
+        Map.entry("000660", company("(?:SK\\s*)?하이닉스|(?:SK\\s*)?하닉|삼전닉스|(?<![a-z])SK\\s+hynix(?![a-z])", "하이닉스", "하닉", "삼전닉스")),
+        Map.entry("035720", company("카카오(?!뱅크|페이|게임즈|뱅|분말|버터|열매)|(?<![a-z])Kakao(?![a-z])", "카카오")),
         Map.entry("035420", company("네이버|(?<![a-z])NAVER(?![a-z])", "네이버", "naver")),
-        Map.entry("373220", company("LG\\s*에너지\\s*솔루션|LG\\s*엔솔|엘지\\s*(?:에너지\\s*솔루션|엔솔)", "에너지솔루션", "엔솔")),
-        Map.entry("005380", company("현대\\s*자동차|현대차(?!\\s*증권)", "현대자동차", "현대차")),
+        Map.entry("373220", company("LG\\s*에너지\\s*솔루션|LG\\s*엔솔|엘지\\s*(?:에너지\\s*솔루션|엔솔)|(?<![a-z])LG\\s+Energy\\s+Solution(?![a-z])", "에너지솔루션", "엔솔")),
+        Map.entry("005380", company("현대\\s*자동차|현대차(?!\\s*증권)|(?<![a-z])Hyundai\\s+Motor(?![a-z])", "현대자동차", "현대차")),
         Map.entry("000270", company("(?<![가-힣])기아(?:자동차)?(?!대책|문제|상태)", "기아")),
         Map.entry("207940", company("삼성\\s*바이오\\s*로직스|삼성\\s*바이오(?!\\s*에피스)|삼바(?!춤|축제)", "삼성바이오", "삼바")),
         Map.entry("051910", company("(?:LG|엘지)\\s*화학", "lg화학", "엘지화학")),

@@ -29,6 +29,9 @@ public class KisDailyCandleClient {
     private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
     private static final DateTimeFormatter YYYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
 
+    private final com.github.benmanes.caffeine.cache.Cache<String, KisDailyCandleResult> failures =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(100).expireAfterWrite(Duration.ofSeconds(30)).build();
+
     private final WebClient webClient;
     private final KisTokenProvider tokenProvider;
     private final String appKey;
@@ -60,7 +63,12 @@ public class KisDailyCandleClient {
     public KisDailyCandleResult getCandlesWithStatus(String stockCode, int count, String periodDivCode) {
         LocalDate end = LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
         long days = switch (periodDivCode) { case "W" -> count * 10L; case "M" -> count * 35L; default -> count * 2L; };
-        return fetch(stockCode, count, periodDivCode, end.minusDays(days), end);
+        String key = stockCode + ":" + count + ":" + periodDivCode;
+        var failed = failures.getIfPresent(key);
+        if (failed != null) return failed;
+        var result = fetch(stockCode, count, periodDivCode, end.minusDays(days), end);
+        if (result.fallback()) failures.put(key, result);
+        return result;
     }
 
     @Cacheable(cacheNames = "kisDailyCandles", key = "'close:' + #symbol + ':' + #start + ':' + #end", unless = "#result.fallback()")
