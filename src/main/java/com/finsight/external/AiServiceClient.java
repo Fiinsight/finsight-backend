@@ -47,9 +47,16 @@ public class AiServiceClient {
         this.webClient = builder.build();
     }
 
+    public static String readingAidCacheKey(AiRewriteRequest request) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(request.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
     public record ReadingAid(String level, String summary, String readingGuide, String mode) {}
 
-    @Cacheable(cacheNames = "readingAids", key = "#request", unless = "#result == null")
+    @Cacheable(cacheNames = "readingAids", key = "T(com.finsight.external.AiServiceClient).readingAidCacheKey(#request)", unless = "#result == null")
     public Optional<ReadingAid> learning(AiRewriteRequest request) {
         try {
             return Optional.ofNullable(webClient.post().uri("/ai/news/learning").bodyValue(request)

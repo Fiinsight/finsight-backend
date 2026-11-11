@@ -72,19 +72,24 @@ public class NewsDeduplicator {
 
     public static List<com.finsight.news.News> distinctArticles(List<com.finsight.news.News> ranked) {
         var result = new ArrayList<com.finsight.news.News>();
+        var features = new java.util.IdentityHashMap<com.finsight.news.News, TitleFeatures>();
         for (var item : ranked) {
-            if (result.stream().noneMatch(previous -> sameEvent(previous, item))) result.add(item);
+            String title=normalizedTitle(item.getTitle());
+            features.put(item,new TitleFeatures(title,titleGrams(title)));
+            if (result.stream().noneMatch(previous -> sameEvent(previous, item, features))) result.add(item);
         }
         return List.copyOf(result);
     }
 
-    private static boolean sameEvent(com.finsight.news.News left, com.finsight.news.News right) {
+    private record TitleFeatures(String normalized, java.util.Set<String> grams) {}
+    private static boolean sameEvent(com.finsight.news.News left, com.finsight.news.News right,
+            java.util.Map<com.finsight.news.News,TitleFeatures> features) {
         if (left.getUrl() != null && left.getUrl().equals(right.getUrl())) return true;
         if (left.getPublishedAt() == null || right.getPublishedAt() == null
                 || Math.abs(java.time.Duration.between(left.getPublishedAt(), right.getPublishedAt()).toHours()) > 24) return false;
-        String a = normalizedTitle(left.getTitle()), b = normalizedTitle(right.getTitle());
+        String a = features.get(left).normalized(), b = features.get(right).normalized();
         if (a.equals(b)) return true;
-        var first = titleGrams(a); var second = titleGrams(b);
+        var first = features.get(left).grams(); var second = features.get(right).grams();
         var shared = new java.util.HashSet<>(first); shared.retainAll(second);
         var union = new java.util.HashSet<>(first); union.addAll(second);
         return shared.size() >= 8 && !union.isEmpty() && (double) shared.size() / union.size() >= 0.6;
