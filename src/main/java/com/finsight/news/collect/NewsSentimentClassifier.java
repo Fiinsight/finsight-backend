@@ -2,90 +2,39 @@ package com.finsight.news.collect;
 
 import com.finsight.briefing.SentimentHint;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
-/**
- * Assigns a POSITIVE/NEUTRAL/NEGATIVE hint to a headline via keyword
- * scoring — same "count keyword hits" approach as {@link NewsRelevanceScorer},
- * just tallying positive vs. negative market-tone words instead of relevance.
- * Not sentiment analysis in any NLP sense, just a cheap, keyless heuristic so
- * every collected article isn't stuck showing NEUTRAL.
- */
+/** Versioned lexical hints shared with the AI rule fallback; never a price forecast. */
 @Component
 public class NewsSentimentClassifier {
-
-    private static final List<String> POSITIVE_KEYWORDS = List.of(
-            "상승", "급등", "강세", "호조", "개선", "확대", "성장", "최대", "흑자", "반등",
-            "훈풍", "호황", "증가", "상향", "돌파", "회복", "기대감", "역대급"
-    );
-
-    private static final List<String> NEGATIVE_KEYWORDS = List.of(
-            "하락", "급락", "약세", "부진", "우려", "축소", "위축", "적자", "하향", "둔화",
-            "침체", "한파", "감소", "경고", "리스크", "불안", "충격", "쇼크"
-    );
-
+    public record Compound(String pattern, String label) {}
+    public record Rules(List<String> positive,List<String> negative,List<String> rateRises,List<String> rateFalls,List<Compound> compounds) {}
+    private static final Rules RULES = loadRules();
+    private record Compiled(Pattern pattern, String label) {}
+    private static final List<Compiled> COMPOUNDS = RULES.compounds().stream().map(row -> new Compiled(Pattern.compile(row.pattern()),row.label())).toList();
+    private static Rules loadRules() {
+        try (var stream=NewsSentimentClassifier.class.getResourceAsStream("/qa/sentiment-rules.json")) {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(stream,Rules.class);
+        } catch (Exception error) { throw new IllegalStateException("Sentiment rules unavailable",error); }
+    }
     public SentimentHint classify(String title) {
-        if (title == null || title.isBlank()) {
-            return SentimentHint.NEUTRAL;
-        }
-        SentimentHint rateDirection = classifyRateDirection(title);
-        if (rateDirection != null) {
-            return rateDirection;
-        }
-        // Exchange-rate moves have opposite effects on exporters and importers.
-        // Without an explicit beneficiary, avoid presenting a market-wide
-        // direction that the title cannot support.
-        if (title.contains("환율") && !(title.contains("수출") || title.contains("수입"))) {
-            return SentimentHint.NEUTRAL;
-        }
-        int positiveHits = countHits(title, POSITIVE_KEYWORDS);
-        int negativeHits = countHits(title, NEGATIVE_KEYWORDS);
-        // A headline such as "호황 ... 하락" contains opposing signals. Picking
-        // whichever side has one more keyword creates confident-looking but
-        // contradictory chart explanations, so mixed headlines stay neutral.
-        if (positiveHits > 0 && negativeHits > 0) {
-            return SentimentHint.NEUTRAL;
-        }
-        int score = positiveHits - negativeHits;
-        if (score > 0) {
-            return SentimentHint.POSITIVE;
-        }
-        if (score < 0) {
-            return SentimentHint.NEGATIVE;
-        }
-        return SentimentHint.NEUTRAL;
-    }
-
-    private SentimentHint classifyRateDirection(String title) {
-        boolean rateTopic = title.contains("금리") || title.contains("국채")
-                || title.contains("채권") || title.contains("수익률");
-        if (!rateTopic) {
-            return null;
-        }
-        boolean rises = title.contains("금리 상승") || title.contains("금리 급등")
-                || title.contains("금리 인상") || title.contains("국채금리 상승")
-                || title.contains("국채 금리 상승") || title.contains("수익률 상승")
-                || title.contains("수익률 급등");
-        boolean falls = title.contains("금리 하락") || title.contains("금리 급락")
-                || title.contains("금리 인하") || title.contains("국채금리 하락")
-                || title.contains("국채 금리 하락") || title.contains("수익률 하락")
-                || title.contains("수익률 급락");
-        if (rises && !falls) {
-            return SentimentHint.NEGATIVE;
-        }
-        if (falls && !rises) {
-            return SentimentHint.POSITIVE;
-        }
-        return null;
-    }
-
-    private int countHits(String title, List<String> keywords) {
-        int hits = 0;
-        for (String keyword : keywords) {
-            if (title.contains(keyword)) {
-                hits++;
+        if(title==null || title.isBlank()) return SentimentHint.NEUTRAL;
+        boolean rises=RULES.rateRises().stream().anyMatch(title::contains),falls=RULES.rateFalls().stream().anyMatch(title::contains);
+        if(rises != falls) return rises ? SentimentHint.NEGATIVE : SentimentHint.POSITIVE;
+        if(title.contains("환율") && !title.contains("수출") && !title.contains("수입")) return SentimentHint.NEUTRAL;
+        boolean positive=false,negative=false;
+        String text=title;
+        for(var compound:COMPOUNDS) {
+            var match=compound.pattern().matcher(text);
+            if(match.find()) {
+                positive |= compound.label().equals("POSITIVE"); negative |= compound.label().equals("NEGATIVE");
+                text=match.replaceAll(" ");
             }
         }
-        return hits;
+        final String remaining=text;
+        positive |= RULES.positive().stream().anyMatch(remaining::contains);
+        negative |= RULES.negative().stream().anyMatch(remaining::contains);
+        return positive==negative ? SentimentHint.NEUTRAL : positive ? SentimentHint.POSITIVE : SentimentHint.NEGATIVE;
     }
 }
