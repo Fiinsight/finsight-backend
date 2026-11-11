@@ -130,8 +130,14 @@ public class LearningRecommendationService {
             return (double)common/(a.size()+b.size()-common);
         }
         boolean sameEvent(String a,String b) { return overlap(title(a),title(b))>=.8; }
+        private double termOverlap(Set<String> a,Set<String> b) {
+            var union=new HashSet<>(a);union.addAll(b);
+            double total=union.stream().mapToDouble(com.finsight.term.KeyTermSelector::recommendationWeight).sum();
+            double shared=a.stream().filter(b::contains).mapToDouble(com.finsight.term.KeyTermSelector::recommendationWeight).sum();
+            return shared/Math.max(1,total);
+        }
         double similarity(News a,News b) {
-            return .65*overlap(terms.computeIfAbsent(a,n->new HashSet<>(n.getKeyTerms())),terms.computeIfAbsent(b,n->new HashSet<>(n.getKeyTerms())))
+            return .65*termOverlap(terms.computeIfAbsent(a,n->new HashSet<>(n.getKeyTerms().stream().filter(com.finsight.term.KeyTermSelector::isRecommendationTerm).toList())),terms.computeIfAbsent(b,n->new HashSet<>(n.getKeyTerms().stream().filter(com.finsight.term.KeyTermSelector::isRecommendationTerm).toList())))
                     +(a.getRelatedSymbol()!=null && a.getRelatedSymbol().equals(b.getRelatedSymbol())?.2:0)+.15*overlap(title(a.getTitle()),title(b.getTitle()));
         }
     }
@@ -162,11 +168,6 @@ public class LearningRecommendationService {
         for(int i=0;i+1<value.length();i++) result.add(value.substring(i,i+2)); return result;
     }
     static double similarity(News left,News right) {
-        Set<String> a=new HashSet<>(left.getKeyTerms()),b=new HashSet<>(right.getKeyTerms());
-        Set<String> shared=new HashSet<>(a);shared.retainAll(b);Set<String> union=new HashSet<>(a);union.addAll(b);
-        double terms=union.isEmpty()?0:(double)shared.size()/union.size();
-        Set<String> words=bigrams(left.getTitle()),other=bigrams(right.getTitle());
-        Set<String> common=new HashSet<>(words);common.retainAll(other);Set<String> all=new HashSet<>(words);all.addAll(other);
-        return .65*terms + (left.getRelatedSymbol()!=null && left.getRelatedSymbol().equals(right.getRelatedSymbol())?.2:0) + (all.isEmpty()?0:.15*common.size()/all.size());
+        return new SimilarityIndex().similarity(left,right);
     }
 }
