@@ -61,6 +61,7 @@ class ProdMigrationStartupTest {
             String definition=jdbc.queryForObject("SELECT short_definition FROM term WHERE term='금리'",String.class);
             learning.answer(owner,article,"beginner","금리",question.options().indexOf(definition));
         } finally { org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true); }
+        jdbc.update("INSERT INTO term_application_mastery(user_id,term,question_type,p_known,attempts,last_answered_at,last_correct) VALUES(?,'금리','DIRECTION',.6,1,now(),true)",owner);
         jdbc.update("INSERT INTO user_watchlist(user_id,symbol,created_at) VALUES(?,'005930',now())",owner);
         jdbc.update("INSERT INTO article_note(user_id,news_id,content,created_at,updated_at) VALUES(?,?,'메모',now(),now())",owner,article);
         jdbc.update("INSERT INTO daily_note(user_id,note_date,content,updated_at) VALUES(?,CURRENT_DATE,'메모',now())",owner);
@@ -147,7 +148,7 @@ class ProdMigrationStartupTest {
                 .isEqualTo(System.getenv().getOrDefault("JWT_EXPIRATION_SECONDS","604800"));
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(Arrays.stream(flyway.info().applied()).map(info -> info.getVersion().toString()))
-                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
+                .containsExactly("1", "2", "3", "4", "4.1", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM news", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM judgement", Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success", Long.class)).isZero();
@@ -347,6 +348,25 @@ class ProdMigrationStartupTest {
         } finally { org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true); }
     }
 
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void applicationEvidenceIsDailyLockedAndSeparateFromDefinitionAndPromotion() {
+        org.springframework.test.util.ReflectionTestUtils.setField(mastery,"dailyCreditEnabled",true);
+        Long user=jdbc.queryForObject("INSERT INTO app_user(email,provider,created_at) VALUES('application-ci@test','LOCAL',now()) RETURNING id",Long.class);
+        Long article=jdbc.queryForObject("INSERT INTO news(title,url,raw_content,created_at) VALUES('적용 테스트','https://fixture.test/application','금리는 2% 상승했다.',now()) RETURNING id",Long.class);
+        assertThat(mastery.answer(user,article,"금리","normal",true,3,com.finsight.learning.QuestionType.DIRECTION)).isTrue();
+        assertThat(mastery.answer(user,article,"금리","normal",false,3,com.finsight.learning.QuestionType.DIRECTION)).isFalse();
+        assertThat(mastery.applicationProbabilities(user,"normal").get("금리")).isEqualTo(com.finsight.learning.KnowledgeTracing.update(.3,true,"normal"));
+        assertThat(mastery.applicationProbabilities(user,"analyst")).isEmpty();
+        assertThat(mastery.list(user)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT attempts FROM term_application_mastery WHERE user_id=?",Integer.class,user)).isEqualTo(1);
+        Long other=jdbc.queryForObject("INSERT INTO news(title,url,raw_content,created_at) VALUES('사실 테스트','https://fixture.test/fact','금리는 2% 상승했다.',now()) RETURNING id",Long.class);
+        assertThat(mastery.answer(user,other,"금리","analyst",false,3,com.finsight.learning.QuestionType.FACT_CHECK)).isTrue();
+        assertThat(mastery.applicationProbabilities(user,"analyst").get("금리")).isEqualTo(com.finsight.learning.KnowledgeTracing.update(.3,false,"analyst"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM term_application_mastery WHERE user_id=?",Integer.class,user)).isEqualTo(2);
+        assertThat(com.finsight.learning.TermMasteryService.suggestion(mastery.list(user),"normal")).isNull();
+    }
 
     @Autowired com.finsight.learning.LearningProgressService learningProgress;
     @Test @org.springframework.transaction.annotation.Transactional
