@@ -1,11 +1,12 @@
 package com.finsight.chart;
 import com.finsight.external.*;
-import com.finsight.news.collect.ArticleContentExtractor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 @Service
 public class ChartDocentService {
     private final AiServiceClient ai;
+    @org.springframework.beans.factory.annotation.Value("${DOCENT_WITH_LLM:false}")
+    private boolean withLlm;
     public ChartDocentService(AiServiceClient ai) { this.ai=ai; }
     @Cacheable(cacheNames="chartDocents", key="T(com.finsight.chart.ChartDocentService).cacheKey(#r)", sync=true)
     public ChartResponse.DocentView get(AiDocentRequest r) {
@@ -15,21 +16,48 @@ public class ChartDocentService {
     public ChartResponse.DocentView getWithin(AiDocentRequest r, java.time.Duration remaining) {
         return compute(r, remaining);
     }
+    @Cacheable(cacheNames="chartDocentBatches", key="#requests", sync=true)
+    public java.util.List<ChartResponse.DocentView> getBatch(java.util.List<AiDocentRequest> requests) {
+        long deadline=System.nanoTime()+java.time.Duration.ofSeconds(3).toNanos();
+        var rendered=new java.util.ArrayList<ChartResponse.DocentView>();
+        for(var request:requests) {
+            long remaining=deadline-System.nanoTime();
+            rendered.add(remaining<=0?rule(request):compute(request,java.time.Duration.ofNanos(remaining)));
+        }
+        return java.util.List.copyOf(rendered);
+    }
     private ChartResponse.DocentView compute(AiDocentRequest r, java.time.Duration remaining) {
         var fallback=rule(r);
-        if ("MINUTE".equals(r.period()) || "NONE".equals(fallback.relation()) || "SECTOR".equals(fallback.relation())) return fallback;
+        if (!withLlm || "MINUTE".equals(r.period()) || "NONE".equals(fallback.relation())) return fallback;
         return ai.docent(r, remaining).filter(value -> fallback.relation().equals(value.relation())
                 && java.util.Objects.equals(fallback.newsId(),value.newsId())
                 && ("RULE".equals(value.mode()) || "LLM".equals(value.mode()))
                 && value.whatHappened()!=null && !value.whatHappened().isBlank()
                 && value.possibleReason()!=null && !value.possibleReason().isBlank()
-                && value.marketImpact()!=null && !value.marketImpact().isBlank()).orElse(fallback);
+                && value.marketImpact()!=null && !value.marketImpact().isBlank()
+                && safeOutput(r,value)).orElse(fallback);
     }
-    public static String cacheKey(AiDocentRequest r) {
-        return "news-direction-v5-sector:" + r.symbol() + ":" + r.date() + ":" + r.period() + ":" + representativeId(r) + ":" + r.level()
-                + ":" + String.format(java.util.Locale.ROOT,"%.2f",r.changePercent()) + ":" + r.indexName()
-                + ":" + (r.indexChangePercent()==null?"none":String.format(java.util.Locale.ROOT,"%.2f",r.indexChangePercent()));
+    private static final java.util.regex.Pattern NUMBER=java.util.regex.Pattern.compile("(?<![\\d.])[-+]?\\d+(?:,\\d{3})*(?:\\.\\d+)?(?:[조억만천]\\d+)*[조억만천]*(?:%p|%포인트|%|퍼센트|원|달러|엔|유로|배|명|건|년|월|일)?");
+    private static java.util.Set<String> numbers(String raw) {
+        String text=java.text.Normalizer.normalize(raw,java.text.Normalizer.Form.NFKC).replace('−','-')
+                .replaceAll("([+-])\\s+(?=\\d)","$1").replaceAll("퍼센트\\s*포인트|%\\s*포인트","%p").replace("퍼센트","%")
+                .replaceAll("(?<=[\\d조억만천])\\s+(?=[조억만천원달러엔유로배명건년월일%])","")
+                .replaceAll("(?<=[조억만천])\\s+(?=\\d)","").replaceAll("(?<=\\d),(?=\\d)","");
+        return NUMBER.matcher(text).results().map(match -> {
+            var digits=java.util.regex.Pattern.compile("[-+]?\\d+(?:\\.\\d+)?").matcher(match.group());
+            return digits.replaceAll(n -> new java.math.BigDecimal(n.group()).stripTrailingZeros().toPlainString());
+        }).collect(java.util.stream.Collectors.toSet());
     }
+    static boolean safeOutput(AiDocentRequest r,ChartResponse.DocentView value) {
+        String text=value.whatHappened()+" "+value.possibleReason()+" "+value.marketImpact();
+        if (java.util.regex.Pattern.compile("때문에|원인이다|원인입니다|확실히|보장|매수하세요|매도하세요").matcher(text).find()) return false;
+        String source=r.news().stream().map(a -> a.title()+" "+a.summary()+" "+java.util.Objects.toString(a.causePhrase(),""))
+                .collect(java.util.stream.Collectors.joining(" "))+String.format(java.util.Locale.ROOT," %+.2f%%",r.changePercent());
+        if(r.indexChangePercent()!=null) source+=String.format(java.util.Locale.ROOT," %+.2f%% %+.2f%%p %.2f%%p",r.indexChangePercent(),ChartTextEvidence.displayedExcess(r),Math.abs(ChartTextEvidence.displayedExcess(r)));
+        return numbers(source).containsAll(numbers(text));
+    }
+    // Local Caffeine keys compare immutable source fields, without re-encoding all article text on every hit.
+    public static AiDocentRequest cacheKey(AiDocentRequest r) { return r; }
     public static Long representativeId(AiDocentRequest request) {
         var article = request.news().stream().findFirst().orElse(null);
         return article == null ? null : article.newsId();
@@ -38,33 +66,11 @@ public class ChartDocentService {
         var article=r.news().stream().findFirst().orElse(null);
         String relation=article==null?"NONE":article.relation();
         String title=article==null?"":article.title();
-        String lead=article==null?"":new ArticleContentExtractor().eventLead(title,article.summary(),java.time.LocalDate.parse(r.date().substring(0,10)),r.changePercent());
-        if (!"analyst".equals(r.level())) lead = lead.replaceAll("했다\\.$", "했어요.").replaceAll("된다\\.$", "돼요.").replaceAll("이다\\.$", "이에요.");
-        String context="W".equals(r.period())?"이 주간에":"MINUTE".equals(r.period())?"이 시점에":"이날";
-        boolean neutral="NEUTRAL".equals(com.finsight.judgement.JudgementFeedbackRules.direction(r.changePercent()));
-        String reason;
-        if (article==null) { lead="이날 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요."; reason=r.indexChangePercent()!=null && r.indexName()!=null
-                ? String.format(java.util.Locale.ROOT,"같은 날 %s는 %+.2f%% 움직였어요. 시장 흐름과 비교하되 원인으로 단정하지 않아요.",r.indexName(),r.indexChangePercent())
-                : "같은 날 지수 종가가 캐시에 없어 시장 등락률을 확인할 수 없어요. 수급이나 시장 전체 요인이 영향을 줬을 수 있어요."; }
-        else if ("SECTOR".equals(relation)) reason="같은 업종의 소식이에요. 이 종목을 직접 다룬 기사가 아니므로 개별 주가의 원인으로 단정하지 않아요.";
-        else if ("MARKET".equals(relation)) reason=neutral ? "시장이 움직인 날에도 주가는 거의 변하지 않았어요 ("+(r.indexName()==null?"관련 지수":r.indexName())
-                +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")" : r.indexChangePercent()!=null && r.changePercent()*r.indexChangePercent()<0 ? "시장과 반대로 움직여 개별 요인을 확인해야 해요. ("+r.indexName()+String.format(java.util.Locale.ROOT," %+.2f%%)",r.indexChangePercent()) : "시장 전체 "+(r.indexChangePercent()!=null && r.indexChangePercent()<0?"하락":r.indexChangePercent()!=null && r.indexChangePercent()>0?"상승":"흐름")+"("+(r.indexName()==null?"관련 지수":r.indexName())
-                +(r.indexName()!=null && r.indexChangePercent()!=null?String.format(java.util.Locale.ROOT," %+.2f%%",r.indexChangePercent()):"")+")과 함께 움직였을 수 있어요.";
-        else {
-            var hint=com.finsight.news.SentimentEvidence.direction(article.sentimentHint(),article.sentimentConfidence(),title);
-            boolean opposite=hint==com.finsight.briefing.SentimentHint.POSITIVE && r.changePercent()<0
-                    || hint==com.finsight.briefing.SentimentHint.NEGATIVE && r.changePercent()>0;
-            reason=context+" "+r.symbolName()+" 관련 ‘"+title+"’ 소식이 나왔고, 주가가 "+String.format(java.util.Locale.ROOT,"%+.2f%%",r.changePercent())+" 움직였어요. "
-                    +(neutral?"소식이 나왔지만 주가는 거의 움직이지 않았어요("+String.format(java.util.Locale.ROOT,"%+.2f%%",r.changePercent())+").":opposite?(hint==com.finsight.briefing.SentimentHint.POSITIVE?"호재":"악재")+" 소식에도 주가는 "+(r.changePercent()<0?"내렸어요":"올랐어요")+". 다른 요인이 더 컸을 수 있어요.":hint==null || r.changePercent()==0?"다른 요인과 함께 시장 반응에 영향을 줬을 수 있어요.":"이 소식이 "+(hint==com.finsight.briefing.SentimentHint.POSITIVE?"호재":"악재")+"로 받아들여졌을 가능성이 있어요.");
-        }
-        String evidence=(title+" "+(article==null?"":article.summary())).replaceAll("\\s+"," ");
-        String impact=evidence.matches(".*(외국인|순매도|순매수|팔자|수급|매도|매수).*" )?(evidence.matches(".*(외국인).*(순매도|팔자|매도).*" )?"외국인 매도 등 수급 흐름을 함께 확인해요.":"투자 주체별 매수·매도 수급 흐름을 함께 확인해요.")
-                :evidence.matches(".*(실적|매출|이익).*" )?"실적 변화와 시장 기대치의 차이를 함께 확인해요."
-                :evidence.matches(".*(규제|정책).*" )?"규제 변화는 기업의 비용과 사업 전망에 영향을 줬을 수 있어요."
-                :evidence.contains("금리")?"금리 변화는 자금 조달 비용과 가치 평가 기준에 영향을 줬을 수 있어요."
-                :evidence.matches(".*(환율|원화).*" )?"환율 변화는 수출 매출과 수입 비용에 영향을 줬을 수 있어요."
-                :evidence.matches(".*(반도체|메모리|업황|수요|공급).*" )?"업황과 제품 수요·공급 변화의 지속 여부를 함께 확인해요.":"매수·매도 수급과 시장 흐름도 함께 확인해야 해요.";
-        return new ChartResponse.DocentView(relation,lead,reason,impact,article==null?null:article.newsId(),article==null?null:title,article==null?null:article.source(),"RULE");
+        String lead=article==null?"":ChartTextEvidence.lead(r.symbol(),title,article.summary(),java.time.LocalDate.parse(r.date().substring(0,10)),r.changePercent(),relation);
+        if (article==null) lead=("W".equals(r.period())?"이 주간":"MINUTE".equals(r.period())?"이 시점":"이날")+" 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요.";
+        String reason=ChartTextEvidence.reason(r,article);
+        String impact=ChartTextEvidence.impact(r,article,lead);
+        return new ChartResponse.DocentView(relation,lead,reason,impact,article==null?null:article.newsId(),article==null?null:title,article==null?null:article.source(),"RULE",r.terms());
     }
     static com.finsight.briefing.SentimentHint titleSentiment(String title) {
         return com.finsight.news.SentimentEvidence.titleDirection(title);

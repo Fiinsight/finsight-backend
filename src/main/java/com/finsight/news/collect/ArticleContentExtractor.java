@@ -160,7 +160,7 @@ public class ArticleContentExtractor {
         return changed ? String.join("\n\n", kept).strip() : text;
     }
 
-    public String eventLead(String title, String body, java.time.LocalDate day, double change) {
+    public List<String> eventSentences(String title, String body, java.time.LocalDate day) {
         List<String> safe = new ArrayList<>();
         for (String sentence : clean(title, body).split("(?<=[.!?。！？])(?!\\d)\\s*|\\n+")) {
             if (sentence.matches("(?s).*(사진\\s*=|\\(사진\\)|제공).*")) continue;
@@ -176,6 +176,10 @@ public class ArticleContentExtractor {
             }
             if (!old && !sentence.isBlank()) safe.add(sentence);
         }
+        return safe;
+    }
+    public String eventLead(String title, String body, java.time.LocalDate day, double change) {
+        List<String> safe=eventSentences(title,body,day);
         String direction = change < 0 ? "급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려" : "급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜";
         for (String sentence : safe) if (java.util.regex.Pattern.compile(direction).matcher(sentence).find()) return sentence;
         for (String sentence : safe) if (sentence.matches("(?s).*\\d.*")) return sentence;

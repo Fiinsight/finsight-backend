@@ -91,7 +91,8 @@ public class KisDailyCandleClient {
                             .queryParam("FID_INPUT_DATE_1", startDate.format(YYYYMMDD))
                             .queryParam("FID_INPUT_DATE_2", endDate.format(YYYYMMDD))
                             .queryParam("FID_PERIOD_DIV_CODE", periodDivCode);
-                        if (!index) uriBuilder.queryParam("FID_ORG_ADJ_PRC", "1");
+                        // inquire-daily-itemchartprice: 0=adjusted, 1=original (unlike inquire-daily-price).
+                        if (!index) uriBuilder.queryParam("FID_ORG_ADJ_PRC", "0");
                         return uriBuilder.build();
                     })
                     .headers(headers -> KisApiHeaders.apply(headers, token.get(), index ? "FHKUP03500100" : DAILY_CANDLE_TR_ID, appKey, appSecret))

@@ -38,8 +38,30 @@ class KisHistoricalRegradeContractTest {
             } else {
                 assertThat(request.url().getPath()).endsWith("inquire-daily-itemchartprice");
                 assertThat(request.headers().getFirst("tr_id")).isEqualTo("FHKST03010100");
-                assertThat(query).contains("FID_INPUT_ISCD=047050","FID_COND_MRKT_DIV_CODE=J","FID_ORG_ADJ_PRC=1");
+                assertThat(query).contains("FID_INPUT_ISCD=047050","FID_COND_MRKT_DIV_CODE=J","FID_ORG_ADJ_PRC=0");
             }
         }
+    }
+
+    @Test void adjustedSplitSeriesDoesNotProduceFakeMoveOrChangeTheComparisonDirection() {
+        var token=mock(KisTokenProvider.class);
+        when(token.getAccessToken()).thenReturn(Optional.of("synthetic-token"));
+        when(token.quoteFilter()).thenReturn((request,next)->next.exchange(request));
+        ExchangeFunction network=request -> {
+            boolean adjusted=request.url().getQuery().contains("FID_ORG_ADJ_PRC=0");
+            String before=adjusted?"100":"200";
+            String body="{\"rt_cd\":\"0\",\"output2\":["+
+                    "{\"stck_bsop_date\":\"20261102\",\"stck_oprc\":\""+before+"\",\"stck_hgpr\":\""+before+"\",\"stck_lwpr\":\""+before+"\",\"stck_clpr\":\""+before+"\"},"+
+                    "{\"stck_bsop_date\":\"20261103\",\"stck_oprc\":\"100\",\"stck_hgpr\":\"100\",\"stck_lwpr\":\"100\",\"stck_clpr\":\"100\"}]}";
+            return Mono.just(ClientResponse.create(HttpStatus.OK).header("Content-Type","application/json").body(body).build());
+        };
+        var client=new KisDailyCandleClient(WebClient.builder().exchangeFunction(network),token,"https://example.invalid","synthetic-key","synthetic-secret");
+        var prices=client.getClosingCandles("005930",LocalDate.parse("2026-11-02"),LocalDate.parse("2026-11-03"));
+        var pair=ClosingPrices.from(prices,LocalDate.parse("2026-11-02"),LocalDate.parse("2026-11-03")).orElseThrow();
+        assertThat(pair.percent()).isZero();
+        assertThat(pair.needsAdjustmentReview()).isFalse();
+        var repository=mock(com.finsight.news.NewsRepository.class);
+        var service=new com.finsight.chart.ChartService(client,null,repository,new com.finsight.news.collect.ArticleContentExtractor(),new com.finsight.news.collect.NewsSymbolMatcher());
+        assertThat(service.getChart("005930","D",5).moveInsights()).isEmpty();
     }
 }

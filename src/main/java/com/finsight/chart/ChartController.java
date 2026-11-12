@@ -36,12 +36,15 @@ public class ChartController {
     @GetMapping("/{symbol}/insights")
     public ChartResponse insights(@PathVariable String symbol,
             @RequestParam(defaultValue = "D") String period,
-            @RequestParam(defaultValue = "5") int interval) {
+            @RequestParam(defaultValue = "5") int interval,
+            @RequestParam(required=false) String level,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal Long userId) {
         String normalized = period.toUpperCase(java.util.Locale.ROOT);
         if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(normalized)) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
         }
-        return chartService.withCurrentQuote(chartService.getChart(symbol, normalized, interval));
+        String resolved=resolveLevel(level,userId);
+        return chartService.withDocents(chartService.withCurrentQuote(chartService.getChart(symbol, normalized, interval)),resolved);
     }
 
     @GetMapping("/{symbol}")
@@ -56,9 +59,13 @@ public class ChartController {
         if (!symbol.matches("\\d{6}") || !java.util.Set.of("D", "W", "MINUTE", "M").contains(period.toUpperCase(java.util.Locale.ROOT))) {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
         }
+        String resolved=resolveLevel(level,userId);
+        return chartService.withDocents(chartService.withCurrentQuote(chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval)),resolved);
+    }
+    private String resolveLevel(String level,Long userId) {
         if (level==null) level=userId==null?"normal":profiles.getOnboarding(userId).learningLevel();
         if (level==null) level="beginner";
         if (!java.util.Set.of("beginner","normal","analyst").contains(level)) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,"읽기 수준이 올바르지 않습니다.");
-        return chartService.withDocents(chartService.withCurrentQuote(chartService.getChart(symbol, period.toUpperCase(java.util.Locale.ROOT), interval)),level);
+        return level;
     }
 }
