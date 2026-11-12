@@ -1,4 +1,10 @@
 # Keep the shared 512 MB instance bounded; no paid worker or keep-alive service.
+spring:
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate.boot.allow_jdbc_metadata_access: false
+
 server:
   tomcat:
     threads:
