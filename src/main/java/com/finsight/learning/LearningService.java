@@ -62,16 +62,17 @@ public class LearningService {
         validateLevel(level);
         News article = article(newsId);
         String body = extractor.clean(article.getTitle(), article.getRawContent());
-        String stored = switch (level) {
+        String stored = ArticleContentExtractor.stripPhotoNoise(switch (level) {
             case "normal" -> article.getRewrittenNormal();
             case "analyst" -> article.getRewrittenAnalyst();
             default -> article.getRewrittenBeginner();
-        };
-        stored = ArticleContentExtractor.stripPhotoNoise(stored);
+        });
         String mode = "REWRITTEN".equals(article.getRewriteMode()) ? "REWRITTEN" : "EXCERPT";
         boolean usableStored = article.getRewriteMode() != null && stored != null && !stored.isBlank();
-        var aid = usableStored || body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
-                : ai.learning(new AiRewriteRequest(article.getTitle(), body, level));
+        // Refresh old rule excerpts on read; preserve verified rewrites and never backfill the article.
+        boolean verifiedStored = usableStored && "REWRITTEN".equals(mode);
+        var aid = verifiedStored || body == null || body.isBlank() ? Optional.<AiServiceClient.ReadingAid>empty()
+                : ai.learning(new AiRewriteRequest(article.getTitle(), body, level, null, false));
         List<Term> dictionary = terms.findAll();
         List<Term> matchedTerms = articleTerms(article, dictionary);
         Map<String,String> definitions = dictionary.stream().filter(t -> t.getShortDefinition()!=null)
@@ -92,8 +93,8 @@ public class LearningService {
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
         GradedQuestion quiz = first == null ? null : questions.get(first.getTerm());
         if (requestedTerm != null && quiz == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이 기사의 퀴즈 개념이 아닙니다.");
-        String summary = usableStored ? stored : aid.map(AiServiceClient.ReadingAid::summary).filter(value -> !value.isBlank())
-                .orElseGet(() -> com.finsight.news.NewsDetailResponse.sourceExcerpt(body));
+        String summary = aid.map(AiServiceClient.ReadingAid::summary).filter(value -> !value.isBlank())
+                .orElseGet(() -> usableStored ? stored : com.finsight.news.NewsDetailResponse.sourceExcerpt(body));
         return new Lesson(newsId, level,
                 summary.isBlank() ? "수준별 설명을 확인할 수 없습니다. 원문 링크를 확인하세요." : summary,
                 aid.map(AiServiceClient.ReadingAid::readingGuide).filter(value -> !value.isBlank()).orElse("아래 용어는 일반 개념 설명이며 기사의 사실과 구분해 읽어주세요."),
