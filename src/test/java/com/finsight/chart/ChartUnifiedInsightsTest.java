@@ -61,10 +61,10 @@ class ChartUnifiedInsightsTest {
     }
     @Test void largestMovesAreRenderedFirstButResponseOrderIsPreserved() {
         var renderer=mock(ChartDocentService.class);
-        var observed=new ArrayList<Double>();var budgets=new ArrayList<Long>();
-        when(renderer.getWithin(any(),any())).thenAnswer(call -> {
-            com.finsight.external.AiDocentRequest r=call.getArgument(0);observed.add(r.changePercent());
-            budgets.add(((Duration)call.getArgument(1)).toNanos());return ChartDocentService.rule(r);
+        var observed=new ArrayList<Double>();
+        when(renderer.getBatch(anyList())).thenAnswer(call -> {
+            List<com.finsight.external.AiDocentRequest> requests=call.getArgument(0);
+            requests.forEach(r -> observed.add(r.changePercent()));return requests.stream().map(ChartDocentService::rule).toList();
         });
         var service=new ChartService(null,null,mock(NewsRepository.class),new ArticleContentExtractor(),null);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"docentService",renderer);
@@ -73,8 +73,7 @@ class ChartUnifiedInsightsTest {
         var chart=new ChartResponse("005930",100,2,moves.stream().map(m -> new ChartResponse.CandleView(at.toLocalDate(),100,100,100,100)).toList(),List.of(),List.of(),null,"D",null,List.of(),false,moves);
         assertThat(service.withDocents(chart,"normal").moveInsights()).extracting(ChartResponse.MoveInsightView::changePercent).containsExactly(2.,-7.,4.);
         assertThat(observed).containsExactly(-7.,4.,2.);
-        assertThat(budgets).allSatisfy(n -> assertThat(n).isBetween(1L,Duration.ofSeconds(3).toNanos()));
-        assertThat(budgets).isSortedAccordingTo(Comparator.reverseOrder());
+        verify(renderer,times(1)).getBatch(anyList());
     }
 
 }

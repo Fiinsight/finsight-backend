@@ -22,6 +22,7 @@ public class ExternalCacheConfiguration {
                 cache("chartResponses", Duration.ofMinutes(1), 500),
                 cache("chartCandles", Duration.ofSeconds(30), 100),
                 cache("chartDocents", Duration.ofDays(14), 5000),
+                cache("chartDocentBatches", Duration.ofMinutes(1), 500),
                 cache("termExplanations", Duration.ofMinutes(5), 300),
                 cache("termDictionary", Duration.ofMinutes(10), 1),
                 cache("readingAids", Duration.ofMinutes(10), 1000),

@@ -16,6 +16,16 @@ public class ChartDocentService {
     public ChartResponse.DocentView getWithin(AiDocentRequest r, java.time.Duration remaining) {
         return compute(r, remaining);
     }
+    @Cacheable(cacheNames="chartDocentBatches", key="#requests", sync=true)
+    public java.util.List<ChartResponse.DocentView> getBatch(java.util.List<AiDocentRequest> requests) {
+        long deadline=System.nanoTime()+java.time.Duration.ofSeconds(3).toNanos();
+        var rendered=new java.util.ArrayList<ChartResponse.DocentView>();
+        for(var request:requests) {
+            long remaining=deadline-System.nanoTime();
+            rendered.add(remaining<=0?rule(request):compute(request,java.time.Duration.ofNanos(remaining)));
+        }
+        return java.util.List.copyOf(rendered);
+    }
     private ChartResponse.DocentView compute(AiDocentRequest r, java.time.Duration remaining) {
         var fallback=rule(r);
         if (!withLlm || "MINUTE".equals(r.period()) || "NONE".equals(fallback.relation())) return fallback;

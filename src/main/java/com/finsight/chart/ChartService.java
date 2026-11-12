@@ -471,7 +471,7 @@ public class ChartService {
         for(int i=0;i<sourceMoves.size();i++) order.add(i);
         order.sort(Comparator.comparingDouble((Integer i) -> Math.abs(sourceMoves.get(i).changePercent())).reversed());
         var rendered=new ChartResponse.MoveInsightView[sourceMoves.size()];
-        long deadline=System.nanoTime()+java.time.Duration.ofSeconds(3).toNanos();
+        var requests=new java.util.ArrayList<com.finsight.external.AiDocentRequest>();
         for (int i:order) {
             var move=sourceMoves.get(i);
             var request=move.evidence();
@@ -480,9 +480,12 @@ public class ChartService {
                 var at="MINUTE".equals(chart.period()) ? move.timestamp() : moveWindow(move.timestamp().toLocalDate(),chart.period()).to().atZone(KST).toLocalDateTime();
                 request=docentRequest(chart.symbol(),at,move.changePercent(),chart.period(),articles,level);
             } else request=request.withLevel(level);
-            long remaining=deadline-System.nanoTime();
-            var docent=remaining<=0 || docentService==null ? ChartDocentService.rule(request)
-                    : docentService.getWithin(request,java.time.Duration.ofNanos(remaining));
+            requests.add(request);
+        }
+        // Cache only explanations, so the current quote still stays fresh on every response.
+        var docents=docentService==null?requests.stream().map(ChartDocentService::rule).toList():docentService.getBatch(List.copyOf(requests));
+        for(int position=0;position<order.size();position++) {
+            int i=order.get(position);var move=sourceMoves.get(i);var request=requests.get(position);var docent=docents.get(position);
             String prefix="MINUTE".equals(chart.period()) && move.explanation().contains(" · ") ? move.explanation().substring(0,move.explanation().indexOf(" · ")+3) : "";
             String explanation=move.newsId()==null && move.explanation().startsWith("뉴스 수집(")?move.explanation():prefix+docent.possibleReason();
             rendered[i]=new ChartResponse.MoveInsightView(move.timestamp(),move.changePercent(),docent.newsId(),docent.newsTitle(),docent.source(),explanation,move.causeScore(),move.candidateNews(),docent,

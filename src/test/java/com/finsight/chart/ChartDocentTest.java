@@ -34,7 +34,7 @@ class ChartDocentTest {
         }
     }
     @Configuration @EnableCaching static class Config {
-        @Bean ConcurrentMapCacheManager cacheManager() { return new ConcurrentMapCacheManager("chartDocents"); }
+        @Bean ConcurrentMapCacheManager cacheManager() { return new ConcurrentMapCacheManager("chartDocents","chartDocentBatches"); }
         @Bean AiServiceClient ai() { return mock(AiServiceClient.class); }
         @Bean ChartDocentService docent(AiServiceClient ai) { return new ChartDocentService(ai); }
     }
@@ -121,4 +121,18 @@ class ChartDocentTest {
             }
         }
     }
+    @Test void warmBatchUsesOneCacheEntryAndSeparatesLevelsAndEditedSource() {
+        try(var context=new AnnotationConfigApplicationContext(Config.class)) {
+            var ai=context.getBean(AiServiceClient.class);var service=context.getBean(ChartDocentService.class);
+            org.springframework.test.util.ReflectionTestUtils.setField(service,"withLlm",true);
+            when(ai.docent(any(),any())).thenAnswer(call -> Optional.of(ChartDocentService.rule(call.getArgument(0))));
+            var request=request("DIRECT","D","normal");var batch=List.of(request);
+            assertThat(service.getBatch(batch)).isSameAs(service.getBatch(batch));
+            service.getBatch(List.of(request.withLevel("analyst")));
+            var changed=new AiDocentRequest(request.symbol(),request.symbolName(),request.date(),request.changePercent(),request.period(),List.of(new AiDocentRequest.Article(1L,"삼성전자 새 계약 발표","삼성전자가 공급 계약을 발표했다.",Instant.EPOCH,"DIRECT","합성")),"normal",request.indexName(),null);
+            service.getBatch(List.of(changed));
+            verify(ai,times(3)).docent(any(),any());
+        }
+    }
+
 }
