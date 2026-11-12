@@ -94,9 +94,10 @@ public class LearningService {
         var context = quizContext(article, dictionary, body, matchedTerms);
         Map<String,GradedQuestion> questions = new HashMap<>();
         for (Term term : matchedTerms) questions.put(term.getTerm(), question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm())),dictionary,context));
-        var applied=mastery.applicationProbabilities(userId,level);
+        boolean applicationEnabled=mastery.applicationEnabled();
+        var applied=applicationEnabled?mastery.applicationProbabilities(userId,level):Map.<String,Double>of();
         // Concept readiness chooses the question type; the matching evidence chooses the next term.
-        questions.forEach((term,question) -> {
+        if(applicationEnabled) questions.forEach((term,question) -> {
             if(question!=null && question.publicQuestion().type()!=QuestionType.DEFINITION)
                 probabilities.put(term,applied.getOrDefault(term,KnowledgeTracing.P_INIT));
         });

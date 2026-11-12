@@ -61,6 +61,8 @@ public class TermMasteryService {
         return true;
     }
 
+    boolean applicationEnabled() { return dailyCreditEnabled; }
+
     @Transactional(readOnly=true)
     public Map<String,Double> applicationProbabilities(Long userId,String level) {
         if (!dailyCreditEnabled || "beginner".equals(level)) return Map.of();

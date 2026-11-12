@@ -179,6 +179,7 @@ class LearningServiceTest {
         when(dictionary.findAll()).thenReturn(List.of(new Term("환율","교환 비율"),new Term("영업이익","본업 이익"),new Term("금리","이자 비율")));
         when(mastery.list(1L)).thenReturn(List.of(new TermMasteryService.Mastery("환율",.95,.95,3,java.time.Instant.now(),"normal",true),
                 new TermMasteryService.Mastery("영업이익",.95,.95,3,java.time.Instant.now(),"normal",true)));
+        when(mastery.applicationEnabled()).thenReturn(true);
         when(mastery.applicationProbabilities(1L,"normal")).thenReturn(Map.of("환율",.95,"영업이익",.3));
         var service=new LearningService(news,mock(UserRepository.class),dictionary,mock(LearningProgressRepository.class),mock(UserProfileService.class),
                 mock(AiServiceClient.class),new ArticleContentExtractor(),mastery,mock(com.finsight.briefing.BriefingService.class));
@@ -186,6 +187,8 @@ class LearningServiceTest {
         assertEquals("영업이익",chosen.term());assertEquals(QuestionType.DIRECTION,chosen.type());
         when(mastery.applicationProbabilities(1L,"normal")).thenReturn(Map.of("환율",.2,"영업이익",.95));
         assertEquals("환율",service.lesson(1L,1L,"normal").question().term());
+        when(mastery.applicationEnabled()).thenReturn(false);
+        assertEquals("영업이익",service.lesson(1L,1L,"normal").question().term());
     }
 
 }
