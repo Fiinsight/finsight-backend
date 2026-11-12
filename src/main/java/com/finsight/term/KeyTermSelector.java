@@ -11,11 +11,16 @@ public final class KeyTermSelector {
     private static final Set<String> GENERIC_METADATA = Set.of("주식","시장","기업","가격","상승","하락","투자","회사","정부","경제");
     private static final Set<String> BROAD_TOPICS = Set.of("AI","반도체","수출","수입","원화","물가","매출","실적","코스피","코스닥");
     private static final String PARTICLES = "은|는|이|가|을|를|의|와|과|에|로|도|만|으로|에서|에게|까지|부터|보다|처럼|에도|에는|에선|으로는|에서는|이며|이고|이다|입니다";
+    private static final com.github.benmanes.caffeine.cache.Cache<String,Pattern> TERM_PATTERNS =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumSize(512).build();
     private record Entry(String term, int grade, Pattern pattern) {}
-    private static Entry entry(String term, int grade) {
-        String literal = Arrays.stream(term.split(" ")).map(Pattern::quote).collect(java.util.stream.Collectors.joining("\\s*"));
-        return new Entry(term, grade, Pattern.compile("(?<![가-힣A-Za-z0-9])("+literal+")(?=$|[^가-힣A-Za-z0-9]|(?:"+PARTICLES+")(?=$|[^가-힣A-Za-z0-9]))", Pattern.CASE_INSENSITIVE));
+    private static Pattern pattern(String term) {
+        return TERM_PATTERNS.get(term, value -> {
+            String literal = Arrays.stream(value.split(" ")).map(Pattern::quote).collect(java.util.stream.Collectors.joining("\\s*"));
+            return Pattern.compile("(?<![가-힣A-Za-z0-9])("+literal+")(?=$|[^가-힣A-Za-z0-9]|(?:"+PARTICLES+")(?=$|[^가-힣A-Za-z0-9]))", Pattern.CASE_INSENSITIVE);
+        });
     }
+    private static Entry entry(String term, int grade) { return new Entry(term, grade, pattern(term)); }
     private static final List<Entry> DICTIONARY = List.of(
             entry("기준금리",1), entry("금리",1), entry("환율",1), entry("영업이익",1), entry("연체율",1), entry("시가총액",1),
             entry("인플레이션",2), entry("변동성",2), entry("수급",2), entry("배당수익률",2), entry("공시",2), entry("유상증자",2),
@@ -26,7 +31,22 @@ public final class KeyTermSelector {
     ).stream().sorted(Comparator.comparingInt((Entry value)->value.term().length()).reversed()).toList();
 
     public static boolean containsTerm(String text, String term) {
-        return text != null && term != null && entry(term, 1).pattern().matcher(text).find();
+        return text != null && matchingTerms(text).test(term);
+    }
+
+    public static java.util.function.Predicate<String> matchingTerms(String text) {
+        String searchable = compact(text);
+        return term -> term != null && searchable.contains(compact(term)) && pattern(term).matcher(text).find();
+    }
+
+    private static String compact(String text) {
+        StringBuilder result = new StringBuilder(text.length());
+        for (int i=0;i<text.length();i++) {
+            char ch=text.charAt(i);
+            if (" \t\n\r\f\u000B".indexOf(ch)>=0) continue;
+            result.append(ch>='A' && ch<='Z' ? (char)(ch+('a'-'A')) : ch);
+        }
+        return result.toString();
     }
 
     public static boolean isRecommendationTerm(String term) {
