@@ -44,6 +44,11 @@ public class LearningService {
     private final ArticleContentExtractor extractor;
     private final TermMasteryService mastery;
     private final BriefingService briefing;
+    private record DailyMatchKey(String title, String body, List<String> terms) {}
+    private final com.github.benmanes.caffeine.cache.Cache<DailyMatchKey,Set<String>> dailyMatches =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder().maximumWeight(4 * 1024 * 1024)
+                    .weigher((DailyMatchKey key, Set<String> value) -> 256 + 2 * (key.title().length()+key.body().length()) + key.terms().size()*64)
+                    .expireAfterAccess(java.time.Duration.ofMinutes(10)).build();
     public LearningService(NewsRepository news, UserRepository users, TermRepository terms,
                            LearningProgressRepository progress, UserProfileService profiles,
                            AiServiceClient ai, ArticleContentExtractor extractor, TermMasteryService mastery, BriefingService briefing) {
@@ -126,7 +131,9 @@ public class LearningService {
     public List<DailyTerm> dailyTerms(Long userId) {
         Map<String,TermMasteryService.Mastery> known = new HashMap<>();
         mastery.list(userId).forEach(row -> known.put(row.term(), row));
-        List<Term> dictionary = terms.findAll();
+        List<Term> dictionary = terms.findAll().stream().filter(term -> term.getKind() == Term.Kind.CONCEPT)
+                .filter(term -> !known.containsKey(term.getTerm()) || !TermMasteryService.wellKnown(known.get(term.getTerm())))
+                .toList();
         LinkedHashMap<String,DailyTerm> candidates = new LinkedHashMap<>();
         var items = briefing.getTodayBriefingWithoutCatchUp();
         Map<Long,News> articles = news.findAllById(items.stream().map(item -> item.id()).toList()).stream()
@@ -146,7 +153,15 @@ public class LearningService {
     private void addDailyTerms(Map<String,DailyTerm> candidates, News article, Map<String,TermMasteryService.Mastery> known, List<Term> dictionary) {
         if (article.getRawContent() == null || article.getRawContent().isBlank()
                 || Objects.toString(article.getSource(), "").startsWith("SYNTHETIC")) return;
-        for (Term term : articleTerms(article, dictionary)) {
+        var key = new DailyMatchKey(Objects.toString(article.getTitle(),"null"), article.getRawContent(), dictionary.stream()
+                .filter(term -> term.getShortDefinition()!=null && !term.getShortDefinition().isBlank()).map(Term::getTerm).toList());
+        // Cache only content matching. Mastery, definitions and article attribution remain current on every request.
+        var matched = dailyMatches.get(key, input -> {
+            var matches = com.finsight.term.KeyTermSelector.matchingTerms(input.title()+" "+input.body());
+            return input.terms().stream().filter(matches).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        });
+        for (Term term : dictionary) {
+            if (!matched.contains(term.getTerm())) continue;
             if (term.getKind() != Term.Kind.CONCEPT) continue;
             var row = known.get(term.getTerm());
             if (row != null && TermMasteryService.wellKnown(row)) continue;
@@ -195,7 +210,8 @@ public class LearningService {
     List<Term> articleTerms(News article) { return articleTerms(article, terms.findAll()); }
     private List<Term> articleTerms(News article, List<Term> dictionary) {
         String content = article.getTitle() + " " + Objects.toString(article.getRawContent(), "");
-        return dictionary.stream().filter(t -> com.finsight.term.KeyTermSelector.containsTerm(content, t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
+        var matches = com.finsight.term.KeyTermSelector.matchingTerms(content);
+        return dictionary.stream().filter(t -> matches.test(t.getTerm()) && t.getShortDefinition() != null && !t.getShortDefinition().isBlank())
                 .sorted(Comparator.comparingInt((Term t) -> article.getTitle().contains(t.getTerm()) ? 0 : 1)
                         .thenComparing(Comparator.comparingInt((Term t) -> t.getTerm().length()).reversed())
                         .thenComparing(Term::getTerm)).toList();

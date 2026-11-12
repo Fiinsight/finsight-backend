@@ -93,6 +93,26 @@ class ConceptPersonalizationTest {
         verify(news).findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(argThat(at->at.isAfter(Instant.now().minusSeconds(86405)) && at.isBefore(Instant.now().minusSeconds(86395))),argThat(p->p.getPageSize()==50));
     }
 
+    @Test void cachedDailyMatchesKeepDefinitionsMasteryAndChangedSourceCurrent() {
+        var core=article(1,"경제 소식");
+        when(core.getRawContent()).thenReturn("금리 환율 수급에 관한 기사 본문이다.");
+        when(news.findAllById(List.of(1L))).thenReturn(List.of(core));
+        when(briefing.getTodayBriefingWithoutCatchUp()).thenReturn(List.of(brief(1)));
+        when(terms.findAll()).thenReturn(List.of(new Term("금리","이자"),new Term("환율","비율"),new Term("수급","흐름")));
+        assertEquals(List.of("금리","수급","환율"), service.dailyTerms(1L).stream().map(LearningService.DailyTerm::term).toList());
+        when(terms.findAll()).thenReturn(List.of(new Term("금리","수정된 정의"),new Term("환율","비율"),new Term("수급","흐름")));
+        when(mastery.list(1L)).thenReturn(List.of(known("금리",.2,3,false)));
+        var changed=service.dailyTerms(1L).getFirst();
+        assertEquals("수정된 정의",changed.definition());
+        assertEquals("지난번에 틀린 개념",changed.reason());
+        when(core.getRawContent()).thenReturn("환율과 수급에 관한 변경된 기사 본문이다.");
+        assertEquals(List.of("수급","환율"),service.dailyTerms(1L).stream().map(LearningService.DailyTerm::term).toList());
+        when(mastery.list(1L)).thenReturn(List.of(known("수급",.9,5,true)));
+        assertEquals(List.of("환율"),service.dailyTerms(1L).stream().map(LearningService.DailyTerm::term).toList());
+        when(terms.findAll()).thenReturn(List.of(new Term("환율","")));
+        assertTrue(service.dailyTerms(1L).isEmpty());
+    }
+
     @Test void reviewsUseTheSameHalfProbabilityBoundaryAndExcludeHistoricalTopics() {
         var progress=mock(LearningProgressRepository.class);
         var learning=new LearningService(news,mock(UserRepository.class),terms,progress,mock(UserProfileService.class),
