@@ -10,6 +10,7 @@ public class AccountDataDeletion {
     public record OwnedTable(String name, boolean optional) {}
     public static final List<OwnedTable> TABLES = List.of(
             new OwnedTable("term_mastery",false),
+            new OwnedTable("term_application_mastery",false),
             new OwnedTable("learning_progress",false),
             new OwnedTable("article_note",false),
             new OwnedTable("daily_note",false),

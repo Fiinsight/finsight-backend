@@ -54,9 +54,37 @@ public class TermMasteryService {
                 INSERT INTO learning_mastery_credit(user_id,news_id,term,quiz_day,level,correct,question_type,answered_at)
                 VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id,news_id,term,quiz_day) DO NOTHING
                 """,userId,newsId,term,LocalDate.now(clock),level,correct,type.name(),java.sql.Timestamp.from(clock.instant()));
-        if (first == 0 || type != QuestionType.DEFINITION) return false;
-        answer(userId,term,level,correct);
+        if (first == 0) return false;
+        if (type == QuestionType.DEFINITION) answer(userId,term,level,correct);
+        else if (type == QuestionType.DIRECTION || type == QuestionType.FACT_CHECK) applicationAnswer(userId,term,type,correct);
+        else return false;
         return true;
+    }
+
+    boolean applicationEnabled() { return dailyCreditEnabled; }
+
+    @Transactional(readOnly=true)
+    public Map<String,Double> applicationProbabilities(Long userId,String level) {
+        if (!dailyCreditEnabled || "beginner".equals(level)) return Map.of();
+        String type="normal".equals(level)?"DIRECTION":"FACT_CHECK";
+        Map<String,Double> values=new HashMap<>();
+        jdbc.query("SELECT term,p_known,last_answered_at FROM term_application_mastery WHERE user_id=? AND question_type=?",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> values.put(rs.getString("term"),effective(rs.getDouble("p_known"),
+                        rs.getTimestamp("last_answered_at").toInstant(),clock.instant(),clock.getZone())),userId,type);
+        return values;
+    }
+    void applicationAnswer(Long userId,String term,QuestionType type,boolean correct) {
+        Integer eligible=jdbc.queryForObject("SELECT count(*) FROM term WHERE term=? AND kind='CONCEPT'",Integer.class,term);
+        if(eligible==null || eligible==0) return;
+        jdbc.update("INSERT INTO term_application_mastery(user_id,term,question_type,p_known,attempts,last_answered_at,last_correct) VALUES(?,?,?,?,0,?,false) ON CONFLICT DO NOTHING",
+                userId,term,type.name(),KnowledgeTracing.P_INIT,java.sql.Timestamp.from(clock.instant()));
+        record Stored(double p,int attempts,Instant at) {}
+        var stored=jdbc.query("SELECT p_known,attempts,last_answered_at FROM term_application_mastery WHERE user_id=? AND term=? AND question_type=? FOR UPDATE",
+                (rs,i) -> new Stored(rs.getDouble("p_known"),rs.getInt("attempts"),rs.getTimestamp("last_answered_at").toInstant()),userId,term,type.name()).getFirst();
+        String evidenceLevel=type==QuestionType.DIRECTION?"normal":"analyst";
+        jdbc.update("UPDATE term_application_mastery SET p_known=?,attempts=?,last_answered_at=?,last_correct=? WHERE user_id=? AND term=? AND question_type=?",
+                KnowledgeTracing.update(effective(stored.p(),stored.at(),clock.instant(),clock.getZone()),correct,evidenceLevel),stored.attempts()+1,
+                java.sql.Timestamp.from(clock.instant()),correct,userId,term,type.name());
     }
 
     @Transactional

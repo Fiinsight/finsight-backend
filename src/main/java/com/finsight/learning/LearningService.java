@@ -94,6 +94,13 @@ public class LearningService {
         var context = quizContext(article, dictionary, body, matchedTerms);
         Map<String,GradedQuestion> questions = new HashMap<>();
         for (Term term : matchedTerms) questions.put(term.getTerm(), question(article,term,quizLevel,needsConcept(knowledge.get(term.getTerm())),dictionary,context));
+        boolean applicationEnabled=mastery.applicationEnabled();
+        var applied=applicationEnabled?mastery.applicationProbabilities(userId,level):Map.<String,Double>of();
+        // Concept readiness chooses the question type; the matching evidence chooses the next term.
+        if(applicationEnabled) questions.forEach((term,question) -> {
+            if(question!=null && question.publicQuestion().type()!=QuestionType.DEFINITION)
+                probabilities.put(term,applied.getOrDefault(term,KnowledgeTracing.P_INIT));
+        });
         String selected = requestedTerm != null ? requestedTerm : KnowledgeTracing.select(matchedTerms.stream().filter(term -> questions.get(term.getTerm()) != null).map(Term::getTerm).toList(), probabilities);
         Term first = matchedTerms.stream().filter(term -> term.getTerm().equals(selected)).findFirst().orElse(null);
         GradedQuestion quiz = first == null ? null : questions.get(first.getTerm());
@@ -253,9 +260,11 @@ public class LearningService {
                         && !term.getTerm().contains(other.getTerm()) && sentence.contains(other.getTerm()))) continue;
                 // Mixed directions or forecast-only statements cannot be graded as observed changes.
                 if (sentence.matches(".*(전망|예상|가능성|예측).*")) continue;
-                boolean up = sentence.matches(".*(증가|상승|늘었|늘어|올랐|올라|인상).*"),
-                        down = sentence.matches(".*(감소|하락|줄었|줄어|내렸|내려|인하).*"),
-                        flat = sentence.matches(".*(동결|변화 없|유지|보합).*" );
+                String local=directionEvidence(sentence,term.getTerm(),dictionary);
+                if(local==null) continue;
+                boolean up = local.matches(".*(증가|상승|늘었|늘어|올랐|올라|인상).*"),
+                        down = local.matches(".*(감소|하락|줄었|줄어|내렸|내려|인하).*"),
+                        flat = local.matches(".*(동결|변화 없|유지|보합).*" );
                 if ((up?1:0)+(down?1:0)+(flat?1:0) != 1) continue;
                 List<String> options = new ArrayList<>(List.of("증가", "감소", "변화 없음"));
                 Collections.shuffle(options, seed);
@@ -274,6 +283,23 @@ public class LearningService {
             }
         }
         return beginnerQuestion(article, term, level, dictionary);
+    }
+
+    static String directionEvidence(String sentence,String term,List<Term> dictionary) {
+        int start=sentence.indexOf(term);
+        if(start<0) return null;
+        String tail=sentence.substring(start+term.length());
+        var movement=java.util.regex.Pattern.compile("증가|상승|늘었|늘어|올랐|올라|인상|감소|하락|줄었|줄어|내렸|내려|인하|동결|변화 없|유지|보합").matcher(tail);
+        if(!movement.find() || movement.start()>15) return null;
+        String between=tail.substring(0,movement.start());
+        if(dictionary.stream().anyMatch(other -> !other.getTerm().equals(term) && between.contains(other.getTerm()))) return null;
+        // A second grammatical subject or a company name cannot lend its direction to this term.
+        if(between.strip().matches("(?s).*\\s+[가-힣A-Za-z0-9]+(?:은|는|이|가)\\s+.*")
+                || com.finsight.localml.ChartCompanyMatcher.mentionsCompany(between)) return null;
+        String observed=tail.substring(0,Math.min(tail.length(),movement.end()+12));
+        if(dictionary.stream().anyMatch(other -> !other.getTerm().equals(term) && observed.contains(other.getTerm()))) return null;
+        if(observed.matches("(?s).*(않|못|멈췄|멈추|그쳤|그치|전망|예상|가능성|예측).*")) return null;
+        return tail.substring(0,Math.min(tail.length(),movement.end()+12));
     }
 
     static List<String> factVariants(String fact) {
