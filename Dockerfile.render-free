@@ -17,9 +17,22 @@ WORKDIR /app
 COPY deploy/requirements-ai-free.txt /tmp/requirements-ai-free.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-ai-free.txt
 # Pin the existing AI version; a deploy must not silently fetch changed code.
-ADD https://codeload.github.com/Fiinsight/finsight-ai/tar.gz/e8c72e92c116337836ba3b2451f0ea3ce84bda0f /tmp/ai.tar.gz
+ADD https://codeload.github.com/Fiinsight/finsight-ai/tar.gz/3cd608a0f6f0dd955970484775996582a07e275e /tmp/ai.tar.gz
 RUN mkdir /app/ai && tar -xzf /tmp/ai.tar.gz -C /app/ai --strip-components=1 && rm /tmp/ai.tar.gz
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
+# Build the archive with no network or production configuration. Training exits
+# at context refresh, before seed runners; these switches do not affect runtime.
+RUN --network=none java -Djarmode=tools -jar /app/app.jar extract --destination /app/application \
+    && cd /app/application \
+    && java -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 \
+       -XX:ArchiveClassesAtExit=/app/application/application.jsa \
+       -Dspring.context.exit=onRefresh -jar /app/application/app.jar \
+       --spring.main.lazy-initialization=true --spring.main.web-application-type=none \
+       --spring.jpa.hibernate.ddl-auto=none --spring.flyway.enabled=false \
+       --spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false \
+       --spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect \
+       --finsight.auth.jwt-secret=cWEtYnVpbGQtb25seS1ub3QtYS1ydW50aW1lLWNyZWRlbnRpYWw= \
+       --finsight.news.collection.enabled=false --finsight.feedback.on-startup=false
 COPY --chmod=755 deploy/start-free.sh /app/start-free.sh
 EXPOSE 10000
 ENTRYPOINT ["/app/start-free.sh"]
