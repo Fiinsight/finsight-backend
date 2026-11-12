@@ -17,7 +17,7 @@ WORKDIR /app
 COPY deploy/requirements-ai-free.txt /tmp/requirements-ai-free.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-ai-free.txt
 # Pin the existing AI version; a deploy must not silently fetch changed code.
-ADD https://codeload.github.com/Fiinsight/finsight-ai/tar.gz/8732c623b4b8178dd4b67138c15f7b13bd183546 /tmp/ai.tar.gz
+ADD https://codeload.github.com/Fiinsight/finsight-ai/tar.gz/7d687b55fb494375138900c741b1007df8da7e17 /tmp/ai.tar.gz
 RUN mkdir /app/ai && tar -xzf /tmp/ai.tar.gz -C /app/ai --strip-components=1 && rm /tmp/ai.tar.gz
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 # Build the archive with no network or production configuration. Training exits

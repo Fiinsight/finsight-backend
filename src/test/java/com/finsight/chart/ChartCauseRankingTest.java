@@ -48,4 +48,16 @@ class ChartCauseRankingTest {
         assertThat(ChartService.isAfterCloseExplanation("000660",report,window)).isFalse();
         assertThat(ChartService.moveCandidates("005930",List.of(report,next),window,-4,"INDIVIDUAL")).containsExactly(report);
     }
+    @Test void sectorPriceExplanationBeatsAGenericDividendDisclosureForAnIndividualMove() {
+        var generic=news(1,"SK하이닉스 배당 계획 공시","000660");
+        var cause=news(2,"증시, 데이터센터 규제 우려에 급락",null);
+        cause.setRawContent("반도체 업계의 데이터센터 수요 우려가 커졌다. 규제 우려가 주식시장에 영향을 미쳤다.");
+        assertThat(ChartService.candidateNews("000660",List.of(generic,cause),FROM,TO,-9,"INDIVIDUAL")).first().isSameAs(cause);
+    }
+    @Test void anotherCompanyEarningsCannotReceiveTheExtraOwnCompanyEventBonus() {
+        var mixed=news(1,"코스피 상승",null);mixed.setRawContent("다른 기업은 실적을 발표했다. SK하이닉스 주가는 상승했다.");
+        var own=news(2,"코스피 상승",null);own.setRawContent("SK하이닉스는 실적을 발표했다. SK하이닉스 주가는 상승했다.");
+        assertThat(ChartService.representativeScore("000660",own,3)-ChartService.representativeScore("000660",mixed,3)).isEqualTo(1);
+    }
+
 }

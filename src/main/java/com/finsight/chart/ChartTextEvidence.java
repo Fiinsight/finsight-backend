@@ -27,15 +27,6 @@ final class ChartTextEvidence {
         if ("SECTOR".equals(relation)) return StockCatalog.sectorTerms(symbol).stream().anyMatch(text::contains);
         return "MARKET".equals(relation) && MARKET.matcher(text).find();
     }
-    static String polite(String text,String level) {
-        if ("analyst".equals(level)) return text;
-        for (var pair:List.of(new String[]{"늘었다","늘었어요"},new String[]{"줄었다","줄었어요"},
-                new String[]{"올랐다","올랐어요"},new String[]{"내렸다","내렸어요"},new String[]{"했다","했어요"},
-                new String[]{"됐다","됐어요"},new String[]{"있다","있어요"},new String[]{"없다","없어요"},
-                new String[]{"한다","해요"},new String[]{"된다","돼요"},new String[]{"이다","이에요"}))
-            text=text.replaceAll(Pattern.quote(pair[0])+"(?=[.!?。！？]|$)",pair[1]);
-        return text;
-    }
     private static final Pattern CAUSE=Pattern.compile("([^.!?。！？\\n]{2,90}?(?:소식에|우려에|기대에|영향으로|여파로|발표 후|매도세에|매수세에|으로|로|에))\\s*(?:(?:[+-]?\\d+(?:\\.\\d+)?%|주가가|주가는|장중|이날|오늘)\\s*){0,4}(?:급등|급락|상승|하락|강세|약세)");
     private static final Pattern CAUSE_EVENT=Pattern.compile("실적|이익|매출|수주|계약|금리|환율|관세|매도|매수|수급|우려|기대|수요|공급|발표|공시|규제|정책|인수|소송|제재|승인|리콜");
     static String cause(AiDocentRequest r,AiDocentRequest.Article article) {
@@ -47,14 +38,24 @@ final class ChartTextEvidence {
         var parts=new ArrayList<String>();parts.add(title);
         parts.addAll(new ArticleContentExtractor().eventSentences(title,body,LocalDate.parse(date.substring(0,10))));
         for (String part:parts) {
-            if (!subject(symbol,part,relation)) continue;
+            boolean industryHeadline="SECTOR".equals(relation) && part.equals(title) && MARKET.matcher(title).find() && subject(symbol,body,relation);
+            if (!subject(symbol,part,relation) && !industryHeadline) continue;
             var matcher=CAUSE.matcher(part);
             while (matcher.find()) {
                 String phrase=matcher.group(1).strip();
-                if (CAUSE_EVENT.matcher(phrase).find() && !phrase.contains("에도") && !phrase.contains("지만")) return phrase;
+                if (part.length()<=200 && CAUSE_EVENT.matcher(phrase).find() && !phrase.contains("에도") && !phrase.contains("지만")) return part.strip();
             }
         }
         return null;
+    }
+    static boolean companyEvent(String symbol,String title,String body,LocalDate day) {
+        return subject(symbol,title,"DIRECT") && EVENT.matcher(title).find()
+                || new ArticleContentExtractor().eventSentences(title,body,day).stream()
+                    .anyMatch(sentence -> subject(symbol,sentence,"DIRECT") && EVENT.matcher(sentence).find());
+    }
+    private static boolean ownEvent(AiDocentRequest r,AiDocentRequest.Article article) {
+        return article!=null && "DIRECT".equals(article.relation())
+                && companyEvent(r.symbol(),article.title(),article.summary(),LocalDate.parse(r.date().substring(0,10)));
     }
     static String comparison(AiDocentRequest r) {
         if (r.indexChangePercent()==null || r.indexName()==null) return "";
@@ -79,25 +80,30 @@ final class ChartTextEvidence {
     static String reason(AiDocentRequest r,AiDocentRequest.Article article) {
         String comparison=comparison(r);
         if (article==null) return comparison.isEmpty()?String.format(Locale.ROOT,"주가는 %+.2f%% 움직였지만, 이 시점을 설명하는 뉴스와 시장 자료를 찾지 못했어요.",r.changePercent()):comparison+" 가격 비교만으로 원인을 단정하지 않아요.";
+        if ("MARKET".equals(article.relation())) {
+            String values=comparison.isEmpty()?String.format(Locale.ROOT,"주가는 %+.2f%% 움직였지만 같은 기간 지수 자료는 확인하지 못했어요.",r.changePercent()):comparison;
+            return values+(Math.abs(r.changePercent())<=0.5?" 시장이 움직인 날에도 주가는 거의 변하지 않았어요.":" 시장 관련 보도이며, 이 종목의 개별 원인으로 확인된 것은 아니에요.");
+        }
         String title=article.title();
         String sentimentTitle=title.contains("에도")?title.substring(0,title.indexOf("에도")):title;
         var sentiment=com.finsight.news.SentimentEvidence.direction(article.sentimentHint(),article.sentimentConfidence(),sentimentTitle);
         boolean neutral=Math.abs(r.changePercent())<=0.5;
-        boolean opposite=!neutral && (sentiment==com.finsight.briefing.SentimentHint.POSITIVE && r.changePercent()<0 || sentiment==com.finsight.briefing.SentimentHint.NEGATIVE && r.changePercent()>0);
+        boolean opposite=ownEvent(r,article) && !neutral && (sentiment==com.finsight.briefing.SentimentHint.POSITIVE && r.changePercent()<0 || sentiment==com.finsight.briefing.SentimentHint.NEGATIVE && r.changePercent()>0);
         String first;
         String cause=cause(r,article);
         if (neutral) first="MARKET".equals(article.relation())?"시장이 움직인 날에도 주가는 거의 변하지 않았어요.":"관련 소식이 나왔지만 주가는 거의 움직이지 않았어요.";
         else if (opposite) first=(sentiment==com.finsight.briefing.SentimentHint.POSITIVE?"호재":"악재")+" 소식에도 주가는 "+(r.changePercent()<0?"내렸어요":"올랐어요")+", 다른 원인은 이 기사만으로 확인하기 어려워요.";
-        else if (cause!=null) first=(article.afterCloseReport()?"마감 후 보도의 ":"기사의 ")+"‘"+cause+"’ 표현처럼 해당 요인이 영향을 줬을 수 있어요.";
+        else if (cause!=null) first=(article.afterCloseReport()?"마감 후 보도의 ":"기사의 ")+"‘"+cause.replaceFirst("[.!?。！？]+$","")+"’를 원인 후보로 볼 수 있어요.";
         else first=(article.afterCloseReport()?"마감 후 관련 소식: ‘":"관련 소식: ‘")+title+"’.";
         if ("SECTOR".equals(article.relation())) first=first.substring(0,first.length()-1)+", 이 종목을 직접 다룬 기사는 아니에요.";
         if (!comparison.isEmpty() && !neutral && "FOLLOWING".equals(r.marketContext()!=null?r.marketContext():ChartService.marketContext(r.changePercent(),r.indexChangePercent(),1.0))) return comparison+" "+first;
         return first+" "+(comparison.isEmpty()?String.format(Locale.ROOT,"주가는 %+.2f%% 움직였지만, 같은 기간 지수 자료는 확인하지 못했어요.",r.changePercent()):comparison);
     }
     static String impact(AiDocentRequest r,AiDocentRequest.Article article,String lead) {
-        String evidence=article==null?"":article.title()+" "+lead;
-        String next=Pattern.compile("수주|계약").matcher(evidence).find()?"계약 규모·기간 공시를 확인해요"
-                :Pattern.compile("실적|매출|영업이익").matcher(evidence).find()?"발표 실적과 시장 예상치의 차이를 확인해요"
+        boolean corporate=ownEvent(r,article);
+        String evidence=article==null?"":corporate?article.title()+" "+lead:lead;
+        String next=corporate && Pattern.compile("수주|계약").matcher(evidence).find()?"계약 규모·기간 공시를 확인해요"
+                :corporate && Pattern.compile("실적|매출|영업이익").matcher(evidence).find()?"발표 실적과 시장 예상치의 차이를 확인해요"
                 :Pattern.compile("규제|정책|관세").matcher(evidence).find()?"발표한 정책의 시행 시점을 확인해요"
                 :Pattern.compile("(?:외국인|기관).{0,20}(?:순매수|순매도|매도세|매수세|매매)|수급|프로그램 매매").matcher(evidence).find()?"이후 외국인·기관 매매가 이어지는지 확인해요"
                 :"추가로 확인할 개별 사건 자료가 없어요";

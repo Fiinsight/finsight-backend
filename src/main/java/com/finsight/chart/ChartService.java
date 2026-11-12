@@ -542,7 +542,7 @@ public class ChartService {
         return news.getSentimentHint()==null || news.getSentimentHint()==SentimentHint.NEUTRAL ? (title==null?SentimentHint.NEUTRAL:title) : news.getSentimentHint();
     }
     private record ScoreKey(String symbol, String title, String body, String relatedSymbol) {}
-    private record ScoreFeatures(int base, SentimentHint direction) {}
+    private record ScoreFeatures(int base, SentimentHint direction, boolean explainsPrice) {}
     private static final com.github.benmanes.caffeine.cache.Cache<ScoreKey,ScoreFeatures> SCORE_FEATURES =
             com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
                     .maximumWeight(8 * 1024 * 1024)
@@ -558,11 +558,14 @@ public class ChartService {
     private static final java.util.regex.Pattern MARKET_CONTEXT = java.util.regex.Pattern.compile("증시|코스피|코스닥|주식시장|주식 시장|주가지수");
     static int representativeScore(String symbol, News news, double change) {
         String title=java.util.Objects.toString(news.getTitle(),"");
-        var key = new ScoreKey(symbol,title,java.util.Objects.toString(news.getRawContent(),""),news.getRelatedSymbol());
-        var features = SCORE_FEATURES.get(key, ignored -> scoreFeatures(symbol,news));
+        var features=features(symbol,news);
         var direction = news.getSentimentConfidence()==null ? features.direction()
                 : com.finsight.news.SentimentEvidence.direction(news.getSentimentHint()==null?null:news.getSentimentHint().name(),news.getSentimentConfidence(),title);
         return features.base() + (direction == null || change == 0 ? 0 : (change>0)==(direction==SentimentHint.POSITIVE) ? 3 : -2);
+    }
+    private static ScoreFeatures features(String symbol,News news) {
+        var key=new ScoreKey(symbol,java.util.Objects.toString(news.getTitle(),""),java.util.Objects.toString(news.getRawContent(),""),news.getRelatedSymbol());
+        return SCORE_FEATURES.get(key,ignored -> scoreFeatures(symbol,news));
     }
     private static ScoreFeatures scoreFeatures(String symbol, News news) {
         String title=java.util.Objects.toString(news.getTitle(),"");
@@ -573,12 +576,17 @@ public class ChartService {
         if (com.finsight.stock.StockCatalog.mentions(symbol,title)) score+=2;
         if (symbol.equals(news.getRelatedSymbol())) score+=3;
         if (com.finsight.stock.StockCatalog.mentions(symbol,lead)) score+=2;
-        if (relevanceRank(symbol,news)>1 && CORPORATE_EVENT.matcher(title+" "+lead).matches()) score+=2;
+        if (relevanceRank(symbol,news)>1 && CORPORATE_EVENT.matcher(title+" "+lead).matches()) {
+            score++;
+            if (ChartTextEvidence.companyEvent(symbol,title,lead,news.getPublishedAt()==null?LocalDate.now(KST):news.getPublishedAt().atZone(KST).toLocalDate())) score++;
+        }
         if (INDEX_EVENT.matcher(title+" "+lead).matches()) score++;
         if (LOW_SIGNAL_EVENT.matcher(title).find()) score-=3;
         if (EXHIBITION.matcher(title+" "+lead).matches() && !CORPORATE_TITLE.matcher(title).matches()) score-=5;
         if (PUBLIC_AGENCY.matcher(title).matches() && !(MARKET_CONTEXT.matcher(title+" "+lead).find() && MACRO_EVENT.matcher(title+" "+lead).find())) score-=2;
-        return new ScoreFeatures(score,direction);
+        String day=(news.getPublishedAt()==null?LocalDate.now(KST):news.getPublishedAt().atZone(KST).toLocalDate()).toString();
+        boolean explainsPrice=ChartTextEvidence.cause(symbol,day,relationType(symbol,news),title,lead)!=null;
+        return new ScoreFeatures(score,direction,explainsPrice);
     }
 
 
@@ -671,7 +679,7 @@ public class ChartService {
         return Math.min(1.5,minutes/390*.3);
     }
     static List<News> candidateNews(String symbol, List<News> news, Instant from, Instant to, double change, String context) {
-        record Scored(News news, int rank, int priority, int content, int score, double time, double adjusted) {}
+        record Scored(News news, int rank, int priority, int content, int score, double time, double adjusted, boolean explainsPrice) {}
         return news.stream().filter(item -> item.getPublishedAt()!=null
                 && !item.getPublishedAt().isBefore(from) && item.getPublishedAt().isBefore(to))
             .map(item -> {
@@ -682,10 +690,11 @@ public class ChartService {
                 if (rank>1 && LOW_SIGNAL_EVENT.matcher(title).find() && !CORPORATE_TITLE.matcher(title).matches()) return null;
                 int priority="FOLLOWING".equals(context)?(rank==1?3:rank==2?2:1):"INDIVIDUAL".equals(context)?rank:0;
                 double time=tradingTimePenalty(item.getPublishedAt(),to);
-                return new Scored(item,rank,priority,score-(hint==null||change==0?0:3),score,time,score-time);
+                return new Scored(item,rank,priority,score-(hint==null||change==0?0:3),score,time,score-time,"INDIVIDUAL".equals(context) && features(symbol,item).explainsPrice());
             })
             .filter(item -> item!=null && item.rank()>0 && item.score()>=(item.rank()==3?4:0))
-            .sorted(Comparator.comparingInt(Scored::priority).reversed()
+            .sorted(Comparator.comparing(Scored::explainsPrice).reversed()
+                .thenComparing(Comparator.comparingInt(Scored::priority).reversed())
                 .thenComparing(Comparator.comparingDouble(Scored::adjusted).reversed())
                 .thenComparing(item -> item.news().getPublishedAt(),Comparator.reverseOrder())
                 .thenComparing(item -> item.news().getId(),Comparator.nullsLast(Comparator.naturalOrder())))

@@ -67,7 +67,6 @@ public class ChartDocentService {
         String relation=article==null?"NONE":article.relation();
         String title=article==null?"":article.title();
         String lead=article==null?"":ChartTextEvidence.lead(r.symbol(),title,article.summary(),java.time.LocalDate.parse(r.date().substring(0,10)),r.changePercent(),relation);
-        lead=ChartTextEvidence.polite(lead,r.level());
         if (article==null) lead=("W".equals(r.period())?"이 주간":"MINUTE".equals(r.period())?"이 시점":"이날")+" 주가 움직임을 직접 설명하는 뉴스를 찾지 못했어요.";
         String reason=ChartTextEvidence.reason(r,article);
         String impact=ChartTextEvidence.impact(r,article,lead);

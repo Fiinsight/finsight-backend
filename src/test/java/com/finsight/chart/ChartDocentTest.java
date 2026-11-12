@@ -91,7 +91,7 @@ class ChartDocentTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"POSITIVE,3,false","POSITIVE,-3,true","NEGATIVE,3,true","NEGATIVE,-3,false"})
     void directionDisagreementIsExplicit(String sentiment,double change,boolean opposite) {
-        var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"실적 발표","영업이익 발표",Instant.now(),"DIRECT","보도",sentiment,.9)),"beginner","코스피",0.);
+        var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"삼성전자 실적 발표","삼성전자 영업이익 발표",Instant.now(),"DIRECT","보도",sentiment,.9)),"beginner","코스피",0.);
         var text=ChartDocentService.rule(r).possibleReason();
         if(opposite) assertThat(text).contains("소식에도 주가는","다른 원인").doesNotContain("받아들여졌을 가능성");
         else assertThat(text).contains("관련 소식").doesNotContain("받아들여졌을 가능성");
@@ -108,7 +108,7 @@ class ChartDocentTest {
     @org.junit.jupiter.params.provider.ValueSource(doubles={-.51,-.5,0,.5,.51})
     void neutralBandIncludesBoundariesBeforeSentimentAndMarketDirection(double change) {
         for(String relation:List.of("DIRECT","MARKET")) for(String sentiment:List.of("POSITIVE","NEGATIVE")) {
-            var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"실적 발표","영업이익 발표",Instant.now(),relation,"보도",sentiment,.9)),"beginner","코스피",-1.2);
+            var r=new AiDocentRequest("005930","삼성전자","2026-11-02",change,"D",List.of(new AiDocentRequest.Article(1L,"삼성전자 실적 발표","삼성전자 영업이익 발표",Instant.now(),relation,"보도",sentiment,.9)),"beginner","코스피",-1.2);
             var text=ChartDocentService.rule(r).possibleReason();
             if(Math.abs(change)<=.5) {
                 assertThat(text).contains("DIRECT".equals(relation)?"소식이 나왔지만 주가는 거의 움직이지 않았어요":"시장이 움직인 날에도 주가는 거의 변하지 않았어요")
