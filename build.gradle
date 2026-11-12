@@ -40,6 +40,18 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+tasks.register('chartCauseGolden', JavaExec) {
+    dependsOn testClasses
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.finsight.chart.ChartCauseGoldenEvaluator'
+    if (project.hasProperty('goldenInput') && project.hasProperty('goldenOutput')) {
+        args project.property('goldenInput'), project.property('goldenOutput')
+    }
+    maxHeapSize = '192m'
+    jvmArgs '-XX:ActiveProcessorCount=1'
+}
+
 // Standalone read-only catalog; deliberately does not boot Spring or run collection/feedback jobs.
 tasks.register('demoQuizCatalog', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }

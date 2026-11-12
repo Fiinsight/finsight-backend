@@ -17,11 +17,11 @@ class ChartCompositionTest {
         Instant at=Instant.parse("2026-11-02T03:00:00Z");
         var positive=new News(1L,"삼성전자 실적 상승","https://fixture.test/score","TEST",at,"기업","005930","","삼성전자 영업이익이 증가했다.");
         var negative=new News(1L,"삼성전자 실적 하락","https://fixture.test/score","TEST",at,"기업","005930","","삼성전자 영업이익이 감소했다.");
-        assertEquals(11,ChartService.representativeScore("005930",positive,3));
-        assertEquals(6,ChartService.representativeScore("005930",positive,-3));
-        assertEquals(8,ChartService.representativeScore("005930",positive,0));
-        assertEquals(11,ChartService.representativeScore("005930",negative,-3));
-        assertEquals(6,ChartService.representativeScore("005930",negative,3));
+        assertEquals(12,ChartService.representativeScore("005930",positive,3));
+        assertEquals(7,ChartService.representativeScore("005930",positive,-3));
+        assertEquals(9,ChartService.representativeScore("005930",positive,0));
+        assertEquals(12,ChartService.representativeScore("005930",negative,-3));
+        assertEquals(7,ChartService.representativeScore("005930",negative,3));
     }
     @Test void integratedDailyResponseReusesPriceOnlyCacheAndKeepsEveryJsonField() throws Exception {
         var daily=mock(KisDailyCandleClient.class); var minute=mock(KisMinuteCandleClient.class);

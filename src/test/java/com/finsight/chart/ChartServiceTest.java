@@ -183,7 +183,8 @@ class ChartServiceTest {
         var move=service.getChart("005930").moveInsights().getFirst();
         assertThat(move.candidateNews().stream().filter(n -> !"REFERENCE".equals(n.relationType())).map(ChartResponse.NewsMarkerView::newsId)).containsExactly(2L,1L);
         assertThat(move.candidateNews().stream().filter(n -> "REFERENCE".equals(n.relationType())).map(ChartResponse.NewsMarkerView::newsId)).containsExactly(3L);
-        assertThat(move.newsId()).isIn(1L,2L); assertThat(move.docent().newsId()).isIn(1L,2L);
+        assertThat(move.newsId()).isEqualTo(3L); assertThat(move.docent().newsId()).isEqualTo(3L);
+        assertThat(move.candidateNews().stream().filter(n -> n.newsId()==3L)).allMatch(ChartResponse.NewsMarkerView::afterCloseReport);
     }
     @Test void minuteDetectionFindsSlowAccumulationAndOpeningGapWithoutInventingPreviousClose() {
         var day=java.time.LocalDate.parse("2026-10-12");

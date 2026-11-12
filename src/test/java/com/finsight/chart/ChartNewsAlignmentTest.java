@@ -47,7 +47,7 @@ class ChartNewsAlignmentTest {
         assertThat(cleaned).startsWith("인공지능(AI) 열풍으로 메모리 반도체 가격이 치솟으면서");
         assertThat(n.getRawContent()).startsWith("사진은 기사와 관련 없음.");
     }
-    @Test void cachedCandlesAreRescoredWithoutAnyMarketClientCall() throws Exception {
+    @Test void priceOnlyResponseNeverStartsNewsRescoring() throws Exception {
         var repo=mock(com.finsight.news.NewsRepository.class);
         ChartNewsRows.stub(repo,fixture());
         var daily=mock(com.finsight.external.kis.KisDailyCandleClient.class);
@@ -58,7 +58,8 @@ class ChartNewsAlignmentTest {
         // Synthetic unit-test prices only; the test never persists them or calls a price API.
         var candles=List.of(new ChartResponse.CandleView(LocalDate.parse("2026-10-08"),100,100,100,100),new ChartResponse.CandleView(LocalDate.parse("2026-10-12"),95.61,95.61,95.61,95.61));
         var cached=new ChartResponse("005930",95.61,-4.39,candles,List.of(),List.of(),null,"D",null,List.of(),false,List.of());
-        assertThat(service.withDocents(cached,"normal").moveInsights().getFirst().newsId()).isIn(232L,264L);
+        assertThat(service.withDocents(cached,"normal")).isSameAs(cached);
+        verifyNoInteractions(repo);
         verify(repo,never()).findById(any());
         verifyNoInteractions(daily,minute);
     }

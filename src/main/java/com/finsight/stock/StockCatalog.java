@@ -36,7 +36,7 @@ public class StockCatalog {
     public static java.util.List<String> sectorTerms(String code) {
         return switch (code) {
             case "005930", "000660" -> java.util.List.of("반도체", "메모리", "HBM");
-            case "035420", "035720" -> java.util.List.of("플랫폼", "인터넷", "온라인 광고", "검색 광고");
+            case "035420", "035720" -> java.util.List.of("인터넷 기업", "인터넷 업계", "플랫폼 기업", "플랫폼 업계", "온라인 광고", "검색 광고", "포털 업계");
             case "373220", "051910", "006400" -> java.util.List.of("배터리", "이차전지", "2차전지");
             case "005380", "000270" -> java.util.List.of("자동차", "완성차", "전기차");
             case "207940", "068270" -> java.util.List.of("바이오", "제약", "의약품");

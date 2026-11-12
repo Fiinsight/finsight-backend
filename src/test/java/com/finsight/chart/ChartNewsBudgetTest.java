@@ -7,10 +7,12 @@ class ChartNewsBudgetTest {
         var ai=new com.finsight.external.AiServiceClient(org.springframework.web.reactive.function.client.WebClient.builder()
                 .exchangeFunction(request->{requests.incrementAndGet();return reactor.core.publisher.Mono.never();}),"http://127.0.0.1");
         var repository=mock(NewsRepository.class);Instant at=Instant.parse("2026-11-02T03:00:00Z");
-        var article=new News(1L,"삼성전자 영업이익 증가","https://fixture.test","TEST",at,"기업","005930","영업이익","삼성전자 영업이익이 증가했다.");
+        var article=new News(1L,"삼성전자 영업이익 증가","https://fixture.test","TEST",at,"기업","005930","영업이익","삼성전자 영업이익이 12% 증가했다고 발표했다. 실적 관련 세부 내용을 확인했다. ".repeat(6));
         when(repository.findAllById(List.of(1L))).thenReturn(List.of(article));
         var service=new ChartService(null,null,repository,new com.finsight.news.collect.ArticleContentExtractor(),new com.finsight.news.collect.NewsSymbolMatcher());
-        org.springframework.test.util.ReflectionTestUtils.setField(service,"docentService",new ChartDocentService(ai));
+        var docent=new ChartDocentService(ai);
+        org.springframework.test.util.ReflectionTestUtils.setField(docent,"withLlm",true);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"docentService",docent);
         var marker=new ChartResponse.NewsMarkerView(java.time.LocalDate.of(2026,11,2),at,1L,article.getTitle(),"TEST","DIRECT");
         var move=new ChartResponse.MoveInsightView(java.time.LocalDateTime.of(2026,11,2,15,30),3,1L,article.getTitle(),"TEST","근거",1,List.of(marker),null);
         var chart=new ChartResponse("005930",100,3,List.of(),List.of(),List.of(),null,"D",null,List.of(),false,java.util.Collections.nCopies(10,move));

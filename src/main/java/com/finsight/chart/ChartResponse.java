@@ -37,15 +37,35 @@ public record ChartResponse(
             String explanation,
             double causeScore,
             List<NewsMarkerView> candidateNews,
-            DocentView docent
+            DocentView docent,
+            Double indexChangePercent,
+            Double excessChangePercent,
+            String marketContext,
+            @com.fasterxml.jackson.annotation.JsonIgnore com.finsight.external.AiDocentRequest evidence
     ) {
+        public MoveInsightView(LocalDateTime timestamp, double changePercent, Long newsId, String newsTitle, String newsSource,
+                               String explanation, double causeScore, List<NewsMarkerView> candidateNews, DocentView docent) {
+            this(timestamp,changePercent,newsId,newsTitle,newsSource,explanation,causeScore,candidateNews,docent,null,null,null,null);
+        }
+        public MoveInsightView(LocalDateTime timestamp, double changePercent, Long newsId, String newsTitle, String newsSource,
+                               String explanation, double causeScore, List<NewsMarkerView> candidateNews, DocentView docent,
+                               Double indexChangePercent,Double excessChangePercent,String marketContext) {
+            this(timestamp,changePercent,newsId,newsTitle,newsSource,explanation,causeScore,candidateNews,docent,indexChangePercent,excessChangePercent,marketContext,null);
+        }
     }
 
-    public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source, String relationType) {
+    public record NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source, String relationType, boolean afterCloseReport) {
+        public NewsMarkerView(LocalDate date, Instant publishedAt, Long newsId, String title, String source, String relationType) {
+            this(date,publishedAt,newsId,title,source,relationType,false);
+        }
     }
 
     public record DocentView(String relation, String whatHappened, String possibleReason, String marketImpact,
-                             Long newsId, String newsTitle, String source, String mode) {
+                             Long newsId, String newsTitle, String source, String mode, List<com.finsight.external.AiDocentRequest.Term> terms) {
+        public DocentView { terms=terms==null?List.of():List.copyOf(terms); }
+        public DocentView(String relation,String whatHappened,String possibleReason,String marketImpact,Long newsId,String newsTitle,String source,String mode) {
+            this(relation,whatHappened,possibleReason,marketImpact,newsId,newsTitle,source,mode,List.of());
+        }
         @com.fasterxml.jackson.annotation.JsonProperty("whyItMoved")
         public String whyItMoved() { return possibleReason; }
     }
