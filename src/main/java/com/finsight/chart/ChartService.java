@@ -125,29 +125,26 @@ public class ChartService {
     @Cacheable(cacheNames = "chartResponses", key = "#symbol + ' : ' + #period.toUpperCase() + ' : ' + ((#period.equalsIgnoreCase('MINUTE') || #period.equalsIgnoreCase('M')) ? #intervalMinutes : 0)", unless = "#result.fallback()")
     public ChartResponse getChart(String symbol, String period, int intervalMinutes) {
         var quote = cachedQuote(symbol);
+        String normalized = "MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period) ? "MINUTE" : "W".equalsIgnoreCase(period) ? "W" : "D";
+        int normalizedInterval = intervalMinutes == 1 || intervalMinutes == 15 ? intervalMinutes : 5;
+        var cache = cacheManager == null ? null : cacheManager.getCache("chartCandles");
+        String key = symbol + ":" + normalized + ":" + ("MINUTE".equals(normalized) ? normalizedInterval : 0);
+        // Self-invocation bypasses Spring's cache proxy; use the same price-only cache explicitly.
+        ChartResponse series = cache == null ? getCandles(symbol, normalized, normalizedInterval)
+                : cache.get(key, () -> getCandles(symbol, normalized, normalizedInterval));
         if ("MINUTE".equalsIgnoreCase(period) || "M".equalsIgnoreCase(period)) {
             int interval = intervalMinutes == 1 || intervalMinutes == 5 || intervalMinutes == 15 ? intervalMinutes : 5;
-            KisMinuteCandleResult result = kisMinuteCandleClient.getCandlesWithStatus(symbol, interval, 120);
-            List<ChartResponse.MinuteCandleView> minuteCandles = result.candles().stream()
-                    .map(c -> new ChartResponse.MinuteCandleView(c.timestamp(), c.open(), c.high(), c.low(), c.close()))
-                    .toList();
+            List<ChartResponse.MinuteCandleView> minuteCandles = series.minuteCandles();
             double price = quote.currentPrice();
             double changePercent = quote.changePercent();
-            var moves=result.fallback()?List.<ChartResponse.MoveInsightView>of():findMoveInsights(symbol,result.candles());
+            var moves=series.fallback()?List.<ChartResponse.MoveInsightView>of():findMoveInsights(symbol,minuteCandles.stream().map(c -> new com.finsight.external.kis.KisMinuteCandle(c.timestamp(), c.open(), c.high(), c.low(), c.close())).toList());
             return new ChartResponse(symbol, price, changePercent, List.of(), List.of(), List.of(), largestDocent(moves),
-                    "MINUTE", interval, minuteCandles, result.fallback(),
+                    "MINUTE", interval, minuteCandles, series.fallback(),
                     moves);
         }
 
         String periodDivCode = "W".equalsIgnoreCase(period) ? "W" : "D";
-        int count = "W".equals(periodDivCode) ? WEEKLY_CANDLE_COUNT : DAILY_CANDLE_COUNT;
-        KisDailyCandleResult candleResult = kisDailyCandleClient.getCandlesWithStatus(symbol, count, periodDivCode);
-        List<KisDailyCandle> candles = candleResult.candles();
-
-        List<CandleView> candleViews = candles.stream()
-                .sorted(Comparator.comparing(KisDailyCandle::date))
-                .map(c -> new CandleView(c.date(), c.open(), c.high(), c.low(), c.close()))
-                .toList();
+        List<CandleView> candleViews = series.candles();
 
         double price = quote.currentPrice();
         double changePercent = quote.changePercent();
@@ -169,13 +166,13 @@ public class ChartService {
         }
 
         List<NewsMarkerView> markers = matchedNews.stream().map(news -> toMarker(symbol, news)).toList();
-        List<ChartResponse.MoveInsightView> moveInsights = candleResult.fallback()
+        List<ChartResponse.MoveInsightView> moveInsights = series.fallback()
                 ? List.of()
                 : findDailyMoveInsights(symbol, candleViews, matchedNews, periodDivCode);
         ChartResponse.DocentView docent = largestDocent(moveInsights);
 
         return new ChartResponse(symbol, price, changePercent, candleViews, markers, markers, docent,
-                periodDivCode, null, List.of(), candleResult.fallback(),
+                periodDivCode, null, List.of(), series.fallback(),
                 moveInsights);
     }
 
@@ -473,22 +470,41 @@ public class ChartService {
         var title=ChartDocentService.titleSentiment(news.getTitle());
         return news.getSentimentHint()==null || news.getSentimentHint()==SentimentHint.NEUTRAL ? (title==null?SentimentHint.NEUTRAL:title) : news.getSentimentHint();
     }
+    private record ScoreKey(String symbol, String title, String body, String relatedSymbol) {}
+    private record ScoreFeatures(int base, SentimentHint direction) {}
+    private static final com.github.benmanes.caffeine.cache.Cache<ScoreKey,ScoreFeatures> SCORE_FEATURES =
+            com.github.benmanes.caffeine.cache.Caffeine.newBuilder()
+                    .maximumWeight(8 * 1024 * 1024)
+                    .weigher((ScoreKey key, ScoreFeatures value) -> 128 + 2 * (key.title().length() + key.body().length()))
+                    .expireAfterAccess(java.time.Duration.ofMinutes(10)).build();
+    private static final java.util.regex.Pattern CORPORATE_EVENT = java.util.regex.Pattern.compile("(?s).*(공시|실적|매출|수주|계약|영업이익).*");
+    private static final java.util.regex.Pattern INDEX_EVENT = java.util.regex.Pattern.compile("(?s).*(코스피|코스닥).*(%|포인트).*");
+    private static final java.util.regex.Pattern LOW_SIGNAL_EVENT = java.util.regex.Pattern.compile("채용|면접|전시회|박람회|설명회|시상|기부|MOU|인사|산업대전|반도체 대전", java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern EXHIBITION = java.util.regex.Pattern.compile("(?is).*(전시회|박람회|SEDEX|반도체\\s*대전).*");
+    private static final java.util.regex.Pattern CORPORATE_TITLE = java.util.regex.Pattern.compile(".*(공시|실적|수주|계약|매출|영업이익).*");
+    private static final java.util.regex.Pattern PUBLIC_AGENCY = java.util.regex.Pattern.compile("^(?:[가-힣]{1,8}(?:시|도|군)(?=[ ,·])|(?:교육|고용노동|기획재정|재정경제|농식품|농림축산식품|산업통상자원|국토교통|환경|보건복지|과학기술정보통신)부|금융위|한은).*");
     static int representativeScore(String symbol, News news, double change) {
+        String title=java.util.Objects.toString(news.getTitle(),"");
+        var key = new ScoreKey(symbol,title,java.util.Objects.toString(news.getRawContent(),""),news.getRelatedSymbol());
+        var features = SCORE_FEATURES.get(key, ignored -> scoreFeatures(symbol,news));
+        var direction = features.direction();
+        return features.base() + (direction == null || change == 0 ? 0 : (change>0)==(direction==SentimentHint.POSITIVE) ? 3 : -2);
+    }
+    private static ScoreFeatures scoreFeatures(String symbol, News news) {
         String title=java.util.Objects.toString(news.getTitle(),"");
         String lead=new ArticleContentExtractor().clean(title,news.getRawContent());
         lead=lead.substring(0,Math.min(400,lead.length()));
         var direction = com.finsight.news.SentimentEvidence.titleDirection(title);
-        boolean same = change!=0 && direction!=null && (change>0)==(direction==SentimentHint.POSITIVE);
-        int score = direction==null || change==0 ? 0 : same ? 3 : -2;
+        int score = 0;
         if (com.finsight.stock.StockCatalog.mentions(symbol,title)) score+=2;
         if (symbol.equals(news.getRelatedSymbol())) score+=3;
         if (com.finsight.stock.StockCatalog.mentions(symbol,lead)) score+=2;
-        if (relevanceRank(symbol,news)>1 && (title+" "+lead).matches("(?s).*(공시|실적|매출|수주|계약|영업이익).*")) score++;
-        if ((title+" "+lead).matches("(?s).*(코스피|코스닥).*(%|포인트).*")) score++;
-        if (java.util.regex.Pattern.compile("채용|면접|전시회|박람회|설명회|시상|기부|MOU|인사|산업대전|반도체 대전",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(title).find()) score-=3;
-        if ((title+" "+lead).matches("(?is).*(전시회|박람회|SEDEX|반도체\\s*대전).*" ) && !title.matches(".*(공시|실적|수주|계약|매출|영업이익).*")) score-=5;
-        if (title.matches("^(?:[가-힣]{1,8}(?:시|도|군)(?=[ ,·])|(?:교육|고용노동|기획재정|재정경제|농식품|농림축산식품|산업통상자원|국토교통|환경|보건복지|과학기술정보통신)부|금융위|한은).*")) score-=2;
-        return score;
+        if (relevanceRank(symbol,news)>1 && CORPORATE_EVENT.matcher(title+" "+lead).matches()) score++;
+        if (INDEX_EVENT.matcher(title+" "+lead).matches()) score++;
+        if (LOW_SIGNAL_EVENT.matcher(title).find()) score-=3;
+        if (EXHIBITION.matcher(title+" "+lead).matches() && !CORPORATE_TITLE.matcher(title).matches()) score-=5;
+        if (PUBLIC_AGENCY.matcher(title).matches()) score-=2;
+        return new ScoreFeatures(score,direction);
     }
 
 
@@ -535,6 +551,10 @@ public class ChartService {
         long cursor=0;
         while(true) {
             var page=newsRepository.findChartCandidatesAfterId(start,end,cursor,org.springframework.data.domain.PageRequest.of(0,100));
+            // Dense windows would hydrate almost every body anyway; avoid metadata pages after the first.
+            if (cursor == 0 && page.size() == 100 && page.stream().allMatch(article -> relevanceRank(symbol,article)>0)) {
+                return newsRepository.findByPublishedAtBetween(start,end).stream().filter(article -> relevanceRank(symbol,article)>0).toList();
+            }
             page.stream().filter(article -> relevanceRank(symbol,article)>0).map(News::getId).forEach(ids::add);
             if(page.size()<100) break;
             cursor=page.getLast().getId();
@@ -544,6 +564,7 @@ public class ChartService {
 
     static int relevanceRank(String symbol, News news) {
         String title = news.getTitle() == null ? "" : news.getTitle();
+        if (symbol.equals(news.getRelatedSymbol()) || title.contains(symbol)) return 3;
         String raw = com.finsight.localml.ChartCompanyMatcher.cleanBody(news.getRawContent());
         String lead = raw.substring(0, Math.min(300, raw.length()));
         String name = com.finsight.stock.StockCatalog.name(symbol);
