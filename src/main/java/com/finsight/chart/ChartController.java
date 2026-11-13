@@ -17,9 +17,11 @@ public class ChartController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.finsight.auth.UserProfileService profiles;
     private final ChartService chartService;
+    private final ChartInsightsJson insightsJson;
 
-    public ChartController(ChartService chartService) {
+    public ChartController(ChartService chartService, ChartInsightsJson insightsJson) {
         this.chartService = chartService;
+        this.insightsJson = insightsJson;
     }
 
     @GetMapping("/{symbol}/candles")
@@ -34,7 +36,10 @@ public class ChartController {
     }
 
     @GetMapping("/{symbol}/insights")
-    public ChartResponse insights(@PathVariable String symbol,
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+            content = @io.swagger.v3.oas.annotations.media.Content(mediaType = "application/json",
+                    schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ChartResponse.class)))
+    public org.springframework.http.ResponseEntity<byte[]> insights(@PathVariable String symbol,
             @RequestParam(defaultValue = "D") String period,
             @RequestParam(defaultValue = "5") int interval,
             @RequestParam(required=false) String level,
@@ -44,7 +49,7 @@ public class ChartController {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "종목코드 또는 차트 기간이 올바르지 않습니다.");
         }
         String resolved=resolveLevel(level,userId);
-        return chartService.withDocents(chartService.withCurrentQuote(chartService.getChart(symbol, normalized, interval)),resolved);
+        return insightsJson.response(chartService.getChart(symbol, normalized, interval), resolved);
     }
 
     @GetMapping("/{symbol}")
