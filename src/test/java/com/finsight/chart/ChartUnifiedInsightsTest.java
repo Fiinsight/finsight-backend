@@ -43,7 +43,8 @@ class ChartUnifiedInsightsTest {
         var base=new ChartResponse("005930",0,0,List.of(),List.of(),List.of(),null,"D",null,List.of(),false,List.of());
         when(charts.getChart("005930","D",5)).thenReturn(base);
         when(charts.withCurrentQuote(base)).thenReturn(base);
-        var controller=new ChartController(charts);
+        when(charts.withDocents(eq(base),anyString())).thenReturn(base);
+        var controller=new ChartController(charts,new ChartInsightsJson(charts,new com.fasterxml.jackson.databind.ObjectMapper()));
         controller.insights("005930","D",5,"analyst",null);
         controller.chart("005930","D",5,"analyst",null);
         verify(charts,times(2)).withDocents(base,"analyst");

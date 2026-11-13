@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -28,6 +29,22 @@ public class ArticleContentExtractor {
 
     private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(5);
     private static final String USER_AGENT = "Mozilla/5.0 (compatible; FinsightBot/1.0)";
+    private static final Pattern AGENCY_PREFIX = Pattern.compile("^(?:(?:AFP|AP|EPA|로이터|UPI|신화|연합뉴스)(?:\\s*=\\s*)?(?:연합뉴스)?\\s+|\\d{4}\\.\\d{1,2}\\.\\d{1,2}\\s+|\\[공동취재\\]\\s*|\\([^()]{1,20}=연합뉴스\\)\\s*(?:[가-힣]{2,4}\\s*)+기자\\s*=\\s*)");
+    private static final Pattern PHOTO_NOTICE = Pattern.compile("^(?:사진은\\s*기사(?:\\s*내용)?(?:와|과)\\s*(?:관련\\s*없|무관)|이미지는\\s*기사(?:\\s*내용)?(?:와|과)\\s*관련\\s*없|자료사진|일러스트\\s*=|그래픽\\s*=)");
+    private static final Pattern PHOTO_CREDIT = Pattern.compile("^사진\\s*=\\s*(?:.{1,60}?(?:생성\\s*이미지|제공)|게티이미지뱅크|[^\\s]+)\\s*");
+    private static final Pattern PARAGRAPHS = Pattern.compile("\\n+");
+    private static final Pattern CLEAN_SENTENCES = Pattern.compile("(?<=[.!?。！？])(?![0-9])\\s+");
+    private static final Pattern PHOTO_SENTENCES = Pattern.compile("(?<=[.!?。！？])(?!\\d)\\s+");
+    private static final Pattern EVENT_SENTENCES = Pattern.compile("(?<=[.!?。！？])(?!\\d)\\s*|\\n+");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern COMPACT_CHARACTERS = Pattern.compile("[^0-9A-Za-z가-힣]");
+    private static final Pattern PHOTO_SENTENCE = Pattern.compile("(?s).*(사진\\s*=|\\(사진\\)|제공).*");
+    private static final Pattern PAST_PHOTO = Pattern.compile("(?s).*(지난해|작년|\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일).*열린.*");
+    private static final Pattern ONGOING_PHOTO = Pattern.compile("(?s).*(되고|하고)\\s*있(?:다|어요).*");
+    private static final Pattern EXPLICIT_DATE = Pattern.compile("(20\\d{2})[./년-]\\s*(\\d{1,2})[./월-]\\s*(\\d{1,2})");
+    private static final Pattern DOWN_WORDS = Pattern.compile("급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려");
+    private static final Pattern UP_WORDS = Pattern.compile("급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜");
+    private static final Pattern HAS_DIGIT = Pattern.compile("(?s).*\\d.*");
 
     public record ExtractedArticle(String body, String imageUrl) {}
 
@@ -119,18 +136,17 @@ public class ArticleContentExtractor {
                 .replaceAll("\\([^()\\n]{1,40}=연합뉴스\\)\\s*[가-힣·]{2,12}\\s*기자\\s*=\\s*", "")
                 .replaceAll("사진\\s*=\\s*(?:AFP|AP|EPA|로이터|연합뉴스)(?:/[^\\s]+)?\\s*", "")
                 .replaceAll("[\\w.+-]+@[\\w.-]+", "");
-        String prefix = "^(?:(?:AFP|AP|EPA|로이터|UPI|신화|연합뉴스)(?:\\s*=\\s*)?(?:연합뉴스)?\\s+|\\d{4}\\.\\d{1,2}\\.\\d{1,2}\\s+|\\[공동취재\\]\\s*|\\([^()]{1,20}=연합뉴스\\)\\s*(?:[가-힣]{2,4}\\s*)+기자\\s*=\\s*)";
-        while (java.util.regex.Pattern.compile(prefix).matcher(body.strip()).find()) body = body.strip().replaceFirst(prefix, "");
+        while (AGENCY_PREFIX.matcher(body.strip()).find()) body = AGENCY_PREFIX.matcher(body.strip()).replaceFirst("");
         body = cutKnownPageChrome(body)
                 .replace("ⓒ 한경닷컴, 무단전재 및 재배포 금지", "")
                 .trim();
         String titleKey = compact(title);
         List<String> cleaned = new ArrayList<>();
-        for (String paragraph : body.replace('\r', '\n').split("\\n+")) {
+        for (String paragraph : PARAGRAPHS.split(body.replace('\r', '\n'))) {
             List<String> sentences = new ArrayList<>();
-            for (String part : paragraph.split("(?<=[.!?。！？])(?![0-9])\\s+")) {
-                String item = part.trim().replaceAll("\\s+", " ");
-                while (java.util.regex.Pattern.compile(prefix).matcher(item).find()) item = item.replaceFirst(prefix, "").strip();
+            for (String part : CLEAN_SENTENCES.split(paragraph)) {
+                String item = WHITESPACE.matcher(part.trim()).replaceAll(" ");
+                while (AGENCY_PREFIX.matcher(item).find()) item = AGENCY_PREFIX.matcher(item).replaceFirst("").strip();
                 if (item.length() < 10 || PAGE_CHROME.stream().anyMatch(item::contains)) continue;
                 if (!titleKey.isBlank() && compact(item).equals(titleKey)) continue;
                 sentences.add(item);
@@ -142,16 +158,14 @@ public class ArticleContentExtractor {
 
     public static String stripPhotoNoise(String text) {
         if (text == null || text.isBlank()) return text;
-        String notice = "^(?:사진은\\s*기사(?:\\s*내용)?(?:와|과)\\s*(?:관련\\s*없|무관)|이미지는\\s*기사(?:\\s*내용)?(?:와|과)\\s*관련\\s*없|자료사진|일러스트\\s*=|그래픽\\s*=)";
-        String credit = "^사진\\s*=\\s*(?:.{1,60}?(?:생성\\s*이미지|제공)|게티이미지뱅크|[^\\s]+)\\s*";
         List<String> kept = new ArrayList<>();
         boolean changed = false;
-        for (String paragraph : text.split("\\n+")) {
+        for (String paragraph : PARAGRAPHS.split(text)) {
             List<String> sentences = new ArrayList<>();
-            for (String part : paragraph.split("(?<=[.!?。！？])(?!\\d)\\s+")) {
+            for (String part : PHOTO_SENTENCES.split(paragraph)) {
                 String item = part.strip();
-                if (java.util.regex.Pattern.compile(notice).matcher(item).find()) { changed = true; continue; }
-                String plain = item.replaceFirst(credit, "");
+                if (PHOTO_NOTICE.matcher(item).find()) { changed = true; continue; }
+                String plain = PHOTO_CREDIT.matcher(item).replaceFirst("");
                 changed |= !plain.equals(item);
                 if (!plain.isBlank()) sentences.add(plain);
             }
@@ -162,11 +176,10 @@ public class ArticleContentExtractor {
 
     public List<String> eventSentences(String title, String body, java.time.LocalDate day) {
         List<String> safe = new ArrayList<>();
-        for (String sentence : clean(title, body).split("(?<=[.!?。！？])(?!\\d)\\s*|\\n+")) {
-            if (sentence.matches("(?s).*(사진\\s*=|\\(사진\\)|제공).*")) continue;
-            if (sentence.matches("(?s).*(지난해|작년|\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일).*열린.*")
-                    && sentence.matches("(?s).*(되고|하고)\\s*있(?:다|어요).*")) continue;
-            var dates = java.util.regex.Pattern.compile("(20\\d{2})[./년-]\\s*(\\d{1,2})[./월-]\\s*(\\d{1,2})").matcher(sentence);
+        for (String sentence : EVENT_SENTENCES.split(clean(title, body))) {
+            if (PHOTO_SENTENCE.matcher(sentence).matches()) continue;
+            if (PAST_PHOTO.matcher(sentence).matches() && ONGOING_PHOTO.matcher(sentence).matches()) continue;
+            var dates = EXPLICIT_DATE.matcher(sentence);
             boolean old = false;
             while (dates.find()) {
                 try {
@@ -180,9 +193,9 @@ public class ArticleContentExtractor {
     }
     public String eventLead(String title, String body, java.time.LocalDate day, double change) {
         List<String> safe=eventSentences(title,body,day);
-        String direction = change < 0 ? "급락|하락|약세|낙폭|내려|떨어|팔자|매도|하회|부진|우려" : "급등|상승|강세|반등|올라|사자|매수|상회|호실적|수혜";
-        for (String sentence : safe) if (java.util.regex.Pattern.compile(direction).matcher(sentence).find()) return sentence;
-        for (String sentence : safe) if (sentence.matches("(?s).*\\d.*")) return sentence;
+        Pattern direction = change < 0 ? DOWN_WORDS : UP_WORDS;
+        for (String sentence : safe) if (direction.matcher(sentence).find()) return sentence;
+        for (String sentence : safe) if (HAS_DIGIT.matcher(sentence).matches()) return sentence;
         return safe.isEmpty() ? title : safe.getFirst();
     }
 
@@ -211,7 +224,7 @@ public class ArticleContentExtractor {
     }
 
     private String compact(String value) {
-        return value == null ? "" : value.replaceAll("[^0-9A-Za-z가-힣]", "").toLowerCase();
+        return value == null ? "" : COMPACT_CHARACTERS.matcher(value).replaceAll("").toLowerCase();
     }
 
     private String extractFromArticleTag(Document doc) {

@@ -40,10 +40,11 @@ final class ChartTextEvidence {
         for (String part:parts) {
             boolean industryHeadline="SECTOR".equals(relation) && part.equals(title) && MARKET.matcher(title).find() && subject(symbol,body,relation);
             if (!subject(symbol,part,relation) && !industryHeadline) continue;
+            if (part.length()>200) continue;
             var matcher=CAUSE.matcher(part);
             while (matcher.find()) {
                 String phrase=matcher.group(1).strip();
-                if (part.length()<=200 && CAUSE_EVENT.matcher(phrase).find() && !phrase.contains("에도") && !phrase.contains("지만")) return part.strip();
+                if (CAUSE_EVENT.matcher(phrase).find() && !phrase.contains("에도") && !phrase.contains("지만")) return part.strip();
             }
         }
         return null;

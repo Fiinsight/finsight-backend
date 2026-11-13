@@ -21,13 +21,14 @@ ADD https://codeload.github.com/Fiinsight/finsight-ai/tar.gz/b2336d9d5ea90e140c2
 RUN mkdir /app/ai && tar -xzf /tmp/ai.tar.gz -C /app/ai --strip-components=1 && rm /tmp/ai.tar.gz
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 # Build the archive with no network or production configuration. Training exits
-# at context refresh, before seed runners; these switches do not affect runtime.
+# at context refresh, before seed runners. Include web beans so their classes
+# are shared during startup too; these switches do not affect runtime.
 RUN --network=none java -Djarmode=tools -jar /app/app.jar extract --destination /app/application \
     && cd /app/application \
     && java -Xmx192m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 \
        -XX:ArchiveClassesAtExit=/app/application/application.jsa \
        -Dspring.context.exit=onRefresh -jar /app/application/app.jar \
-       --spring.main.lazy-initialization=true --spring.main.web-application-type=none \
+       --spring.main.lazy-initialization=false --server.port=0 \
        --spring.jpa.hibernate.ddl-auto=none --spring.flyway.enabled=false \
        --spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access=false \
        --spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect \
